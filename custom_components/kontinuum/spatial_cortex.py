@@ -1,13 +1,11 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
 ║  KONTINUUM – Spatial Cortex                                     ║
-║  Raumwahrnehmung: Wo bin ich?                                   ║
+║  Raumwahrnehmung: Wo bin ich? Wohin gehe ich?                  ║
 ║                                                                  ║
-║  v0.7.1 – Anti-Bounce:                                         ║
-║  Drei-Schicht-Schutz gegen Bouncing:                           ║
-║  1. Hysterese: Neuer Raum muss 1.5× besser sein               ║
-║  2. Confirmation: 60s sustained evidence                        ║
-║  3. Cooldown: 120s zwischen Raumwechseln                       ║
+║  v0.12.0 – Bewegungsmuster:                                    ║
+║  Lernt Raum-Sequenzen (A → B) und kann den nächsten Raum      ║
+║  vorhersagen. Plus Drei-Schicht-Anti-Bounce.                   ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -63,6 +61,8 @@ class SpatialCortex:
         self.total_transitions = 0
         self.bounces_prevented = 0
         self._last_active_token_time = 0
+        # Bewegungsgedächtnis (v0.12.0): "room_a→room_b" → count
+        self.movement_memory = {}
     
     def is_spatial_signal(self, semantic: str) -> bool:
         """Prüft ob ein Signal räumlich ist."""
@@ -184,6 +184,11 @@ class SpatialCortex:
         self.last_transition_time = now
         self.total_transitions += 1
         self.proposed_room = None
+
+        # Bewegungsmuster lernen (v0.12.0)
+        if old_room != "unknown":
+            move_key = f"{old_room}→{new_room}"
+            self.movement_memory[move_key] = self.movement_memory.get(move_key, 0) + 1
         
         tokens = []
         if old_room != "unknown":
@@ -231,7 +236,29 @@ class SpatialCortex:
     def get_current_location(self) -> str:
         """Gibt den aktuellen Raum zurück."""
         return self.current_room
-    
+
+    def predict_next_room(self) -> list:
+        """
+        Vorhersage: Welcher Raum kommt als nächstes? (v0.12.0)
+        Returns: [(room, probability), ...] sortiert nach Wahrscheinlichkeit.
+        """
+        if self.current_room == "unknown":
+            return []
+
+        prefix = f"{self.current_room}→"
+        candidates = []
+        for key, count in self.movement_memory.items():
+            if key.startswith(prefix) and count >= 2:
+                target = key.split("→", 1)[1]
+                candidates.append((target, count))
+
+        total = sum(c for _, c in candidates)
+        if total == 0:
+            return []
+
+        return [(room, round(count / total, 3))
+                for room, count in sorted(candidates, key=lambda x: -x[1])][:3]
+
     def to_dict(self) -> dict:
         rooms_data = {}
         for name, rs in self.rooms.items():
@@ -246,29 +273,34 @@ class SpatialCortex:
             "last_transition_time": self.last_transition_time,
             "total_transitions": self.total_transitions,
             "bounces_prevented": self.bounces_prevented,
+            "movement_memory": self.movement_memory,
         }
-    
+
     def from_dict(self, data: dict):
         self.current_room = data.get("current_room", "unknown")
         self.last_transition_time = data.get("last_transition_time", 0)
         self.total_transitions = data.get("total_transitions", 0)
         self.bounces_prevented = data.get("bounces_prevented", 0)
+        self.movement_memory = data.get("movement_memory", {})
         for name, rd in data.get("rooms", {}).items():
             rs = RoomState(name)
             rs.probability = rd.get("probability", 0)
             rs.motion_count = rd.get("motion_count", 0)
             rs.last_motion_time = rd.get("last_motion_time", 0)
             self.rooms[name] = rs
-    
+
     @property
     def stats(self) -> dict:
         presence = {}
         for name, rs in self.rooms.items():
             if rs.probability > 0.01:
                 presence[name] = round(rs.probability, 3)
+        next_room = self.predict_next_room()
         return {
             "current_room": self.current_room,
             "total_transitions": self.total_transitions,
             "bounces_prevented": self.bounces_prevented,
             "presence_map": presence,
+            "predicted_next": next_room[0] if next_room else None,
+            "movement_patterns": len(self.movement_memory),
         }

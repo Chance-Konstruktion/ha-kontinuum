@@ -3,12 +3,11 @@
 ║  KONTINUUM – Hippocampus                                        ║
 ║  Gedächtnissystem: Arbeitsgedächtnis + Konsolidierung           ║
 ║                                                                  ║
-║  v0.8.0 – Kontext-Fix:                                         ║
-║  Bucket nutzt jetzt ALLE 15 Dimensionen des Kontextvektors:    ║
-║  - Zeit (6 Blöcke à 4h)                                        ║
-║  - Modus (4 Gruppen: sleeping/active/relaxing/away)            ║
-║  - Energie (2 Stufen: low/ok)                                   ║
-║  = 48 Buckets statt 16. Plus Speicherlimit pro Bucket.         ║
+║  v0.12.0 – Intelligenz-Upgrade:                                ║
+║  - Mode-Index korrigiert (ctx[-3] statt ctx[12])               ║
+║  - Phase 4: Wochentag-Gedächtnis (Werktag vs Wochenende)      ║
+║  - Kontextvektor: [time(9) + hypothalamus(9) + insula(3)]     ║
+║  = Bis zu 96 Buckets. Robusteres Bucket-Addressing.            ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -24,18 +23,20 @@ _LOGGER = logging.getLogger(__name__)
 class Hippocampus:
     """
     Gedächtnissystem von KONTINUUM.
-    
-    Kontext-Bucket (v0.8.0):
-        48 Buckets = 6 Zeitblöcke × 4 Modi × 2 Energiestufen
-        Kontextvektor: [time(9) + hypothalamus(3) + insula(3)]
+
+    Kontext-Bucket (v0.12.0):
+        Bis zu 96 Buckets = 6 Zeit × 4 Modi × 2 Energie × 2 Tagestyp
+        Kontextvektor: [time(9) + hypothalamus(9) + insula(3)] = 21 Dims
+        Mode-Index: ctx[-3] (robust, unabhängig von Hypothalamus-Dimensionen)
     """
-    
+
     NGRAM_SIZES = [1, 2, 3]
-    
+
     TIME_BLOCKS = 6
     MODE_GROUPS = 4
     ENERGY_LEVELS = 2
-    TOTAL_BUCKETS = TIME_BLOCKS * MODE_GROUPS * ENERGY_LEVELS  # 48
+    DAY_TYPES = 2
+    TOTAL_BUCKETS = TIME_BLOCKS * MODE_GROUPS * ENERGY_LEVELS * DAY_TYPES  # 96
     
     DECAY_RATE = 0.993        # Default für "ausgeglichen"
     MIN_OBSERVATIONS = 3
@@ -60,51 +61,59 @@ class Hippocampus:
     def _context_bucket(self, ctx: list) -> int:
         """
         Kontext-Vektor → diskreter Bucket.
-        
-        ADAPTIV:
-        - < 2000 Events: 6 Buckets (nur Zeit) – sammelt erstmal Daten
-        - >= 2000 Events: 24 Buckets (Zeit × Modus) – differenzierter
-        - >= 5000 Events: 48 Buckets (Zeit × Modus × Energie) – voll
+
+        ADAPTIV (v0.12.0):
+        - < 2000 Events: 6 Buckets (nur Zeit)
+        - >= 2000 Events: 24 Buckets (Zeit × Modus)
+        - >= 5000 Events: 48 Buckets (Zeit × Modus × Energie)
+        - >= 10000 Events: 96 Buckets (Zeit × Modus × Energie × Tagestyp)
         """
         if len(ctx) < 7:
             return 0
-        
+
         # ── Zeit: Stunde aus sin/cos → 6 Blöcke ──
         hour = math.atan2(ctx[0], ctx[1]) * 24 / (2 * math.pi)
         if hour < 0:
             hour += 24
         time_b = min(5, int(hour / 4))
-        
+
         # Phase 1: Nur Zeit (< 2000 Events)
         if self.total_events < 2000:
             return time_b
-        
-        # ── Modus: aus ctx[12] → 4 Gruppen ──
-        if len(ctx) > 12 and ctx[12] is not None:
-            mode_val = ctx[12]
+
+        # ── Modus: ctx[-3] = mode_index/5.0 (Insula ist immer die letzten 3 Dims) ──
+        if len(ctx) >= 3:
+            mode_val = ctx[-3]
             if mode_val < 0.1:
-                mode_b = 0
+                mode_b = 0      # sleeping
             elif mode_val < 0.5:
-                mode_b = 1
+                mode_b = 1      # waking_up, active
             elif mode_val < 0.7:
-                mode_b = 2
+                mode_b = 2      # relaxing
             else:
-                mode_b = 3
+                mode_b = 3      # cooking, away
         else:
             mode_b = 1
-        
+
         # Phase 2: Zeit × Modus (< 5000 Events)
         if self.total_events < 5000:
             return time_b * self.MODE_GROUPS + mode_b
-        
-        # ── Energie: aus ctx[9] → 2 Stufen ──
+
+        # ── Energie: ctx[9] = battery_state/3.0 → 2 Stufen ──
         if len(ctx) > 9 and ctx[9] is not None:
             energy_b = 0 if ctx[9] < 0.33 else 1
         else:
             energy_b = 1
-        
-        # Phase 3: Voll (>= 5000 Events)
-        return (time_b * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + energy_b
+
+        # Phase 3: Zeit × Modus × Energie (< 10000 Events)
+        if self.total_events < 10000:
+            return (time_b * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + energy_b
+
+        # ── Tagestyp: ctx[6] = is_weekend → 2 Gruppen (v0.12.0) ──
+        daytype_b = 1 if (len(ctx) > 6 and ctx[6] > 0.5) else 0
+
+        # Phase 4: Voll (>= 10000 Events)
+        return ((time_b * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + energy_b) * self.DAY_TYPES + daytype_b
     
     def _neighbor_buckets(self, bucket: int) -> list:
         """Nachbar-Buckets: adaptiv je nach Phase."""
@@ -112,7 +121,7 @@ class Hippocampus:
         if self.total_events < 2000:
             return [(bucket - 1) % self.TIME_BLOCKS,
                     (bucket + 1) % self.TIME_BLOCKS]
-        
+
         # Phase 2: 24 Buckets (Zeit × Modus)
         if self.total_events < 5000:
             mode_b = bucket % self.MODE_GROUPS
@@ -121,19 +130,40 @@ class Hippocampus:
                 ((time_b - 1) % self.TIME_BLOCKS) * self.MODE_GROUPS + mode_b,
                 ((time_b + 1) % self.TIME_BLOCKS) * self.MODE_GROUPS + mode_b,
             ]
-        
-        # Phase 3: 48 Buckets (voll)
-        energy_b = bucket % self.ENERGY_LEVELS
-        rest = bucket // self.ENERGY_LEVELS
-        mode_b = rest % self.MODE_GROUPS
-        time_b = rest // self.MODE_GROUPS
-        
+
+        # Phase 3: 48 Buckets (Zeit × Modus × Energie)
+        if self.total_events < 10000:
+            energy_b = bucket % self.ENERGY_LEVELS
+            rest = bucket // self.ENERGY_LEVELS
+            mode_b = rest % self.MODE_GROUPS
+            time_b = rest // self.MODE_GROUPS
+
+            neighbors = []
+            for dt in [-1, 1]:
+                nt = (time_b + dt) % self.TIME_BLOCKS
+                neighbors.append((nt * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + energy_b)
+            other_e = 1 - energy_b
+            neighbors.append((time_b * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + other_e)
+            return neighbors
+
+        # Phase 4: 96 Buckets (Zeit × Modus × Energie × Tagestyp, v0.12.0)
+        daytype_b = bucket % self.DAY_TYPES
+        rest = bucket // self.DAY_TYPES
+        energy_b = rest % self.ENERGY_LEVELS
+        rest2 = rest // self.ENERGY_LEVELS
+        mode_b = rest2 % self.MODE_GROUPS
+        time_b = rest2 // self.MODE_GROUPS
+
         neighbors = []
         for dt in [-1, 1]:
             nt = (time_b + dt) % self.TIME_BLOCKS
-            neighbors.append((nt * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + energy_b)
+            neighbors.append(((nt * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + energy_b) * self.DAY_TYPES + daytype_b)
+        # Anderer Energielevel
         other_e = 1 - energy_b
-        neighbors.append((time_b * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + other_e)
+        neighbors.append(((time_b * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + other_e) * self.DAY_TYPES + daytype_b)
+        # Anderer Tagestyp (Werktag ↔ Wochenende)
+        other_d = 1 - daytype_b
+        neighbors.append(((time_b * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + energy_b) * self.DAY_TYPES + other_d)
         return neighbors
     
     def learn(self, token_id: int, ctx: list, timestamp):

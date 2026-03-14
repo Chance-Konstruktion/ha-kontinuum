@@ -8,7 +8,8 @@
 ║  des aktuellen Zustands. Hier erkennt sie den Modus:           ║
 ║  sleeping, waking_up, active, relaxing, cooking, away.          ║
 ║                                                                  ║
-║  v0.7.1 – Anti-Bounce: Cooldown 300s, Confidence 0.40          ║
+║  v0.12.0 – Zirkadiane Priors: Nutzt Tag/Nacht-Signal          ║
+║  vom Sonnenstand für biologisch plausiblere Modus-Erkennung.   ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -86,6 +87,7 @@ class Insula:
         self.total_mode_changes = 0
         self.event_window = deque(maxlen=self.WINDOW_SIZE)
         self.last_event_time = 0
+        self._is_daylight = True   # v0.12.0: Zirkadiane Priors
     
     def process(self, semantic: str, state: str, room: str,
                 token: str = "") -> dict:
@@ -105,20 +107,23 @@ class Insula:
         
         # 2. Raum-Hinweise
         self._apply_room_hints(room)
-        
-        # 3. Decay
+
+        # 3. Zirkadiane Priors (v0.12.0)
+        self._apply_circadian_priors()
+
+        # 4. Decay
         self._apply_decay(now)
-        
-        # 4. Inaktivität prüfen
+
+        # 5. Inaktivität prüfen
         self._check_inactivity(now)
         
-        # 5. Normalisieren
+        # 6. Normalisieren
         total = sum(self.mode_probs.values())
         if total > 0:
             for mode in self.ALL_MODES:
                 self.mode_probs[mode] /= total
         
-        # 6. Moduswechsel prüfen
+        # 7. Moduswechsel prüfen
         best_mode = max(self.mode_probs, key=self.mode_probs.get)
         best_conf = self.mode_probs[best_mode]
         
@@ -142,6 +147,18 @@ class Insula:
         
         return None
     
+    def update_sun(self, is_daylight: bool):
+        """Aktualisiert Tag/Nacht-Status für zirkadiane Priors (v0.12.0)."""
+        self._is_daylight = is_daylight
+
+    def _apply_circadian_priors(self):
+        """Wendet zirkadiane Priors an – Nacht begünstigt Schlaf (v0.12.0)."""
+        if not self._is_daylight:
+            self.mode_probs[Mode.SLEEPING] += 0.15
+            self.mode_probs[Mode.RELAXING] += 0.05
+        else:
+            self.mode_probs[Mode.ACTIVE] += 0.05
+
     def _apply_room_hints(self, room: str):
         """Wendet Raum-basierte Modus-Hinweise an."""
         if room in ROOM_MODE_HINTS:
