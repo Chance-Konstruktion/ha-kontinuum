@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  KONTINUUM v0.10.0 – Neuroinspired Home Intelligence           ║
+║  KONTINUUM v0.11.0 – Neuroinspired Home Intelligence           ║
 ║  Home Assistant Custom Component                                 ║
 ║                                                                  ║
 ║  Architektur:                                                    ║
@@ -10,7 +10,7 @@
 ║      ↑           ↑                                              ║
 ║    Insula ←─────┘                                               ║
 ║                                                                  ║
-║  v0.10.0 – Config Flow Fix + Adaptive Buckets + Self-Loop Fix  ║
+║  v0.11.0 – Unknown-Filter + Entity-Whitelist + Min-Delay       ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import time
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime, timezone
 
 from homeassistant.core import HomeAssistant, callback
@@ -38,7 +38,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.10.0"
+VERSION = "0.11.0"
 BRAIN_FILE = "brain.json"
 SAVE_INTERVAL = 300
 
@@ -283,10 +283,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         )
 
         # Startup-Notification
+        filtered = thalamus.stats.get("entities_filtered", 0)
         _notify(hass,
             f"🧠 KONTINUUM v{VERSION} gestartet",
             f"Preset: **{preset_key}**\n"
-            f"Entities: {len(thalamus.entity_semantic)}\n"
+            f"Entities: {len(thalamus.entity_semantic)}"
+            f"{f' (+ {filtered} ohne Raum gefiltert)' if filtered else ''}\n"
             f"Tokens: {thalamus._next_id - 1}\n"
             f"Räume: {len(thalamus._known_rooms)}\n"
             f"Events bisher: {hippocampus.total_events}\n"
@@ -846,6 +848,9 @@ def _load_brain(brain, path):
         brain["_scenes_enabled"] = data.get("scenes_enabled", False)
         brain["_scene_config"] = data.get("scene_config", _default_scene_config())
 
+        # v0.11.0 Migration: Unknown-Tokens bereinigen
+        _migrate_purge_unknown(brain)
+
         hp = brain["hippocampus"]
         _LOGGER.info(
             "Gehirn geladen: %d Events, %d Tokens, Accuracy %s",
@@ -853,3 +858,98 @@ def _load_brain(brain, path):
         )
     except Exception as e:
         _LOGGER.error("Fehler beim Laden: %s – starte frisch.", e)
+
+
+def _migrate_purge_unknown(brain):
+    """
+    v0.11.0 Migration: Entfernt alle unknown-Tokens aus dem Gehirn.
+
+    Bereinigt:
+    1. Thalamus: entity_room/entity_semantic für unknown-Entities
+    2. Thalamus: Token-Vokabular (unknown.* Tokens)
+    3. Hippocampus: Transitions/Totals die unknown-Token-IDs referenzieren
+    4. Hippocampus: Buffer von unknown-Token-IDs
+    """
+    thalamus = brain["thalamus"]
+    hippocampus = brain["hippocampus"]
+
+    # 1. Unknown-Token-IDs sammeln
+    unknown_token_ids = set()
+    unknown_tokens = set()
+    for token_str, token_id in list(thalamus.token_to_id.items()):
+        if token_str.startswith("unknown."):
+            unknown_token_ids.add(token_id)
+            unknown_tokens.add(token_str)
+
+    if not unknown_token_ids:
+        return
+
+    # 2. Thalamus: Unknown-Entities entfernen
+    unknown_entities = [
+        eid for eid, room in thalamus.entity_room.items()
+        if room == "unknown"
+    ]
+    for eid in unknown_entities:
+        del thalamus.entity_room[eid]
+        thalamus.entity_semantic.pop(eid, None)
+        thalamus.entity_last_token.pop(eid, None)
+    thalamus.stats["entities_registered"] = len(thalamus.entity_semantic)
+
+    # 3. Thalamus: Token-Vokabular bereinigen
+    for token_str in unknown_tokens:
+        token_id = thalamus.token_to_id.pop(token_str, None)
+        if token_id is not None:
+            thalamus.id_to_token.pop(token_id, None)
+
+    # 4. Hippocampus: Transitions bereinigen
+    purged_transitions = 0
+    for bucket in list(hippocampus.transitions.keys()):
+        for ngram in list(hippocampus.transitions[bucket].keys()):
+            # N-Gram enthält unknown-Token → komplett entfernen
+            if any(t in unknown_token_ids for t in ngram):
+                del hippocampus.transitions[bucket][ngram]
+                hippocampus.totals[bucket].pop(ngram, None)
+                purged_transitions += 1
+                continue
+
+            # Target ist unknown-Token → entfernen
+            for tok_id in list(hippocampus.transitions[bucket][ngram].keys()):
+                if tok_id in unknown_token_ids:
+                    count = hippocampus.transitions[bucket][ngram].pop(tok_id)
+                    hippocampus.totals[bucket][ngram] = max(
+                        0, hippocampus.totals[bucket].get(ngram, 0) - count
+                    )
+                    purged_transitions += 1
+
+            # Leeres N-Gram aufräumen
+            if not hippocampus.transitions[bucket][ngram]:
+                del hippocampus.transitions[bucket][ngram]
+                hippocampus.totals[bucket].pop(ngram, None)
+
+        # Leeren Bucket aufräumen
+        if not hippocampus.transitions[bucket]:
+            del hippocampus.transitions[bucket]
+            hippocampus.totals.pop(bucket, None)
+
+    # 5. Hippocampus: Buffer bereinigen
+    clean_buffer = [t for t in hippocampus.buffer if t not in unknown_token_ids]
+    hippocampus.buffer = deque(clean_buffer, maxlen=20)
+
+    # 6. Hippocampus: Durations bereinigen
+    for dur_key in list(hippocampus.durations.keys()):
+        parts = dur_key.split("_")
+        if len(parts) == 2:
+            if int(parts[0]) in unknown_token_ids or int(parts[1]) in unknown_token_ids:
+                del hippocampus.durations[dur_key]
+
+    # 7. Shadow-Predictions Reset (alte Predictions basieren auf vergiftetem Kontext)
+    hippocampus.shadow_predictions.clear()
+    hippocampus.shadow_hits = 0
+    hippocampus.shadow_misses = 0
+    hippocampus.shadow_total = 0
+
+    _LOGGER.warning(
+        "v0.11.0 Migration: %d unknown-Tokens entfernt, %d Transitions bereinigt, "
+        "%d Entities gefiltert, Accuracy-Zähler zurückgesetzt",
+        len(unknown_token_ids), purged_transitions, len(unknown_entities),
+    )

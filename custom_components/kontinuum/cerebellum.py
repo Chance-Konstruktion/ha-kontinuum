@@ -39,6 +39,7 @@ class Cerebellum:
     MIN_CONFIDENCE = 0.75
     MAX_RULES = 50
     RULE_COOLDOWN = 300
+    MIN_DELAY = 2.0  # Sekunden – darunter = Hardware-Kopplung, kein Verhalten
     
     def __init__(self):
         self.rules = {}  # "trigger_target" → CerebellumRule
@@ -72,7 +73,11 @@ class Cerebellum:
                         dur_key = f"{trigger}_{target}"
                         durs = hippocampus.durations.get(dur_key, [])
                         avg_delay = sorted(durs)[len(durs) // 2] if len(durs) >= 3 else 60
-                        
+
+                        # Ebene 2: Unter MIN_DELAY = Hardware-Kopplung
+                        if avg_delay < self.MIN_DELAY:
+                            continue
+
                         candidates[key] = (conf, count, trigger, target, avg_delay)
         
         sorted_rules = sorted(candidates.items(),
