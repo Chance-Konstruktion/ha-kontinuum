@@ -47,9 +47,19 @@ class HomeoState:
         self.brightness = 1
         self.heating_active = False
         self.heating_demand = 0
-    
+        # Trend-Tracking (v0.12.0)
+        self._prev_temp = None
+        self._prev_temp_time = 0
+        self._prev_battery = None
+        self._prev_battery_time = 0
+        self._prev_solar = None
+        self._prev_solar_time = 0
+        self.trend_temp = 0.0       # Δlevel/h normalisiert [-1, 1]
+        self.trend_battery = 0.0
+        self.trend_solar = 0.0
+
     def to_context_vector(self) -> list:
-        """6-dimensionaler Kontextvektor (0-1 normalisiert)."""
+        """9-dimensionaler Kontextvektor (0-1 normalisiert). v0.12.0: +3 Trends."""
         return [
             self.battery_state / 3.0,
             self.solar_state / 3.0,
@@ -57,7 +67,33 @@ class HomeoState:
             min(self.indoor_temp / 4.0, 1.0),
             self.brightness / 3.0,
             1.0 if self.heating_active else 0.0,
+            # Trends (v0.12.0): [-1, 1] → [0, 1]
+            max(0.0, min(1.0, (self.trend_temp + 1) / 2)),
+            max(0.0, min(1.0, (self.trend_battery + 1) / 2)),
+            max(0.0, min(1.0, (self.trend_solar + 1) / 2)),
         ]
+
+    def update_trend(self, semantic: str, level: int):
+        """Berechnet Trend-Koeffizienten aus Level-Änderungen (v0.12.0)."""
+        now = time.time()
+        if semantic == "temperature":
+            if self._prev_temp is not None and (now - self._prev_temp_time) > 60:
+                hours = (now - self._prev_temp_time) / 3600
+                self.trend_temp = max(-1, min(1, (level - self._prev_temp) / max(hours, 0.1)))
+            self._prev_temp = level
+            self._prev_temp_time = now
+        elif semantic == "battery":
+            if self._prev_battery is not None and (now - self._prev_battery_time) > 60:
+                hours = (now - self._prev_battery_time) / 3600
+                self.trend_battery = max(-1, min(1, (level - self._prev_battery) / max(hours, 0.1)))
+            self._prev_battery = level
+            self._prev_battery_time = now
+        elif semantic == "solar":
+            if self._prev_solar is not None and (now - self._prev_solar_time) > 60:
+                hours = (now - self._prev_solar_time) / 3600
+                self.trend_solar = max(-1, min(1, (level - self._prev_solar) / max(hours, 0.1)))
+            self._prev_solar = level
+            self._prev_solar_time = now
 
 
 class Hypothalamus:
@@ -86,7 +122,11 @@ class Hypothalamus:
         """
         self.events_absorbed += 1
         level = STATE_TO_LEVEL.get(state, 1)
-        
+
+        # Trend-Tracking (v0.12.0)
+        if semantic in ("temperature", "battery", "solar"):
+            self.state.update_trend(semantic, level)
+
         # Energie-Zustand updaten
         if semantic == "battery":
             self.state.battery_state = level
@@ -220,8 +260,12 @@ class Hypothalamus:
             "last_climate_state": self.last_climate_state,
             "last_energy_event_time": self._last_energy_event_time,
             "last_climate_event_time": self._last_climate_event_time,
+            # Trends (v0.12.0)
+            "trend_temp": self.state.trend_temp,
+            "trend_battery": self.state.trend_battery,
+            "trend_solar": self.state.trend_solar,
         }
-    
+
     def from_dict(self, data: dict):
         self.state.battery_state = data.get("battery_state", 2)
         self.state.solar_state = data.get("solar_state", 0)
@@ -238,6 +282,10 @@ class Hypothalamus:
         self.last_climate_state = data.get("last_climate_state")
         self._last_energy_event_time = data.get("last_energy_event_time", 0)
         self._last_climate_event_time = data.get("last_climate_event_time", 0)
+        # Trends (v0.12.0)
+        self.state.trend_temp = data.get("trend_temp", 0.0)
+        self.state.trend_battery = data.get("trend_battery", 0.0)
+        self.state.trend_solar = data.get("trend_solar", 0.0)
     
     @property
     def stats(self) -> dict:

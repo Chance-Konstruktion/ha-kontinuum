@@ -129,15 +129,19 @@ class Thalamus:
         # Entity → Raum/Semantik
         self.entity_room = {}       # "sensor.temp_bedroom" → "bedroom"
         self.entity_semantic = {}   # "sensor.temp_bedroom" → "temperature"
-        
+
         # Token-Vokabular
         self.token_to_id = {}       # "bedroom.light.on" → 42
         self.id_to_token = {}       # 42 → "bedroom.light.on"
         self._next_id = 1
-        
+
         # Dedup
         self.entity_last_token = {} # entity_id → last token string
-        
+
+        # Sonnenstand (v0.12.0)
+        self._sun_elevation = 0.0   # Grad (-90 bis +90)
+        self._sun_is_daylight = False
+
         # Stats
         self.stats = {
             "entities_registered": 0,
@@ -509,15 +513,21 @@ class Thalamus:
         """Token-ID → Token-String."""
         return self.id_to_token.get(token_id, f"?{token_id}")
     
+    def update_sun(self, elevation: float, is_daylight: bool):
+        """Aktualisiert Sonnenstand aus sun.sun Entity (v0.12.0)."""
+        self._sun_elevation = elevation
+        self._sun_is_daylight = is_daylight
+
     def encode_time_context(self, timestamp) -> list:
         """
         Zeitstempel → 9-dimensionaler Kontext-Vektor.
-        
+
         [0-1] Stunde sin/cos (zyklisch)
         [2-3] Wochentag sin/cos (zyklisch)
         [4-5] Monat sin/cos (zyklisch)
         [6]   is_weekend (0/1)
-        [7-8] reserved (0)
+        [7]   Sonnenhöhe normalisiert 0-1 (v0.12.0)
+        [8]   is_daylight 0/1 (v0.12.0)
         """
         if hasattr(timestamp, 'hour'):
             dt = timestamp
@@ -526,11 +536,14 @@ class Thalamus:
                 dt = datetime.fromisoformat(str(timestamp))
             except (ValueError, TypeError):
                 dt = datetime.now(timezone.utc)
-        
+
         hour = dt.hour + dt.minute / 60.0
         dow = dt.weekday()
         month = dt.month
-        
+
+        # Sonnenhöhe: -18° (tiefe Dämmerung) bis +90° → 0.0 bis 1.0
+        sun_norm = max(0.0, min(1.0, (self._sun_elevation + 18) / 108))
+
         return [
             math.sin(2 * math.pi * hour / 24),
             math.cos(2 * math.pi * hour / 24),
@@ -539,8 +552,8 @@ class Thalamus:
             math.sin(2 * math.pi * month / 12),
             math.cos(2 * math.pi * month / 12),
             1.0 if dow >= 5 else 0.0,
-            0.0,
-            0.0,
+            sun_norm,
+            1.0 if self._sun_is_daylight else 0.0,
         ]
     
     # ── Persistence ──────────────────────────────────────────────

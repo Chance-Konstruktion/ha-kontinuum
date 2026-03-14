@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  KONTINUUM v0.11.0 – Neuroinspired Home Intelligence           ║
+║  KONTINUUM v0.12.0 – Neuroinspired Home Intelligence           ║
 ║  Home Assistant Custom Component                                 ║
 ║                                                                  ║
 ║  Architektur:                                                    ║
@@ -10,7 +10,12 @@
 ║      ↑           ↑                                              ║
 ║    Insula ←─────┘                                               ║
 ║                                                                  ║
-║  v0.11.0 – Unknown-Filter + Entity-Whitelist + Min-Delay       ║
+║  v0.12.0 – Intelligenz-Upgrade:                                ║
+║  • Sonnenstand im Kontextvektor (sun.sun)                      ║
+║  • Hypothalamus-Trends (Δtemp, Δbattery, Δsolar)             ║
+║  • Wochentag-Gedächtnis (Werktag vs Wochenende Buckets)       ║
+║  • Bewegungsmuster im Spatial Cortex                           ║
+║  • Zirkadiane Priors in der Insula                             ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -38,7 +43,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 BRAIN_FILE = "brain.json"
 SAVE_INTERVAL = 300
 
@@ -166,6 +171,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if entity_id.startswith("sensor.kontinuum_"):
                     return
 
+                # Sonnenstand tracken (v0.12.0)
+                if entity_id == "sun.sun":
+                    elevation = new_state_obj.attributes.get("elevation", 0)
+                    is_daylight = new_state == "above_horizon"
+                    thalamus.update_sun(elevation, is_daylight)
+                    insula.update_sun(is_daylight)
+                    return
+
                 now = datetime.now(timezone.utc)
                 semantic = thalamus.entity_semantic.get(entity_id)
                 room = thalamus.entity_room.get(entity_id, "unknown")
@@ -216,7 +229,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     brain["_last_mode"] = new_mode
                     _on_mode_changed(hass, brain, old_mode, new_mode)
 
-                # Kontextvektor bauen (15 Dimensionen)
+                # Kontextvektor bauen (21 Dimensionen: time(9) + hypo(9) + insula(3))
                 time_ctx = thalamus.encode_time_context(now)
                 hypo_ctx = hypothalamus.get_context_vector()
                 mode_ctx = insula.get_mode_context()
@@ -282,8 +295,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             preset_key,
         )
 
+        # Sonnenstand initial laden (v0.12.0)
+        sun_state = hass.states.get("sun.sun")
+        if sun_state:
+            elevation = sun_state.attributes.get("elevation", 0)
+            is_daylight = sun_state.state == "above_horizon"
+            thalamus.update_sun(elevation, is_daylight)
+            insula.update_sun(is_daylight)
+            _LOGGER.info("Sonnenstand geladen: elevation=%.1f°, daylight=%s", elevation, is_daylight)
+
         # Startup-Notification
         filtered = thalamus.stats.get("entities_filtered", 0)
+        movement_count = len(spatial.movement_memory)
         _notify(hass,
             f"🧠 KONTINUUM v{VERSION} gestartet",
             f"Preset: **{preset_key}**\n"
@@ -292,7 +315,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             f"Tokens: {thalamus._next_id - 1}\n"
             f"Räume: {len(thalamus._known_rooms)}\n"
             f"Events bisher: {hippocampus.total_events}\n"
-            f"Accuracy: {hippocampus.accuracy:.1%}",
+            f"Accuracy: {hippocampus.accuracy:.1%}\n"
+            f"Bewegungsmuster: {movement_count}\n"
+            f"Kontextvektor: 21 Dimensionen (Sonne + Trends)",
             "kontinuum_startup",
         )
 
@@ -685,9 +710,12 @@ def _create_sensors(hass, brain):
     hass.states.async_set("sensor.kontinuum_energy", energy.get("battery", "?"), {
         "friendly_name": "Energie", "icon": "mdi:battery", **energy,
     })
+    next_room = spatial.predict_next_room()
     hass.states.async_set("sensor.kontinuum_location", spatial.get_current_location(), {
         "friendly_name": "Standort", "icon": "mdi:crosshairs-gps",
         "presence_map": spatial.stats.get("presence_map", {}),
+        "predicted_next": next_room[0] if next_room else None,
+        "movement_patterns": len(spatial.movement_memory),
     })
     hass.states.async_set("sensor.kontinuum_cerebellum", f"{len(cerebellum.rules)} Regeln", {
         "friendly_name": "Cerebellum", "icon": "mdi:cog-transfer",
@@ -759,9 +787,12 @@ def _update_sensors(hass, brain, last_signal=None, predictions=None):
     hass.states.async_set("sensor.kontinuum_energy", energy.get("battery", "?"), {
         "friendly_name": "Energie", "icon": "mdi:battery", **energy,
     })
+    next_room = spatial.predict_next_room()
     hass.states.async_set("sensor.kontinuum_location", spatial.get_current_location(), {
         "friendly_name": "Standort", "icon": "mdi:crosshairs-gps",
         "presence_map": spatial.stats.get("presence_map", {}),
+        "predicted_next": next_room[0] if next_room else None,
+        "movement_patterns": len(spatial.movement_memory),
     })
     hass.states.async_set("sensor.kontinuum_cerebellum", f"{len(cerebellum.rules)} Regeln", {
         "friendly_name": "Cerebellum", "icon": "mdi:cog-transfer",
