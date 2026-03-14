@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "KONTINUUM Einrichtung",
+        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als Nächstes passiert. Wähle eine Persönlichkeit – sie bestimmt, wie schnell das System lernt und handelt.",
+        "data": {
+          "preset": "Persönlichkeit"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "KONTINUUM ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "KONTINUUM Einstellungen",
+        "description": "Ändere wie schnell KONTINUUM lernt und handelt. Änderungen werden nach Neustart wirksam.",
+        "data": {
+          "preset": "Persönlichkeit"
+        }
+      }
+    }
+  }
+}

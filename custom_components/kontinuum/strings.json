@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "KONTINUUM Setup",
+        "description": "KONTINUUM learns your home's patterns and predicts what happens next. Choose a personality that determines how fast the system learns and acts.",
+        "data": {
+          "preset": "Personality"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "KONTINUUM is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "KONTINUUM Settings",
+        "description": "Change how fast KONTINUUM learns and acts. Changes take effect after restart.",
+        "data": {
+          "preset": "Personality"
+        }
+      }
+    }
+  }
+}

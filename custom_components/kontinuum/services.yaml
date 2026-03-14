@@ -1,0 +1,61 @@
+enable_scenes:
+  name: Licht-Szenen aktivieren
+  description: Aktiviert automatische Licht-Szenen nach erkanntem Modus.
+
+disable_scenes:
+  name: Licht-Szenen deaktivieren
+  description: Deaktiviert automatische Licht-Szenen.
+
+set_scene:
+  name: Szene konfigurieren
+  description: Konfiguriert eine Licht-Szene für einen bestimmten Modus.
+  fields:
+    mode:
+      name: Modus
+      description: Der Modus (sleeping, relaxing, active, waking_up, cooking, away)
+      required: true
+      example: relaxing
+      selector:
+        select:
+          options:
+            - sleeping
+            - relaxing
+            - active
+            - waking_up
+            - cooking
+            - away
+    state:
+      name: Zustand
+      description: Licht-Zustand (on/off)
+      required: false
+      default: "on"
+      example: "on"
+      selector:
+        select:
+          options:
+            - "on"
+            - "off"
+    brightness_pct:
+      name: Helligkeit
+      description: Helligkeit in Prozent (1-100)
+      required: false
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+    kelvin:
+      name: Farbtemperatur
+      description: Farbtemperatur in Kelvin (2000-6500)
+      required: false
+      example: 2700
+      selector:
+        number:
+          min: 2000
+          max: 6500
+          unit_of_measurement: K
+
+status:
+  name: Status anzeigen
+  description: Zeigt detaillierten KONTINUUM-Status als Notification.
