@@ -1,7 +1,7 @@
 {
   "domain": "kontinuum",
   "name": "KONTINUUM - Neuroinspired Home Intelligence",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "documentation": "https://github.com/kontinuum-ai",
   "requirements": [],
   "dependencies": [],

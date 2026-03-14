@@ -173,15 +173,21 @@ class Thalamus:
         
         if not semantic:
             return
-        
+
+        # Ebene 3: Entity-Whitelist – nur Entities mit bekanntem Raum
+        # Proxmox-VMs, GPU-LEDs, Batterie-Management etc. haben keinen Raum
+        # und produzieren nur Ballast
+        if room == "unknown":
+            self.stats["entities_filtered"] = self.stats.get("entities_filtered", 0) + 1
+            return
+
         self.entity_room[entity_id] = room
         self.entity_semantic[entity_id] = semantic
-        
-        if room and room != "unknown":
-            if room not in self._known_rooms:
-                self._known_rooms.add(room)
-                self.stats["rooms_discovered"] = len(self._known_rooms)
-        
+
+        if room not in self._known_rooms:
+            self._known_rooms.add(room)
+            self.stats["rooms_discovered"] = len(self._known_rooms)
+
         self.stats["entities_registered"] = len(self.entity_semantic)
     
     def _resolve_room(self, entity_id: str, ha_area: str, friendly_name: str) -> str:
@@ -305,7 +311,13 @@ class Thalamus:
         
         semantic = self.entity_semantic[entity_id]
         room = self.entity_room.get(entity_id, "unknown")
-        
+
+        # Ebene 1: Unknown-Raum = kein Token
+        # Entities ohne bekannten Raum erzeugen nur Rauschen
+        if room == "unknown":
+            self.stats["tokens_filtered"] += 1
+            return None
+
         # State normalisieren
         state = self._normalize_state(semantic, new_state)
         if not state:
