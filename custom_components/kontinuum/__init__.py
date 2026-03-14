@@ -184,6 +184,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 room = thalamus.entity_room.get(entity_id, "unknown")
 
                 if not semantic:
+                    # v0.12.1: Events von unassigned Entities zählen
+                    thalamus.track_unassigned_event(entity_id)
                     return
 
                 # ── Override-Erkennung ────────────────────────
@@ -320,6 +322,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             f"Kontextvektor: 21 Dimensionen (Sonne + Trends)",
             "kontinuum_startup",
         )
+
+        # v0.12.1: Unassigned Entities Notification
+        _notify_unassigned_entities(hass, thalamus)
 
         return True
 
@@ -512,6 +517,46 @@ def _check_accuracy_milestone(hass, brain):
                 f"{hippocampus.shadow_total} Vorhersagen korrekt.",
                 f"kontinuum_accuracy_{label}",
             )
+
+
+def _notify_unassigned_entities(hass, thalamus):
+    """
+    v0.12.1: Benachrichtigt über Entities ohne Raum mit Vorschlägen.
+    Human-in-the-loop Learning – das System sagt was ihm fehlt.
+    """
+    report = thalamus.get_unassigned_report(5)
+    if not report:
+        return
+
+    # Nur Entities mit Raum-Vorschlag oder hoher Aktivität anzeigen
+    relevant = [
+        (eid, cnt, sem, name, sug) for eid, cnt, sem, name, sug in report
+        if sug or cnt > 0
+    ]
+
+    if not relevant:
+        return
+
+    lines = []
+    for eid, cnt, sem, name, sug in relevant:
+        if sug:
+            lines.append(f"• `{eid}` → Vorschlag: **{sug}**")
+        else:
+            lines.append(f"• `{eid}` ({sem})")
+        if cnt > 0:
+            lines[-1] += f" – {cnt} Events"
+
+    total = len(thalamus._unassigned_entities)
+
+    _notify(hass,
+        f"🧠 KONTINUUM – {total} Entities ohne Raum",
+        f"Damit ich besser lernen kann, brauche ich Raum-Zuordnungen.\n\n"
+        + "\n".join(lines) +
+        f"\n\n**Tipp:** Weise diesen Entities in Home Assistant "
+        f"einen Bereich zu:\n"
+        f"Einstellungen → Geräte → Entity → Bereich wählen",
+        "kontinuum_unassigned",
+    )
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -726,6 +771,20 @@ def _create_sensors(hass, brain):
         "friendly_name": "Personen Zuhause", "icon": "mdi:account-group",
         "unit_of_measurement": "Personen", "home": [], "away": [],
     })
+    # Unassigned Entities Sensor (v0.12.1)
+    thalamus = brain["thalamus"]
+    unassigned = thalamus.get_unassigned_report(10)
+    hass.states.async_set("sensor.kontinuum_unknown_entities",
+        len(thalamus._unassigned_entities), {
+        "friendly_name": "Entities ohne Raum",
+        "icon": "mdi:help-circle-outline",
+        "unit_of_measurement": "Entities",
+        "top_unassigned": [
+            {"entity_id": eid, "events": cnt, "semantic": sem,
+             "name": name, "suggested_room": sug}
+            for eid, cnt, sem, name, sug in unassigned
+        ],
+    })
 
 
 def _update_sensors(hass, brain, last_signal=None, predictions=None):
@@ -798,6 +857,19 @@ def _update_sensors(hass, brain, last_signal=None, predictions=None):
         "friendly_name": "Cerebellum", "icon": "mdi:cog-transfer",
         "rules_count": len(cerebellum.rules),
         "top_rules": cerebellum.stats.get("top_rules", []),
+    })
+    # Unassigned Entities aktualisieren (v0.12.1)
+    unassigned = thalamus.get_unassigned_report(10)
+    hass.states.async_set("sensor.kontinuum_unknown_entities",
+        len(thalamus._unassigned_entities), {
+        "friendly_name": "Entities ohne Raum",
+        "icon": "mdi:help-circle-outline",
+        "unit_of_measurement": "Entities",
+        "top_unassigned": [
+            {"entity_id": eid, "events": cnt, "semantic": sem,
+             "name": name, "suggested_room": sug}
+            for eid, cnt, sem, name, sug in unassigned
+        ],
     })
 
 

@@ -142,6 +142,10 @@ class Thalamus:
         self._sun_elevation = 0.0   # Grad (-90 bis +90)
         self._sun_is_daylight = False
 
+        # Unassigned Entities (v0.12.1): entity_id → {semantic, name, domain}
+        self._unassigned_entities = {}
+        self._unassigned_event_counts = {}  # entity_id → event count
+
         # Stats
         self.stats = {
             "entities_registered": 0,
@@ -183,6 +187,12 @@ class Thalamus:
         # und produzieren nur Ballast
         if room == "unknown":
             self.stats["entities_filtered"] = self.stats.get("entities_filtered", 0) + 1
+            # v0.12.1: Unassigned tracken statt nur zählen
+            self._unassigned_entities[entity_id] = {
+                "semantic": semantic,
+                "name": friendly_name or entity_id,
+                "domain": domain,
+            }
             return
 
         self.entity_room[entity_id] = room
@@ -556,8 +566,95 @@ class Thalamus:
             1.0 if self._sun_is_daylight else 0.0,
         ]
     
+    # ── Unassigned Entity Intelligence (v0.12.1) ────────────────
+
+    def track_unassigned_event(self, entity_id: str):
+        """Zählt Events von unassigned Entities für Priorisierung."""
+        if entity_id in self._unassigned_entities:
+            self._unassigned_event_counts[entity_id] = (
+                self._unassigned_event_counts.get(entity_id, 0) + 1
+            )
+
+    # Zusätzliche Vorschlags-Keywords (aggressiver als NAME_ROOM_HINTS)
+    SUGGEST_HINTS = {
+        "schreibtisch": "office", "laptop": "office", "monitor": "office",
+        "drucker": "office", "printer": "office", "scanner": "office",
+        "fernseher": "livingroom", "couch": "livingroom", "sofa": "livingroom",
+        "receiver": "livingroom", "soundbar": "livingroom", "beamer": "livingroom",
+        "herd": "kitchen", "ofen": "kitchen", "spül": "kitchen",
+        "mikrowelle": "kitchen", "kühlschrank": "kitchen", "fridge": "kitchen",
+        "geschirrspüler": "kitchen", "dunstabzug": "kitchen", "kaffee": "kitchen",
+        "coffee": "kitchen", "toaster": "kitchen",
+        "dusch": "bathroom", "wanne": "bathroom", "spiegel": "bathroom",
+        "waschbecken": "bathroom", "toilette": "bathroom", "wc_": "bathroom",
+        "waschmaschine": "utility", "trockner": "utility", "dryer": "utility",
+        "bügel": "utility",
+        "matratze": "bedroom", "nachttisch": "bedroom", "nachtlicht": "bedroom",
+        "wecker": "bedroom", "alarm_clock": "bedroom",
+        "spielzeug": "kidsroom", "toy": "kidsroom",
+        "rasen": "outdoor", "mäher": "outdoor", "bewässer": "outdoor",
+        "sprinkler": "outdoor", "pool": "outdoor", "grill": "outdoor",
+        "briefkasten": "outdoor", "mailbox": "outdoor",
+        "treppen": "hallway", "stair": "hallway",
+        "haustür": "entrance", "klingel": "entrance", "doorbell": "entrance",
+    }
+
+    def suggest_room(self, entity_id: str) -> str:
+        """
+        Schlägt einen Raum für eine unassigned Entity vor.
+        Aggressivere Heuristik als _resolve_room: Wort-Splitting + extra Keywords.
+        """
+        info = self._unassigned_entities.get(entity_id, {})
+        name = info.get("name", entity_id).lower()
+        eid = entity_id.lower()
+
+        # Alle Wörter aus Entity-ID und Name extrahieren
+        import re as _re
+        words = set(_re.split(r'[._\-\s]+', eid + " " + name))
+
+        best_match = None
+        best_len = 0
+
+        # 1. Standard-Hints (NAME_ROOM_HINTS + HA_AREA_MAP)
+        all_hints = {**NAME_ROOM_HINTS, **HA_AREA_MAP, **self.SUGGEST_HINTS}
+
+        for hint, room in all_hints.items():
+            # Substring-Match in Name oder Entity-ID
+            if hint in name or hint in eid:
+                if len(hint) > best_len:
+                    best_match = room
+                    best_len = len(hint)
+            # Wort-Match (exakt)
+            elif hint in words:
+                if len(hint) > best_len:
+                    best_match = room
+                    best_len = len(hint)
+
+        return best_match
+
+    def get_unassigned_report(self, top_n: int = 10) -> list:
+        """
+        Top-N unassigned Entities sortiert nach Aktivität.
+        Returns: [(entity_id, event_count, semantic, name, suggested_room), ...]
+        """
+        entries = []
+        for eid, info in self._unassigned_entities.items():
+            count = self._unassigned_event_counts.get(eid, 0)
+            suggestion = self.suggest_room(eid)
+            entries.append((
+                eid,
+                count,
+                info.get("semantic", "?"),
+                info.get("name", eid),
+                suggestion,
+            ))
+
+        # Nach Event-Count sortieren (aktivste zuerst)
+        entries.sort(key=lambda x: -x[1])
+        return entries[:top_n]
+
     # ── Persistence ──────────────────────────────────────────────
-    
+
     def to_dict(self) -> dict:
         return {
             "entity_room": self.entity_room,
@@ -567,8 +664,10 @@ class Thalamus:
             "next_id": self._next_id,
             "entity_last_token": self.entity_last_token,
             "known_rooms": list(self._known_rooms),
+            "unassigned_entities": self._unassigned_entities,
+            "unassigned_event_counts": self._unassigned_event_counts,
         }
-    
+
     def from_dict(self, data: dict):
         self.entity_room = data.get("entity_room", {})
         self.entity_semantic = data.get("entity_semantic", {})
@@ -577,5 +676,7 @@ class Thalamus:
         self._next_id = data.get("next_id", 1)
         self.entity_last_token = data.get("entity_last_token", {})
         self._known_rooms = set(data.get("known_rooms", []))
+        self._unassigned_entities = data.get("unassigned_entities", {})
+        self._unassigned_event_counts = data.get("unassigned_event_counts", {})
         self.stats["entities_registered"] = len(self.entity_semantic)
         self.stats["rooms_discovered"] = len(self._known_rooms)
