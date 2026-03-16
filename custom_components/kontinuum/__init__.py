@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  KONTINUUM v0.12.0 – Neuroinspired Home Intelligence           ║
+║  KONTINUUM v0.13.0 – Neuroinspired Home Intelligence           ║
 ║  Home Assistant Custom Component                                 ║
 ║                                                                  ║
 ║  Architektur:                                                    ║
@@ -43,7 +43,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.12.0"
+VERSION = "0.13.0"
 BRAIN_FILE = "brain.json"
 SAVE_INTERVAL = 300
 
@@ -318,6 +318,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             f"Räume: {len(thalamus._known_rooms)}\n"
             f"Events bisher: {hippocampus.total_events}\n"
             f"Accuracy: {hippocampus.accuracy:.1%}\n"
+            f"Accuracy (60s/5min/30min): {hippocampus.stats.get('accuracy_by_window', {})}\n"
             f"Bewegungsmuster: {movement_count}\n"
             f"Kontextvektor: 21 Dimensionen (Sonne + Trends)",
             "kontinuum_startup",
@@ -478,13 +479,17 @@ def _notify_new_rules(hass, brain, new_count, total):
     notified = brain.get("_notified_rules", set())
 
     rules_text = []
-    for rule_key in cerebellum.rules:
+    for rule_key, rule in cerebellum.rules.items():
         if rule_key not in notified:
             notified.add(rule_key)
-            parts = rule_key.split("_")
-            if len(parts) == 2:
-                t1 = thalamus.id_to_token.get(int(parts[0]), f"?{parts[0]}")
-                t2 = thalamus.id_to_token.get(int(parts[1]), f"?{parts[1]}")
+            # v0.13.0: Sequenz-Regeln anzeigen
+            if rule.ngram_order > 1:
+                seq_tokens = [thalamus.id_to_token.get(t, f"?{t}") for t in rule.trigger_sequence]
+                target_token = thalamus.id_to_token.get(rule.target, f"?{rule.target}")
+                rules_text.append(f"• {' → '.join(seq_tokens)} → {target_token} ({rule.ngram_order}-gram)")
+            else:
+                t1 = thalamus.id_to_token.get(rule.trigger, f"?{rule.trigger}")
+                t2 = thalamus.id_to_token.get(rule.target, f"?{rule.target}")
                 rules_text.append(f"• {t1} → {t2}")
 
     if rules_text:
@@ -735,6 +740,7 @@ def _create_sensors(hass, brain):
         "friendly_name": "KONTINUUM Accuracy", "icon": "mdi:target",
         "hits": hippocampus.shadow_hits, "misses": hippocampus.shadow_misses,
         "total": hippocampus.shadow_total,
+        "accuracy_by_window": hippocampus.stats.get("accuracy_by_window", {}),
     })
     hass.states.async_set("sensor.kontinuum_mode", insula.current_mode, {
         "friendly_name": "KONTINUUM Modus", "icon": "mdi:home-automation",
@@ -766,6 +772,9 @@ def _create_sensors(hass, brain):
     hass.states.async_set("sensor.kontinuum_cerebellum", f"{len(cerebellum.rules)} Regeln", {
         "friendly_name": "Cerebellum", "icon": "mdi:cog-transfer",
         "rules_count": len(cerebellum.rules),
+        "rules_1gram": cerebellum.stats.get("rules_1gram", 0),
+        "rules_2gram": cerebellum.stats.get("rules_2gram", 0),
+        "rules_3gram": cerebellum.stats.get("rules_3gram", 0),
         "top_rules": cerebellum.stats.get("top_rules", []),
     })
     hass.states.async_set("sensor.kontinuum_persons_home", 0, {
@@ -810,6 +819,7 @@ def _update_sensors(hass, brain, last_signal=None, predictions=None):
         "friendly_name": "KONTINUUM Accuracy", "icon": "mdi:target",
         "hits": hippocampus.shadow_hits, "misses": hippocampus.shadow_misses,
         "total": hippocampus.shadow_total,
+        "accuracy_by_window": hippocampus.stats.get("accuracy_by_window", {}),
     })
     hass.states.async_set("sensor.kontinuum_mode", insula.current_mode, {
         "friendly_name": "KONTINUUM Modus", "icon": "mdi:home-automation",
@@ -857,6 +867,9 @@ def _update_sensors(hass, brain, last_signal=None, predictions=None):
     hass.states.async_set("sensor.kontinuum_cerebellum", f"{len(cerebellum.rules)} Regeln", {
         "friendly_name": "Cerebellum", "icon": "mdi:cog-transfer",
         "rules_count": len(cerebellum.rules),
+        "rules_1gram": cerebellum.stats.get("rules_1gram", 0),
+        "rules_2gram": cerebellum.stats.get("rules_2gram", 0),
+        "rules_3gram": cerebellum.stats.get("rules_3gram", 0),
         "top_rules": cerebellum.stats.get("top_rules", []),
     })
     # Unassigned Entities aktualisieren (v0.12.1)
