@@ -182,18 +182,23 @@ class Thalamus:
         if not semantic:
             return
 
-        # Ebene 3: Entity-Whitelist – nur Entities mit bekanntem Raum
-        # Proxmox-VMs, GPU-LEDs, Batterie-Management etc. haben keinen Raum
-        # und produzieren nur Ballast
+        # v0.13.0: Entities ohne Raum → area_unknown statt verwerfen
+        # Vorher: 12.5M Events komplett gefiltert. Jetzt: Weiterleiten
+        # an area_unknown damit das System daraus lernen kann.
         if room == "unknown":
             self.stats["entities_filtered"] = self.stats.get("entities_filtered", 0) + 1
-            # v0.12.1: Unassigned tracken statt nur zählen
+            # v0.12.1: Unassigned tracken für Vorschläge
             self._unassigned_entities[entity_id] = {
                 "semantic": semantic,
                 "name": friendly_name or entity_id,
                 "domain": domain,
             }
-            return
+            # Vorschlag-basierte Soft-Zuweisung probieren
+            suggested = self.suggest_room(entity_id)
+            if suggested:
+                room = suggested
+            else:
+                room = "area_unknown"
 
         self.entity_room[entity_id] = room
         self.entity_semantic[entity_id] = semantic
@@ -326,8 +331,7 @@ class Thalamus:
         semantic = self.entity_semantic[entity_id]
         room = self.entity_room.get(entity_id, "unknown")
 
-        # Ebene 1: Unknown-Raum = kein Token
-        # Entities ohne bekannten Raum erzeugen nur Rauschen
+        # Ebene 1: Unknown-Raum = kein Token (v0.13.0: area_unknown erlaubt)
         if room == "unknown":
             self.stats["tokens_filtered"] += 1
             return None

@@ -8,6 +8,11 @@
 ║  - Phase 4: Wochentag-Gedächtnis (Werktag vs Wochenende)      ║
 ║  - Kontextvektor: [time(9) + hypothalamus(9) + insula(3)]     ║
 ║  = Bis zu 96 Buckets. Robusteres Bucket-Addressing.            ║
+║                                                                  ║
+║  v0.13.0 – Lernbeschleunigung:                                 ║
+║  - Multi-Window Shadow Validation (60s, 300s, 1800s)           ║
+║  - Früheres Bucketing (Phase 2 ab 100 statt 2000 Events)      ║
+║  - Accuracy pro Zeithorizont getrackt                          ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -43,6 +48,9 @@ class Hippocampus:
     NGRAM_WEIGHTS = {1: 0.2, 2: 0.5, 3: 0.8}
     MAX_NGRAMS_PER_BUCKET = 500
     
+    # Multi-Window Shadow Validation (v0.13.0)
+    SHADOW_WINDOWS = [60, 300, 1800]  # 1min, 5min, 30min
+
     def __init__(self):
         self.transitions = defaultdict(
             lambda: defaultdict(lambda: defaultdict(float))
@@ -55,6 +63,9 @@ class Hippocampus:
         self.shadow_hits = 0
         self.shadow_misses = 0
         self.shadow_total = 0
+        # Per-Window Accuracy (v0.13.0)
+        self.shadow_hits_by_window = {w: 0 for w in self.SHADOW_WINDOWS}
+        self.shadow_total_by_window = {w: 0 for w in self.SHADOW_WINDOWS}
         self.total_events = 0
         self.last_decay_day = int(time.time() / 86400)
     
@@ -62,11 +73,11 @@ class Hippocampus:
         """
         Kontext-Vektor → diskreter Bucket.
 
-        ADAPTIV (v0.12.0):
-        - < 2000 Events: 6 Buckets (nur Zeit)
-        - >= 2000 Events: 24 Buckets (Zeit × Modus)
-        - >= 5000 Events: 48 Buckets (Zeit × Modus × Energie)
-        - >= 10000 Events: 96 Buckets (Zeit × Modus × Energie × Tagestyp)
+        ADAPTIV (v0.13.0 – beschleunigt):
+        - < 100 Events: 6 Buckets (nur Zeit)
+        - >= 100 Events: 24 Buckets (Zeit × Modus)
+        - >= 500 Events: 48 Buckets (Zeit × Modus × Energie)
+        - >= 2000 Events: 96 Buckets (Zeit × Modus × Energie × Tagestyp)
         """
         if len(ctx) < 7:
             return 0
@@ -77,8 +88,8 @@ class Hippocampus:
             hour += 24
         time_b = min(5, int(hour / 4))
 
-        # Phase 1: Nur Zeit (< 2000 Events)
-        if self.total_events < 2000:
+        # Phase 1: Nur Zeit (< 100 Events)
+        if self.total_events < 100:
             return time_b
 
         # ── Modus: ctx[-3] = mode_index/5.0 (Insula ist immer die letzten 3 Dims) ──
@@ -95,8 +106,8 @@ class Hippocampus:
         else:
             mode_b = 1
 
-        # Phase 2: Zeit × Modus (< 5000 Events)
-        if self.total_events < 5000:
+        # Phase 2: Zeit × Modus (< 500 Events)
+        if self.total_events < 500:
             return time_b * self.MODE_GROUPS + mode_b
 
         # ── Energie: ctx[9] = battery_state/3.0 → 2 Stufen ──
@@ -105,25 +116,25 @@ class Hippocampus:
         else:
             energy_b = 1
 
-        # Phase 3: Zeit × Modus × Energie (< 10000 Events)
-        if self.total_events < 10000:
+        # Phase 3: Zeit × Modus × Energie (< 2000 Events)
+        if self.total_events < 2000:
             return (time_b * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + energy_b
 
         # ── Tagestyp: ctx[6] = is_weekend → 2 Gruppen (v0.12.0) ──
         daytype_b = 1 if (len(ctx) > 6 and ctx[6] > 0.5) else 0
 
-        # Phase 4: Voll (>= 10000 Events)
+        # Phase 4: Voll (>= 2000 Events)
         return ((time_b * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + energy_b) * self.DAY_TYPES + daytype_b
     
     def _neighbor_buckets(self, bucket: int) -> list:
         """Nachbar-Buckets: adaptiv je nach Phase."""
         # Phase 1: 6 Buckets (nur Zeit)
-        if self.total_events < 2000:
+        if self.total_events < 100:
             return [(bucket - 1) % self.TIME_BLOCKS,
                     (bucket + 1) % self.TIME_BLOCKS]
 
         # Phase 2: 24 Buckets (Zeit × Modus)
-        if self.total_events < 5000:
+        if self.total_events < 500:
             mode_b = bucket % self.MODE_GROUPS
             time_b = bucket // self.MODE_GROUPS
             return [
@@ -132,7 +143,7 @@ class Hippocampus:
             ]
 
         # Phase 3: 48 Buckets (Zeit × Modus × Energie)
-        if self.total_events < 10000:
+        if self.total_events < 2000:
             energy_b = bucket % self.ENERGY_LEVELS
             rest = bucket // self.ENERGY_LEVELS
             mode_b = rest % self.MODE_GROUPS
@@ -287,23 +298,42 @@ class Hippocampus:
         return sorted(durs)[len(durs) // 2]
     
     def _validate_shadow(self, actual_token: int, timestamp):
-        """Prüft ob ein Event vorhergesagt wurde."""
+        """
+        Multi-Window Shadow Validation (v0.13.0).
+
+        Prüft Vorhersagen gegen mehrere Zeithorizonte (60s, 300s, 1800s).
+        Ein Hit im kürzesten Fenster zählt auch für längere Fenster.
+        Die Haupt-Accuracy nutzt das längste Fenster (1800s) als Cutoff.
+        """
         from datetime import timedelta
         try:
-            cutoff = timestamp - timedelta(seconds=60)
+            max_window = max(self.SHADOW_WINDOWS)
+            cutoff = timestamp - timedelta(seconds=max_window)
         except (TypeError, AttributeError):
             return
-        
+
         matched = False
         surviving = deque(maxlen=200)
         for pred_ts, pred_tok, pred_conf in self.shadow_predictions:
             if pred_ts < cutoff:
+                # Abgelaufen: Miss in allen Windows
                 self.shadow_misses += 1
                 self.shadow_total += 1
+                for w in self.SHADOW_WINDOWS:
+                    self.shadow_total_by_window[w] = self.shadow_total_by_window.get(w, 0) + 1
                 continue
             if pred_tok == actual_token and not matched:
+                # Hit: bestimme welche Fenster getroffen wurden
+                try:
+                    age = (timestamp - pred_ts).total_seconds()
+                except (TypeError, AttributeError):
+                    age = 0
                 self.shadow_hits += 1
                 self.shadow_total += 1
+                for w in self.SHADOW_WINDOWS:
+                    self.shadow_total_by_window[w] = self.shadow_total_by_window.get(w, 0) + 1
+                    if age <= w:
+                        self.shadow_hits_by_window[w] = self.shadow_hits_by_window.get(w, 0) + 1
                 matched = True
                 continue
             surviving.append((pred_ts, pred_tok, pred_conf))
@@ -341,14 +371,27 @@ class Hippocampus:
             "shadow_hits": self.shadow_hits,
             "shadow_misses": self.shadow_misses,
             "shadow_total": self.shadow_total,
+            "shadow_hits_by_window": self.shadow_hits_by_window,
+            "shadow_total_by_window": self.shadow_total_by_window,
         }
-    
+
     def from_dict(self, data: dict):
         self.total_events = data.get("total_events", 0)
         self.last_decay_day = data.get("last_decay_day", int(time.time() / 86400))
         self.shadow_hits = data.get("shadow_hits", 0)
         self.shadow_misses = data.get("shadow_misses", 0)
         self.shadow_total = data.get("shadow_total", 0)
+        # v0.13.0: Per-Window Stats laden
+        self.shadow_hits_by_window = {
+            int(k): v for k, v in data.get("shadow_hits_by_window", {}).items()
+        }
+        self.shadow_total_by_window = {
+            int(k): v for k, v in data.get("shadow_total_by_window", {}).items()
+        }
+        # Fehlende Windows initialisieren
+        for w in self.SHADOW_WINDOWS:
+            self.shadow_hits_by_window.setdefault(w, 0)
+            self.shadow_total_by_window.setdefault(w, 0)
         self.durations = defaultdict(list, data.get("durations", {}))
         self.buffer = deque(data.get("buffer", []), maxlen=20)
         lt = data.get("last_event_time")
@@ -381,6 +424,12 @@ class Hippocampus:
         n_transitions = sum(
             len(ts) for bk in self.transitions.values() for ts in bk.values()
         )
+        # Per-Window Accuracy (v0.13.0)
+        accuracy_by_window = {}
+        for w in self.SHADOW_WINDOWS:
+            total = self.shadow_total_by_window.get(w, 0)
+            hits = self.shadow_hits_by_window.get(w, 0)
+            accuracy_by_window[f"{w}s"] = f"{hits / total:.1%}" if total > 0 else "0.0%"
         return {
             "total_events": self.total_events,
             "patterns": n_patterns, "transitions": n_transitions,
@@ -393,4 +442,5 @@ class Hippocampus:
             "shadow_misses": self.shadow_misses,
             "shadow_total": self.shadow_total,
             "accuracy": f"{self.accuracy:.1%}",
+            "accuracy_by_window": accuracy_by_window,
         }
