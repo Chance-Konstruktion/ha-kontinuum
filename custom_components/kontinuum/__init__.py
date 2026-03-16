@@ -539,10 +539,12 @@ def _notify_unassigned_entities(hass, thalamus):
 
     lines = []
     for eid, cnt, sem, name, sug in relevant:
+        # Klickbarer Link direkt zur Entity-Konfiguration
+        link = f"[{name or eid}](/config/entities?search={eid})"
         if sug:
-            lines.append(f"• `{eid}` → Vorschlag: **{sug}**")
+            lines.append(f"• {link} → Vorschlag: **{sug}**")
         else:
-            lines.append(f"• `{eid}` ({sem})")
+            lines.append(f"• {link} ({sem})")
         if cnt > 0:
             lines[-1] += f" – {cnt} Events"
 
@@ -552,9 +554,8 @@ def _notify_unassigned_entities(hass, thalamus):
         f"🧠 KONTINUUM – {total} Entities ohne Raum",
         f"Damit ich besser lernen kann, brauche ich Raum-Zuordnungen.\n\n"
         + "\n".join(lines) +
-        f"\n\n**Tipp:** Weise diesen Entities in Home Assistant "
-        f"einen Bereich zu:\n"
-        f"Einstellungen → Geräte → Entity → Bereich wählen",
+        f"\n\n**Tipp:** Klick auf eine Entity oben, um direkt den "
+        f"Bereich zuzuweisen.",
         "kontinuum_unassigned",
     )
 
