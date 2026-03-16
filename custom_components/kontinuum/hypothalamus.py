@@ -99,7 +99,7 @@ class HomeoState:
 class Hypothalamus:
     """Homöostase-Monitor von KONTINUUM."""
     
-    ENERGY_COOLDOWN = 600     # 10 min statt 30 min
+    ENERGY_COOLDOWN = 60      # v0.13.0: 60s für schnelleres Solar/Batterie-Tracking
     CLIMATE_COOLDOWN = 1800   # 30 min statt 60 min
     
     def __init__(self):

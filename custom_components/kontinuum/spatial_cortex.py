@@ -52,6 +52,9 @@ class SpatialCortex:
     ACTIVE_MIN_MOTIONS = 5
     OCCUPIED_THRESHOLD = 0.25    # 0.25 statt 0.4
     
+    # Pseudo-Räume die bei der Raumbestimmung ignoriert werden (v0.13.0)
+    IGNORED_ROOMS = {"area_unknown"}
+
     def __init__(self):
         self.rooms = {}
         self.current_room = "unknown"
@@ -74,7 +77,7 @@ class SpatialCortex:
         Absorbiert ein räumliches Signal.
         Returns: Liste von Transition-Tokens (meist leer oder 1-2).
         """
-        if not room or room == "unknown":
+        if not room or room == "unknown" or room in self.IGNORED_ROOMS:
             return []
         
         now = time.time()
@@ -147,7 +150,11 @@ class SpatialCortex:
         if not self.rooms:
             return []
         
-        best_room = max(self.rooms.values(), key=lambda r: r.probability)
+        # v0.13.0: Pseudo-Räume bei Raumbestimmung ignorieren
+        valid_rooms = [r for r in self.rooms.values() if r.name not in self.IGNORED_ROOMS]
+        if not valid_rooms:
+            return []
+        best_room = max(valid_rooms, key=lambda r: r.probability)
         
         if best_room.probability < self.OCCUPIED_THRESHOLD:
             return []

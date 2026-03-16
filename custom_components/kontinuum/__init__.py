@@ -1,21 +1,19 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  KONTINUUM v0.13.0 – Neuroinspired Home Intelligence           ║
+║  KONTINUUM v0.13.1 – Neuroinspired Home Intelligence           ║
 ║  Home Assistant Custom Component                                 ║
 ║                                                                  ║
 ║  Architektur:                                                    ║
 ║  Thalamus → Hippocampus → Cerebellum → PFC → Aktion           ║
-║      ↑           ↑                       ↑                      ║
-║  Hypothalamus  Spatial Cortex        Amygdala                   ║
-║      ↑           ↑                                              ║
+║      ↑           ↑            ↑          ↑                      ║
+║  Hypothalamus  Spatial    Basalganglien Amygdala                ║
+║      ↑         Cortex    (Belohnung)                            ║
 ║    Insula ←─────┘                                               ║
 ║                                                                  ║
-║  v0.12.0 – Intelligenz-Upgrade:                                ║
-║  • Sonnenstand im Kontextvektor (sun.sun)                      ║
-║  • Hypothalamus-Trends (Δtemp, Δbattery, Δsolar)             ║
-║  • Wochentag-Gedächtnis (Werktag vs Wochenende Buckets)       ║
-║  • Bewegungsmuster im Spatial Cortex                           ║
-║  • Zirkadiane Priors in der Insula                             ║
+║  v0.13.1 – Basalganglien + Fixes:                              ║
+║  • Basalganglien: Belohnungslernen (Go/NoGo, Q-Values, Habits) ║
+║  • Spatial Cortex: area_unknown bei Raumbestimmung ignoriert    ║
+║  • Hypothalamus: Energy Cooldown 600s → 60s                    ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -38,12 +36,13 @@ from .insula import Insula
 from .amygdala import Amygdala
 from .cerebellum import Cerebellum
 from .prefrontal_cortex import PrefrontalCortex
+from .basal_ganglia import BasalGanglia
 
 from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.13.0"
+VERSION = "0.13.1"
 BRAIN_FILE = "brain.json"
 SAVE_INTERVAL = 300
 
@@ -97,6 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         insula = Insula()
         amygdala = Amygdala()
         cerebellum = Cerebellum()
+        basal_ganglia = BasalGanglia()
         prefrontal = PrefrontalCortex(amygdala)
 
         # ── Presets anwenden ──────────────────────────────────
@@ -124,6 +124,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "insula": insula,
             "amygdala": amygdala,
             "cerebellum": cerebellum,
+            "basal_ganglia": basal_ganglia,
             "prefrontal": prefrontal,
             "preset": preset_key,
             "_scenes_enabled": False,
@@ -191,8 +192,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 # ── Override-Erkennung ────────────────────────
                 if prefrontal.is_own_action(entity_id):
                     return
-                prefrontal.check_override(entity_id, new_state, amygdala)
-                prefrontal.check_implicit_positives(amygdala)
+                was_override = prefrontal.check_override(entity_id, new_state, amygdala)
+                if was_override:
+                    # Basalganglien: Negatives Feedback (NoGo-Pathway)
+                    basal_ganglia.process_outcome(entity_id, positive=False)
+                # Implizite Positives → Basalganglien: Go-Pathway
+                accepted = prefrontal.check_implicit_positives(amygdala)
+                if accepted:
+                    for acc_eid in accepted:
+                        basal_ganglia.process_outcome(acc_eid, positive=True)
+                basal_ganglia.cleanup_pending()
 
                 # ── Hypothalamus (Energie/Klima) ──────────────
                 if hypothalamus.is_hypothalamus_signal(semantic):
@@ -240,12 +249,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 # Hippocampus lernt
                 hippocampus.learn(token_id, ctx, now)
 
-                # Predictions
+                # Basalganglien: Passives Lernen (beobachtete Muster)
+                bucket = hippocampus._context_bucket(ctx)
+                basal_ganglia.process_observation(token_id, bucket)
+
+                # Predictions + Basalganglien-Ranking
                 predictions = hippocampus.predict(ctx)
+                if predictions:
+                    predictions = _rank_with_basal_ganglia(
+                        predictions, basal_ganglia, bucket)
 
                 # PFC entscheidet
                 decision = prefrontal.evaluate(predictions, thalamus)
                 if decision:
+                    # Basalganglien: Aktion registrieren für Outcome-Tracking
+                    basal_ganglia.register_action(
+                        decision.entity_id, decision.token_id,
+                        bucket, decision.token)
                     _process_decision(hass, brain, decision)
 
                 # Sensoren updaten
@@ -347,6 +367,24 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 # ══════════════════════════════════════════════════════════════════
 # TOKEN INJECTION
 # ══════════════════════════════════════════════════════════════════
+
+def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket):
+    """
+    Basalganglien-Ranking: Sortiert Predictions nach Go/NoGo-Pathway.
+    Go (positive Q-Values) → nach oben
+    NoGo (negative Q-Values) → nach unten
+    """
+    ranked = []
+    for token_id, prob, conf, source in predictions:
+        priority = basal_ganglia.get_action_priority(token_id, bucket)
+        # Confidence durch Basalganglien modifizieren
+        bg_conf = conf + priority * 0.1  # Max ±0.2 Einfluss
+        bg_conf = max(0.05, min(1.0, bg_conf))
+        ranked.append((token_id, prob, bg_conf, source))
+    # Re-sort by modified confidence * probability
+    ranked.sort(key=lambda x: x[1] * x[2], reverse=True)
+    return ranked
+
 
 def _inject_token(hass, brain, token_info, timestamp):
     """Injiziert einen synthetischen Token ins System."""
@@ -777,6 +815,19 @@ def _create_sensors(hass, brain):
         "rules_3gram": cerebellum.stats.get("rules_3gram", 0),
         "top_rules": cerebellum.stats.get("top_rules", []),
     })
+    # Basalganglien Sensor (v0.13.1)
+    bg = brain["basal_ganglia"]
+    hass.states.async_set("sensor.kontinuum_basal_ganglia",
+        f"{bg.total_habits} Habits", {
+        "friendly_name": "Basalganglien", "icon": "mdi:brain",
+        "total_updates": bg.total_updates,
+        "total_habits": bg.total_habits,
+        "go_actions": bg.stats.get("go_actions", 0),
+        "nogo_actions": bg.stats.get("nogo_actions", 0),
+        "dopamine_signal": bg.stats.get("dopamine_signal", 0),
+        "q_entries": len(bg.q_values),
+        "active_habits": bg.stats.get("active_habits", []),
+    })
     hass.states.async_set("sensor.kontinuum_persons_home", 0, {
         "friendly_name": "Personen Zuhause", "icon": "mdi:account-group",
         "unit_of_measurement": "Personen", "home": [], "away": [],
@@ -872,6 +923,19 @@ def _update_sensors(hass, brain, last_signal=None, predictions=None):
         "rules_3gram": cerebellum.stats.get("rules_3gram", 0),
         "top_rules": cerebellum.stats.get("top_rules", []),
     })
+    # Basalganglien aktualisieren (v0.13.1)
+    bg = brain["basal_ganglia"]
+    hass.states.async_set("sensor.kontinuum_basal_ganglia",
+        f"{bg.total_habits} Habits", {
+        "friendly_name": "Basalganglien", "icon": "mdi:brain",
+        "total_updates": bg.total_updates,
+        "total_habits": bg.total_habits,
+        "go_actions": bg.stats.get("go_actions", 0),
+        "nogo_actions": bg.stats.get("nogo_actions", 0),
+        "dopamine_signal": bg.stats.get("dopamine_signal", 0),
+        "q_entries": len(bg.q_values),
+        "active_habits": bg.stats.get("active_habits", []),
+    })
     # Unassigned Entities aktualisieren (v0.12.1)
     unassigned = thalamus.get_unassigned_report(10)
     hass.states.async_set("sensor.kontinuum_unknown_entities",
@@ -929,6 +993,7 @@ def _save_brain(brain, path=None):
             "insula": brain["insula"].to_dict(),
             "amygdala": brain["amygdala"].to_dict(),
             "cerebellum": brain["cerebellum"].to_dict(),
+            "basal_ganglia": brain["basal_ganglia"].to_dict(),
             "prefrontal": brain["prefrontal"].to_dict(),
             "scenes_enabled": brain.get("_scenes_enabled", False),
             "scene_config": brain.get("_scene_config", {}),
@@ -961,6 +1026,7 @@ def _load_brain(brain, path):
         brain["insula"].from_dict(data.get("insula", {}))
         brain["amygdala"].from_dict(data.get("amygdala", {}))
         brain["cerebellum"].from_dict(data.get("cerebellum", {}))
+        brain["basal_ganglia"].from_dict(data.get("basal_ganglia", {}))
         brain["prefrontal"].from_dict(data.get("prefrontal", {}))
         brain["_scenes_enabled"] = data.get("scenes_enabled", False)
         brain["_scene_config"] = data.get("scene_config", _default_scene_config())

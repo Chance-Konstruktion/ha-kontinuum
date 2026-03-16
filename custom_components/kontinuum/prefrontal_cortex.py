@@ -213,27 +213,32 @@ class PrefrontalCortex:
         return True
     
     def check_implicit_positives(self, amygdala):
-        """Prüft ob KONTINUUM-Aktionen stillschweigend akzeptiert wurden."""
+        """
+        Prüft ob KONTINUUM-Aktionen stillschweigend akzeptiert wurden.
+        Returns: Liste der akzeptierten entity_ids (für Basalganglien).
+        """
         now = time.time()
         to_remove = []
-        
+
         for entity_id, action in list(self.own_actions.items()):
             elapsed = now - action["time"]
-            
+
             if elapsed > self.IMPLICIT_POSITIVE_DELAY:
                 token = action.get("token", "")
                 if token and amygdala:
                     amygdala.learn_from_feedback(token, "positive")
-                
+
                 semantic = action.get("semantic", "")
                 if semantic:
                     current = self.utility_weights.get(semantic, 1.0)
                     self.utility_weights[semantic] = min(2.0, current + 0.01)
-                
+
                 to_remove.append(entity_id)
-        
+
         for eid in to_remove:
             del self.own_actions[eid]
+
+        return to_remove if to_remove else None
     
     def learn_from_feedback(self, semantic: str, positive: bool):
         """Direkte Feedback-Verarbeitung."""
