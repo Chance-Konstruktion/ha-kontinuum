@@ -13,6 +13,7 @@
 import logging
 import math
 import re
+from pathlib import Path
 from datetime import datetime, timezone
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,6 +95,17 @@ SENSOR_KEYWORDS = {
     "solar": "solar", "pv": "solar", "photovoltaic": "solar",
     "grid": "grid", "netz": "grid",
     "co2": "co2", "carbon": "co2",
+    "cpu": "cpu", "processor": "cpu",
+    "gpu": "gpu", "graphics": "gpu",
+    "tpms": "tpms", "tire": "tpms", "reifen": "tpms",
+    "heart": "heartrate", "pulse": "heartrate", "puls": "heartrate",
+    "step": "steps", "schritt": "steps",
+    "sleep": "sleep",
+    "gaming": "gaming",
+    "network": "network", "dhcp": "network", "router": "network",
+    "wallbox": "wallbox", "charger": "wallbox", "laden": "wallbox",
+    "bed": "bed_presence", "bett": "bed_presence",
+    "screen": "screen", "display": "screen",
 }
 
 
@@ -154,6 +166,9 @@ class Thalamus:
             "events_processed": 0,
         }
         self._known_rooms = set()
+        # Optional erweiterbare Mappings (zur Laufzeit konfigurierbar)
+        self.custom_semantic_rules = []
+        self.custom_thresholds = {}
     
     def register_entity(self, entity_id: str, ha_area: str = "",
                         device_class: str = "", domain: str = "",
@@ -237,6 +252,12 @@ class Thalamus:
                           device_class: str, friendly_name: str,
                           unit: str) -> str:
         """Ermittelt den semantischen Typ einer Entity."""
+        # 0. Custom-Rules (höchste Priorität)
+        custom_semantic = self._resolve_custom_semantic(
+            entity_id, domain, device_class, friendly_name, unit)
+        if custom_semantic:
+            return custom_semantic
+
         # 1. Direkte Domain-Zuordnung
         if domain in DOMAIN_SEMANTIC:
             return DOMAIN_SEMANTIC[domain]
@@ -250,6 +271,8 @@ class Thalamus:
                 return "door"
             if dc in ("presence", "connectivity"):
                 return "presence"
+            if dc in ("running", "problem"):
+                return "network"
             
             # Name-basiert
             name = (friendly_name or entity_id).lower()
@@ -259,6 +282,12 @@ class Thalamus:
                 return "door"
             if any(k in name for k in ("presence", "anwesen", "besetzt")):
                 return "presence"
+            if any(k in name for k in ("bett", "bed", "sleep", "schlaf")):
+                return "bed_presence"
+            if any(k in name for k in ("gaming", "game")):
+                return "gaming"
+            if any(k in name for k in ("ping", "netz", "network", "online")):
+                return "network"
             return "binary"
         
         # 3. Sensor
@@ -294,6 +323,8 @@ class Thalamus:
             "illuminance": "illuminance",
             "pressure": "pressure",
             "co2": "co2",
+            "aqi": "co2",
+            "speed": "network",
         }
         if dc in unit_map:
             return unit_map[dc]
@@ -311,12 +342,49 @@ class Thalamus:
             return "voltage"
         if unit_lower in ("lx", "lux"):
             return "illuminance"
+        if unit_lower in ("bpm",):
+            return "heartrate"
+        if unit_lower in ("steps", "step"):
+            return "steps"
+        if unit_lower in ("ms", "mb/s", "mbit/s"):
+            return "network"
         
         # Name-basiert
         for keyword, semantic in SENSOR_KEYWORDS.items():
             if keyword in name or keyword in entity_id.lower():
                 return semantic
-        
+
+        return None
+
+    def _resolve_custom_semantic(self, entity_id: str, domain: str,
+                                 device_class: str, friendly_name: str,
+                                 unit: str) -> str:
+        """Prüft konfigurierbare Regeln für benutzerdefinierte Semantik."""
+        eid = entity_id.lower()
+        dc = (device_class or "").lower()
+        name = (friendly_name or "").lower()
+        unit_lower = (unit or "").lower()
+        for rule in self.custom_semantic_rules:
+            target = rule.get("semantic")
+            if not target:
+                continue
+            r_domain = (rule.get("domain") or "").lower()
+            r_device_class = (rule.get("device_class") or "").lower()
+            r_entity_regex = rule.get("entity_regex")
+            r_name_contains = (rule.get("name_contains") or "").lower()
+            r_unit = (rule.get("unit") or "").lower()
+
+            if r_domain and r_domain != domain:
+                continue
+            if r_device_class and r_device_class != dc:
+                continue
+            if r_unit and r_unit != unit_lower:
+                continue
+            if r_name_contains and r_name_contains not in name:
+                continue
+            if r_entity_regex and not re.search(r_entity_regex, eid):
+                continue
+            return target
         return None
     
     def process(self, entity_id: str, new_state: str, old_state: str,
@@ -382,7 +450,8 @@ class Thalamus:
         
         # On/Off Domains
         if semantic in ("light", "switch", "fan", "automation",
-                        "motion", "door", "presence", "binary"):
+                        "motion", "door", "presence", "binary",
+                        "gaming", "bed_presence", "screen", "network", "wallbox"):
             if state_lower in ("on", "true", "open", "detected", "home"):
                 return "on"
             if state_lower in ("off", "false", "closed", "clear", "not_home"):
@@ -424,7 +493,8 @@ class Thalamus:
         # Numerische Sensoren → Bucket
         if semantic in ("temperature", "humidity", "power", "energy",
                         "battery", "voltage", "illuminance", "pressure",
-                        "solar", "grid", "co2"):
+                        "solar", "grid", "co2", "cpu", "gpu", "tpms",
+                        "heartrate", "steps"):
             return self._bucket_value(semantic, state)
         
         return state_lower if len(state_lower) < 30 else None
@@ -517,11 +587,64 @@ class Thalamus:
             if val < 600:
                 return "good"
             elif val < 1000:
-                return "moderate"
+                return "elevated"
             else:
-                return "poor"
+                return "high"
+        elif semantic in ("cpu", "gpu"):
+            low = self._threshold(semantic, "low", 35)
+            medium = self._threshold(semantic, "medium", 70)
+            if val < low:
+                return "low"
+            if val < medium:
+                return "medium"
+            return "high"
+        elif semantic == "tpms":
+            low = self._threshold("tpms", "low", 2.2)
+            high = self._threshold("tpms", "high", 2.8)
+            if val < low:
+                return "low"
+            if val > high:
+                return "high"
+            return "normal"
+        elif semantic == "heartrate":
+            low = self._threshold("heartrate", "low", 55)
+            high = self._threshold("heartrate", "high", 110)
+            if val < low:
+                return "low"
+            if val > high:
+                return "high"
+            return "normal"
+        elif semantic == "steps":
+            if val < self._threshold("steps", "low", 1000):
+                return "low"
+            if val < self._threshold("steps", "high", 7000):
+                return "active"
+            return "high"
         
         return "medium"
+
+    def _threshold(self, semantic: str, level: str, default: float) -> float:
+        sem_cfg = self.custom_thresholds.get(semantic, {})
+        try:
+            return float(sem_cfg.get(level, default))
+        except (TypeError, ValueError):
+            return default
+
+    def load_custom_profiles(self, path: str):
+        """
+        Lädt optionale Mapping-/Threshold-Profile aus JSON.
+        Format:
+          {"semantic_rules": [...], "thresholds": {...}}
+        """
+        try:
+            content = Path(path).read_text(encoding="utf-8")
+            import json
+            data = json.loads(content)
+        except (OSError, ValueError) as err:
+            _LOGGER.warning("Thalamus: Profil konnte nicht geladen werden (%s): %s", path, err)
+            return
+        self.custom_semantic_rules = data.get("semantic_rules", []) or []
+        self.custom_thresholds = data.get("thresholds", {}) or {}
     
     def decode_token(self, token_id: int) -> str:
         """Token-ID → Token-String."""
@@ -670,6 +793,8 @@ class Thalamus:
             "known_rooms": list(self._known_rooms),
             "unassigned_entities": self._unassigned_entities,
             "unassigned_event_counts": self._unassigned_event_counts,
+            "custom_semantic_rules": self.custom_semantic_rules,
+            "custom_thresholds": self.custom_thresholds,
         }
 
     def from_dict(self, data: dict):
@@ -682,5 +807,7 @@ class Thalamus:
         self._known_rooms = set(data.get("known_rooms", []))
         self._unassigned_entities = data.get("unassigned_entities", {})
         self._unassigned_event_counts = data.get("unassigned_event_counts", {})
+        self.custom_semantic_rules = data.get("custom_semantic_rules", [])
+        self.custom_thresholds = data.get("custom_thresholds", {})
         self.stats["entities_registered"] = len(self.entity_semantic)
         self.stats["rooms_discovered"] = len(self._known_rooms)

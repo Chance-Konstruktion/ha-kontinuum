@@ -47,6 +47,15 @@ MODE_SIGNALS = {
     ("switch", "off"): {Mode.RELAXING: 0.1},
     ("climate", "heating"): {Mode.ACTIVE: 0.05},
     ("climate", "off"): {Mode.AWAY: 0.1},
+    ("cpu", "high"): {Mode.ACTIVE: 0.35},
+    ("gpu", "high"): {Mode.ACTIVE: 0.3, Mode.RELAXING: 0.1},
+    ("steps", "high"): {Mode.ACTIVE: 0.4},
+    ("steps", "active"): {Mode.ACTIVE: 0.2},
+    ("heartrate", "high"): {Mode.ACTIVE: 0.35},
+    ("sleep", "deep"): {Mode.SLEEPING: 0.6},
+    ("bed_presence", "on"): {Mode.SLEEPING: 0.35, Mode.RELAXING: 0.2},
+    ("co2", "high"): {Mode.AWAY: 0.15, Mode.SLEEPING: 0.05},
+    ("gaming", "on"): {Mode.ACTIVE: 0.3, Mode.RELAXING: 0.15},
 }
 
 # Raum-Hinweise
@@ -57,6 +66,7 @@ ROOM_MODE_HINTS = {
     "bathroom": {Mode.WAKING_UP: 0.15},
     "office": {Mode.ACTIVE: 0.2},
     "outdoor": {Mode.ACTIVE: 0.1, Mode.AWAY: 0.05},
+    "garage": {Mode.ACTIVE: 0.1, Mode.AWAY: 0.1},
 }
 
 
