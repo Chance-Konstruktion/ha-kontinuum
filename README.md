@@ -1,5 +1,7 @@
 # KONTINUUM
 
+![KONTINUUM Logo](custom_components/kontinuum/assets/logo.svg)
+
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
