@@ -1,0 +1,26 @@
+{
+  "semantic_rules": [
+    {
+      "domain": "sensor",
+      "entity_regex": "sensor\\.office_pc_.*cpu.*",
+      "semantic": "cpu"
+    },
+    {
+      "domain": "sensor",
+      "entity_regex": "sensor\\.tpms_.*pressure",
+      "semantic": "tpms"
+    },
+    {
+      "domain": "sensor",
+      "entity_regex": "sensor\\.smartwatch_.*heart.*",
+      "semantic": "heartrate"
+    }
+  ],
+  "thresholds": {
+    "cpu": {"low": 30, "medium": 75},
+    "gpu": {"low": 30, "medium": 80},
+    "tpms": {"low": 2.1, "high": 2.9},
+    "heartrate": {"low": 52, "high": 118},
+    "steps": {"low": 1200, "high": 8000}
+  }
+}

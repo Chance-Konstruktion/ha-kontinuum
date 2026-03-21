@@ -99,6 +99,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         basal_ganglia = BasalGanglia()
         prefrontal = PrefrontalCortex(amygdala)
 
+        # Optional: Context-Profile für erweiterte Semantik/Thresholds
+        profile_path = hass.config.path("kontinuum_context_profile.json")
+        thalamus.load_custom_profiles(profile_path)
+
         # ── Presets anwenden ──────────────────────────────────
         cerebellum.MIN_OBSERVATIONS = config_data.get("cerebellum_min_obs", 5)
         cerebellum.MIN_CONFIDENCE = config_data.get("cerebellum_min_conf", 0.75)

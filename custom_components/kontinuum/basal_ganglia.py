@@ -44,6 +44,7 @@ class BasalGanglia:
 
     # ── Konfiguration ──────────────────────────────────────────
     LEARNING_RATE = 0.1        # Basis-Lernrate (α)
+    alpha = 0.1
     DISCOUNT_FACTOR = 0.9      # Wie stark zukünftige Belohnungen zählen (γ)
     HABIT_THRESHOLD = 10       # Ab N Erfolgen ohne Failure → Habit
     HABIT_BOOST = 0.2          # Bonus für Habits bei Aktionspriorisierung
@@ -57,6 +58,8 @@ class BasalGanglia:
     def __init__(self):
         # Q-Value Tabelle: "bucket:token_id" → Q-Wert
         self.q_values = defaultdict(float)
+        # Minimal-FAL kompatible Tabelle: (state, action) -> q
+        self.q_table = {}
 
         # Habit-Tracker: token_id → {successes, failures, is_habit}
         self.habits = defaultdict(lambda: {"successes": 0, "failures": 0, "is_habit": False})
@@ -74,6 +77,20 @@ class BasalGanglia:
         self.total_habits = 0
         self.total_positive = 0
         self.total_negative = 0
+
+
+    # ── Minimal FAL API ─────────────────────────────────────
+
+    def get_q_value(self, state: str, action: str) -> float:
+        """Liest den Q-Wert für den FAL-State/Action-Key."""
+        return float(self.q_table.get((state, action), 0.1))
+
+    def update_q_value(self, state: str, action: str, reward: float):
+        """Minimales Q-Learning-Update: Q = Q + alpha * (reward - Q)."""
+        old_q = self.get_q_value(state, action)
+        new_q = old_q + self.alpha * (float(reward) - old_q)
+        self.q_table[(state, action)] = new_q
+        return new_q
 
     # ── Striatum: Aktionspriorisierung ─────────────────────────
 
