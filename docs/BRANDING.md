@@ -1,18 +1,15 @@
 # KONTINUUM Branding / Icons
 
-Für Home Assistant sollte die finale Marken-Grafik im **Home Assistant Brands Repository** unter
-`custom_integrations/kontinuum/` gepflegt werden (`icon.png`, `logo.png`).
+Du wolltest explizit **dein Bild** verwenden. Daher werden keine KI-neu gezeichneten SVGs mehr genutzt.
 
-Dieses Repo enthält dafür die editierbaren Quellen:
+## Erwartete Originaldateien
+Lege deine originalen Dateien hier ab:
 
-- `custom_components/kontinuum/assets/icon.svg`
-- `custom_components/kontinuum/assets/logo.svg`
+- `custom_components/kontinuum/assets/icon.png` (256x256)
+- `custom_components/kontinuum/assets/logo.png` (512x512)
 
-## Export-Empfehlung
-- icon.png: 256x256
-- logo.png: 512x512
-- Hintergrund: Blau (#1297EA bis #40B6FF)
-- Motiv: Weißes Gehirn (wie bereitgestellt)
+## Home Assistant Brands
+Für die offizielle HA-Darstellung bitte zusätzlich in das Home Assistant Brands Repo übernehmen:
 
-## Hinweis
-HACS/README nutzt bereits `logo.svg` für die Projektdarstellung.
+- `custom_integrations/kontinuum/icon.png`
+- `custom_integrations/kontinuum/logo.png`

@@ -1,6 +1,6 @@
 # KONTINUUM
 
-![KONTINUUM Logo](custom_components/kontinuum/assets/logo.svg)
+![KONTINUUM Logo](custom_components/kontinuum/assets/logo.png)
 
 **Dein Zuhause lernt selbst.**
 
