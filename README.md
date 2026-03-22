@@ -3,8 +3,8 @@
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.12.0-blue)
-![HA](https://img.shields.io/badge/Home%20Assistant-2024.x+-green)
+![Version](https://img.shields.io/badge/version-0.14.0-blue)
+![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 KONTINUUM ist eine experimentelle Home-Assistant-Integration, die dein Zuhause ohne Regeln, ohne Konfiguration und ohne Cloud versteht.
 
@@ -139,9 +139,9 @@ Die Architektur von KONTINUUM orientiert sich lose an biologischen Strukturen.
 
 ```
 Thalamus → Hippocampus → Cerebellum → PFC → Aktion
-    ↑           ↑                       ↑
-Hypothalamus  Spatial Cortex        Amygdala
-    ↑           ↑
+    ↑           ↑            ↑          ↑
+Hypothalamus  Spatial    Basalganglien Amygdala
+    ↑         Cortex    (Belohnung)
   Insula ←─────┘
 ```
 
@@ -179,6 +179,10 @@ Erkennt Verhaltensmodi wie *schlafen*, *aktiv*, *entspannen* oder *abwesend*. Nu
 ### Cerebellum – Die Reflexe
 
 Extrahiert stabile Routinen als deterministische Regeln. Was sich hundertmal wiederholt hat, wird zum Automatismus.
+
+### Basalganglien – Das Belohnungslernen
+
+Lernt aus Feedback: Welche Aktionen führen zu positiven Ergebnissen? Go-Pathway verstärkt gute Gewohnheiten, NoGo-Pathway unterdrückt schlechte. Q-Values bewerten jede Aktion im Kontext.
 
 ### Amygdala – Die Risikobewertung
 
@@ -270,6 +274,14 @@ Das Ergebnis: Die Kaffeemaschine wird automatisch vorbereitet, noch bevor du dar
 
 Danach beginnt KONTINUUM automatisch zu lernen. **Keine Konfiguration notwendig.**
 
+### Migration von v0.13.x
+
+Bei einem Update von v0.13.x auf v0.14.0:
+
+1. **`brain.json`** wird automatisch zu `brain.json.gz` migriert – kein Lernverlust
+2. **`template`-Sensoren** aus `configuration.yaml` können entfernt werden (die `kontinuum_*_activity`-Sensoren werden jetzt nativ erstellt)
+3. **`input_number.k_*`-Helfer** können manuell gelöscht werden (werden bei Deinstallation automatisch entfernt)
+
 ---
 
 ## Persönlichkeits-Presets
@@ -290,6 +302,10 @@ Nachträglich änderbar: Integrationen → KONTINUUM → Konfigurieren
 
 KONTINUUM erstellt automatisch diese Sensoren:
 
+**Alle Sensoren sind native HA-Entitäten** – sie werden automatisch erstellt und bei Deinstallation entfernt. Kein YAML nötig.
+
+#### System-Sensoren
+
 | Sensor | Beschreibung |
 |--------|-------------|
 | `sensor.kontinuum_status` | Systemstatus + Version |
@@ -302,6 +318,24 @@ KONTINUUM erstellt automatisch diese Sensoren:
 | `sensor.kontinuum_prediction` | Aktuelle Vorhersage |
 | `sensor.kontinuum_energy` | Energiezustand + Trends |
 | `sensor.kontinuum_cerebellum` | Gelernte Routinen |
+| `sensor.kontinuum_basal_ganglia` | Habits + Go/NoGo |
+| `sensor.kontinuum_unknown_entities` | Entities ohne Raum |
+
+#### Aktivitäts-Sensoren (Dashboard)
+
+Diese Sensoren zeigen die Aktivität jedes Gehirnmoduls (0.0 – 1.0) und ersetzen die bisherigen `template`-Sensoren + `input_number`-Helfer aus der `configuration.yaml`:
+
+| Sensor | Beschreibung |
+|--------|-------------|
+| `sensor.kontinuum_thalamus_activity` | Verarbeitungsrate |
+| `sensor.kontinuum_hippocampus_activity` | Lerngenauigkeit |
+| `sensor.kontinuum_hypothalamus_activity` | Energie-Trends |
+| `sensor.kontinuum_amygdala_activity` | Risiko-Level |
+| `sensor.kontinuum_insula_activity` | Modus-Konfidenz |
+| `sensor.kontinuum_cerebellum_activity` | Regelabdeckung |
+| `sensor.kontinuum_prefrontal_activity` | Entscheidungsrate |
+| `sensor.kontinuum_spatial_activity` | Raum-Konfidenz |
+| `sensor.kontinuum_basalganglia_activity` | Gewohnheitsstärke |
 
 ---
 
@@ -342,15 +376,35 @@ action:
 
 - **Kein ML, kein Deep Learning** – reine Statistik (N-Gramm Markov-Ketten)
 - **Komplett lokal** – keine Cloud, keine API-Calls
-- **~3.500 Zeilen Python** – läuft auf Raspberry Pi 4
+- **~5.000 Zeilen Python** – läuft auf Raspberry Pi 4
 - **21-dimensionaler Kontextvektor** – Zeit, Sonnenstand, Energie, Trends, Modus
 - **Adaptive Kontext-Buckets** – wächst von 6 auf 96 (Zeit × Modus × Energie × Tagestyp)
-- **Persistenz** – Gehirn wird in `brain.json` gespeichert, überlebt Neustarts
+- **Persistenz** – Gehirn wird in `brain.json.gz` komprimiert gespeichert (RPi-SD-schonend)
 - **Shadow-Mode** – beobachtet und validiert Vorhersagen bevor es handelt
+- **Label-Support** – HA-Labels als Raum-Hinweis nutzbar
+- **Saubere Deinstallation** – Entfernt brain, Helfer und Entities automatisch
 
 ---
 
 ## Changelog
+
+### v0.14.0 – Native Sensor Platform + Deinstallation
+
+- **Native Sensoren** – Alle Sensoren als echte HA-Entitäten (kein `hass.states.async_set()` mehr)
+- **Aktivitäts-Sensoren** – `sensor.kontinuum_*_activity` direkt in der Integration erstellt. Die `template`-Sensoren und `input_number.k_*`-Helfer aus `configuration.yaml` können entfernt werden
+- **Basalganglien-Sensor** – `sensor.kontinuum_basal_ganglia` zeigt Habits, Go/NoGo, Q-Entries
+- **Area-Fix** – HA-Areas werden jetzt direkt als Raum genutzt, auch wenn sie nicht in der internen Map stehen. Entitäten mit zugewiesener Area werden nicht mehr als `area_unknown` angezeigt
+- **Label-Support** – HA-Labels werden als Raum-Hinweis ausgewertet (z.B. Label „Erdgeschoss" → room)
+- **Saubere Deinstallation** – `async_remove_entry` löscht `brain.json.gz`, `input_number.k_*`-Helfer und alle Entitäten. Keine Spuren nach der Deinstallation
+- **Komprimiertes Speichern** – `brain.json` → `brain.json.gz` (gzip). Automatische Migration beim Start. ~85% kleiner, SD-Karte geschont
+- **SAVE_INTERVAL** – 300s → 600s (weniger SD-Schreibzugriffe)
+- **GitHub-Links** – Repository-URL auf `Chance-Konstruktion/ha-kontinuum` korrigiert
+
+### v0.13.1 – Basalganglien + Fixes
+
+- **Basalganglien** – Belohnungslernen (Go/NoGo, Q-Values, Habits)
+- **Spatial Cortex** – `area_unknown` bei Raumbestimmung ignoriert
+- **Hypothalamus** – Energy Cooldown 600s → 60s
 
 ### v0.12.0 – Intelligenz-Upgrade
 
