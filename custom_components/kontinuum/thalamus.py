@@ -92,7 +92,8 @@ SENSOR_KEYWORDS = {
     "voltage": "voltage", "spannung": "voltage",
     "illuminance": "illuminance", "lux": "illuminance", "hell": "illuminance",
     "pressure": "pressure", "druck": "pressure",
-    "solar": "solar", "pv": "solar", "photovoltaic": "solar",
+    # Wichtig: "solar" und "pv_" mit Unterstrich um false-matches auf "pve" zu vermeiden
+    "solar": "solar", "pv_": "solar", "photovoltaic": "solar",
     "grid": "grid", "netz": "grid",
     "co2": "co2", "carbon": "co2",
     "cpu": "cpu", "processor": "cpu",
@@ -135,7 +136,25 @@ class Thalamus:
         re.compile(r"_linkquality$"),
         re.compile(r"_signal_strength$"),
         re.compile(r"_last_seen$"),
+        # HACS pre-release switches (keine Verhaltensrelevanz)
+        re.compile(r"_pre_release$"),
+        re.compile(r"^switch\.\w+_pre_release"),
+        # Batteriezellen-Spannungen (zu detailliert, Token-Explosion)
+        re.compile(r"_cell_voltage[s]?_\d+"),
+        re.compile(r"_cell_\d+"),
+        # PVE/NAS Netzwerkschnittstellen (high-cardinality, wertlos)
+        re.compile(r"^sensor\.pve.*_net(in|out|_in|_out)"),
+        re.compile(r"^sensor\.pve.*_(netin|netout|read|write)"),
+        re.compile(r"_netin$"), re.compile(r"_netout$"),
+        # Uptime / Stunden-Zähler (monoton steigend, erzeugen Tausende Tokens)
+        re.compile(r"_uptime$"), re.compile(r"_runtime$"),
+        re.compile(r"_operating_hours$"), re.compile(r"_run_time$"),
+        # Disk-I/O bytes (high-cardinality)
+        re.compile(r"_disk_(read|write)$"),
     ]
+
+    # Vokabular-Begrenzung (v0.14.2)
+    MAX_VOCAB_SIZE = 5000
     
     def __init__(self):
         # Entity → Raum/Semantik
@@ -435,10 +454,19 @@ class Thalamus:
         
         # Token-ID vergeben
         if token not in self.token_to_id:
+            # Vokabular-Limit prüfen (v0.14.2)
+            if len(self.token_to_id) >= self.MAX_VOCAB_SIZE:
+                # Älteste 10% Tokens entfernen (niedrigste IDs = selten genutzt)
+                cutoff = self._next_id - int(self.MAX_VOCAB_SIZE * 0.9)
+                stale = [t for t, i in self.token_to_id.items() if i < cutoff]
+                for t in stale:
+                    old_id = self.token_to_id.pop(t)
+                    self.id_to_token.pop(old_id, None)
+                _LOGGER.debug("Vokabular beschnitten: %d Tokens entfernt", len(stale))
             self.token_to_id[token] = self._next_id
             self.id_to_token[self._next_id] = token
             self._next_id += 1
-        
+
         token_id = self.token_to_id[token]
         
         self.stats["events_processed"] += 1
@@ -466,7 +494,7 @@ class Thalamus:
         # On/Off Domains
         if semantic in ("light", "switch", "fan", "automation",
                         "motion", "door", "presence", "binary",
-                        "gaming", "bed_presence", "screen", "network", "wallbox"):
+                        "gaming", "bed_presence", "screen", "wallbox"):
             if state_lower in ("on", "true", "open", "detected", "home"):
                 return "on"
             if state_lower in ("off", "false", "closed", "clear", "not_home"):
@@ -509,9 +537,16 @@ class Thalamus:
         if semantic in ("temperature", "humidity", "power", "energy",
                         "battery", "voltage", "illuminance", "pressure",
                         "solar", "grid", "co2", "cpu", "gpu", "tpms",
-                        "heartrate", "steps"):
+                        "heartrate", "steps", "network", "sleep"):
             return self._bucket_value(semantic, state)
         
+        # Float-Strings abfangen: rohe Zahlen als Fallback bucketen (verhindert Token-Explosion)
+        try:
+            float(state_lower)
+            return self._bucket_value("_generic", state_lower)
+        except (ValueError, TypeError):
+            pass
+
         return state_lower if len(state_lower) < 30 else None
     
     def _bucket_value(self, semantic: str, state: str) -> str:
@@ -635,8 +670,40 @@ class Thalamus:
             if val < self._threshold("steps", "high", 7000):
                 return "active"
             return "high"
-        
-        return "medium"
+
+        elif semantic == "network":
+            # MB/s oder Bytes/s – generisch gebucketed
+            if val < 1:
+                return "idle"
+            elif val < 10:
+                return "low"
+            elif val < 100:
+                return "medium"
+            else:
+                return "high"
+
+        elif semantic == "sleep":
+            # Schlafphasen / Tiefe
+            if val <= 0:
+                return "awake"
+            elif val < 30:
+                return "light"
+            elif val < 70:
+                return "deep"
+            else:
+                return "rem"
+
+        # Fallback: alles andere auf 5 Buckets (verhindert Float-Token-Explosion)
+        if val < 20:
+            return "very_low"
+        elif val < 40:
+            return "low"
+        elif val < 60:
+            return "medium"
+        elif val < 80:
+            return "high"
+        else:
+            return "very_high"
 
     def _threshold(self, semantic: str, level: str, default: float) -> float:
         sem_cfg = self.custom_thresholds.get(semantic, {})
