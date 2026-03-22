@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  KONTINUUM v0.13.2 – Neuroinspired Home Intelligence           ║
+║  KONTINUUM v0.14.0 – Neuroinspired Home Intelligence           ║
 ║  Home Assistant Custom Component                                 ║
 ║                                                                  ║
 ║  Architektur:                                                    ║
@@ -10,10 +10,13 @@
 ║      ↑         Cortex    (Belohnung)                            ║
 ║    Insula ←─────┘                                               ║
 ║                                                                  ║
-║  v0.13.1 – Basalganglien + Fixes:                              ║
-║  • Basalganglien: Belohnungslernen (Go/NoGo, Q-Values, Habits) ║
-║  • Spatial Cortex: area_unknown bei Raumbestimmung ignoriert    ║
-║  • Hypothalamus: Energy Cooldown 600s → 60s                    ║
+║  v0.14.0 – Native Sensor Platform:                              ║
+║  • Alle Sensoren als echte HA-Entitäten (kein YAML nötig)      ║
+║  • Aktivitäts-Sensoren nativ (template-Sensoren entfallen)     ║
+║  • Label-Support für Entity-Raum-Zuordnung                      ║
+║  • Area-Fix: HA-Areas direkt nutzen (kein Map-Zwang)            ║
+║  • Saubere Deinstallation (brain, entities, helpers entfernt)   ║
+║  • Komprimiertes Speichern (brain.json.gz, gzip)                ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -25,9 +28,10 @@ import time
 from collections import Counter, deque
 from datetime import datetime, timezone
 
+from homeassistant.const import EVENT_STATE_CHANGED, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.const import EVENT_STATE_CHANGED, EVENT_HOMEASSISTANT_STOP
 from homeassistant import config_entries
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .thalamus import Thalamus
 from .hippocampus import Hippocampus
@@ -43,10 +47,13 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.13.2"
+VERSION = "0.14.0"
 BRAIN_FILE = "brain.json.gz"
 BRAIN_FILE_LEGACY = "brain.json"
 SAVE_INTERVAL = 600
+PLATFORMS = [Platform.SENSOR]
+SIGNAL_SENSORS_UPDATE = f"{DOMAIN}_sensors_update"
+SIGNAL_PERSONS_UPDATE = f"{DOMAIN}_persons_update"
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -150,8 +157,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         # ── Entities entdecken ────────────────────────────────
         await _discover_entities(hass, thalamus)
 
-        # ── Sensoren erstellen ────────────────────────────────
-        _create_sensors(hass, brain)
+        # ── In hass.data speichern (vor Platform-Setup!) ──────
+        hass.data[DOMAIN] = brain
+
+        # ── Sensor-Plattform laden (native Entitäten) ────────
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
         # ── Services registrieren ─────────────────────────────
         _register_services(hass, brain)
@@ -274,8 +284,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                         bucket, decision.token)
                     _process_decision(hass, brain, decision)
 
-                # Sensoren updaten
-                _update_sensors(hass, brain, last_signal=signal, predictions=predictions)
+                # Sensoren updaten (native Entitäten via Dispatcher)
+                async_dispatcher_send(
+                    hass, SIGNAL_SENSORS_UPDATE,
+                    last_signal=signal, predictions=predictions,
+                )
 
                 # Periodisch: Cerebellum kompilieren + speichern
                 now_ts = time.time()
@@ -296,7 +309,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
 
                 # Personen-Zähler
                 if now_ts - brain["_last_persons_update"] > 30:
-                    _update_persons_sensor(hass, brain)
+                    _update_persons_sensor(hass)
                     brain["_last_persons_update"] = now_ts
 
             except Exception as e:
@@ -310,9 +323,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             await hass.async_add_executor_job(_save_brain, brain, brain_path)
 
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_shutdown)
-
-        # ── In hass.data speichern ────────────────────────────
-        hass.data[DOMAIN] = brain
 
         _LOGGER.info(
             "KONTINUUM v%s gestartet: %d Entities, %d Tokens, %d Räume, Preset '%s'",
@@ -362,12 +372,49 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
 
 async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEntry):
     """Entlädt KONTINUUM und speichert das Gehirn."""
+    # Sensor-Plattform entladen
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
     brain = hass.data.get(DOMAIN)
     if brain:
         brain_path = hass.config.path(BRAIN_FILE)
         await hass.async_add_executor_job(_save_brain, brain, brain_path)
+
+    hass.data.pop(DOMAIN, None)
     _LOGGER.info("KONTINUUM entladen und gespeichert.")
-    return True
+    return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: config_entries.ConfigEntry):
+    """Deinstallation: Entfernt brain.json.gz und input_number-Helfer."""
+    # Brain-Datei löschen
+    for fname in (BRAIN_FILE, BRAIN_FILE_LEGACY, BRAIN_FILE_LEGACY + ".migrated"):
+        path = hass.config.path(fname)
+        if os.path.exists(path):
+            os.remove(path)
+            _LOGGER.info("Entfernt: %s", path)
+
+    # input_number.k_* Helfer entfernen
+    try:
+        from homeassistant.helpers.entity_registry import async_get as get_er
+        er = get_er(hass)
+        to_remove = [
+            eid for eid in er.entities
+            if eid.startswith("input_number.k_")
+        ]
+        for eid in to_remove:
+            er.async_remove(eid)
+            _LOGGER.info("Helfer entfernt: %s", eid)
+    except Exception as e:
+        _LOGGER.warning("Helfer-Bereinigung fehlgeschlagen: %s", e)
+
+    # Context-Profile bereinigen
+    profile_path = hass.config.path("kontinuum_context_profile.json")
+    if os.path.exists(profile_path):
+        os.remove(profile_path)
+        _LOGGER.info("Entfernt: %s", profile_path)
+
+    _LOGGER.info("KONTINUUM vollständig deinstalliert.")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -705,7 +752,7 @@ def _register_services(hass, brain):
 # ══════════════════════════════════════════════════════════════════
 
 async def _discover_entities(hass, thalamus):
-    """Entdeckt Entities aus HA-Registries."""
+    """Entdeckt Entities aus HA-Registries (mit Label-Support v0.14.0)."""
     try:
         from homeassistant.helpers.entity_registry import async_get as get_er
     except ImportError:
@@ -730,6 +777,15 @@ async def _discover_entities(hass, thalamus):
 
     areas = {a.id: a.name for a in ar.async_list_areas()}
 
+    # Label-Registry (HA 2024.1+)
+    label_names = {}
+    try:
+        from homeassistant.helpers.label_registry import async_get as get_lr
+        lr = get_lr(hass)
+        label_names = {l.label_id: l.name for l in lr.async_list_labels()}
+    except (ImportError, AttributeError):
+        _LOGGER.debug("Label-Registry nicht verfügbar – Labels werden ignoriert")
+
     for entity in er.entities.values():
         entity_id = entity.entity_id
         domain = entity_id.split(".")[0] if "." in entity_id else ""
@@ -737,6 +793,7 @@ async def _discover_entities(hass, thalamus):
         unit = entity.unit_of_measurement or ""
         name = entity.name or entity.original_name or entity_id
 
+        # Area: Entity → Device → None
         area_name = ""
         if entity.area_id and entity.area_id in areas:
             area_name = areas[entity.area_id]
@@ -745,6 +802,14 @@ async def _discover_entities(hass, thalamus):
             if device and device.area_id and device.area_id in areas:
                 area_name = areas[device.area_id]
 
+        # Labels sammeln (v0.14.0)
+        entity_labels = []
+        if hasattr(entity, "labels") and entity.labels:
+            entity_labels = [
+                label_names[lid] for lid in entity.labels
+                if lid in label_names
+            ]
+
         thalamus.register_entity(
             entity_id=entity_id,
             ha_area=area_name,
@@ -752,213 +817,18 @@ async def _discover_entities(hass, thalamus):
             domain=domain,
             friendly_name=str(name) if name else "",
             unit=str(unit) if unit else "",
+            labels=entity_labels,
         )
 
     _LOGGER.info(
-        "Entity Discovery: %d Entities in %d Räumen registriert",
+        "Entity Discovery: %d Entities in %d Räumen registriert (Labels: %d)",
         len(thalamus.entity_semantic), len(thalamus._known_rooms),
+        len(label_names),
     )
 
 
-# ══════════════════════════════════════════════════════════════════
-# SENSORS
-# ══════════════════════════════════════════════════════════════════
-
-def _create_sensors(hass, brain):
-    """Erstellt KONTINUUM Sensoren (inkl. Dashboard-Sensoren)."""
-    hippocampus = brain["hippocampus"]
-    insula = brain["insula"]
-    spatial = brain["spatial"]
-    hypothalamus = brain["hypothalamus"]
-    cerebellum = brain["cerebellum"]
-
-    hass.states.async_set("sensor.kontinuum_status", "learning", {
-        "friendly_name": "KONTINUUM Status", "icon": "mdi:brain",
-        "version": VERSION, "preset": brain.get("preset", "?"),
-    })
-    hass.states.async_set("sensor.kontinuum_events", hippocampus.total_events, {
-        "friendly_name": "KONTINUUM Events", "icon": "mdi:counter",
-        "unit_of_measurement": "events",
-    })
-    hass.states.async_set("sensor.kontinuum_accuracy", f"{hippocampus.accuracy:.1%}", {
-        "friendly_name": "KONTINUUM Accuracy", "icon": "mdi:target",
-        "hits": hippocampus.shadow_hits, "misses": hippocampus.shadow_misses,
-        "total": hippocampus.shadow_total,
-        "accuracy_by_window": hippocampus.stats.get("accuracy_by_window", {}),
-    })
-    hass.states.async_set("sensor.kontinuum_mode", insula.current_mode, {
-        "friendly_name": "KONTINUUM Modus", "icon": "mdi:home-automation",
-        "confidence": insula.stats.get("confidence", 0),
-    })
-    hass.states.async_set("sensor.kontinuum_room", spatial.get_current_location(), {
-        "friendly_name": "KONTINUUM Raum", "icon": "mdi:map-marker",
-    })
-    # Dashboard-Sensoren
-    hass.states.async_set("sensor.kontinuum_last_event", "startup", {
-        "friendly_name": "Letztes Event", "icon": "mdi:lightning-bolt",
-        "token": "", "room": "", "semantic": "",
-    })
-    hass.states.async_set("sensor.kontinuum_prediction", "waiting", {
-        "friendly_name": "Vorhersage", "icon": "mdi:crystal-ball",
-        "confidence": 0, "token": "", "source": "",
-    })
-    energy = hypothalamus.get_energy_summary()
-    hass.states.async_set("sensor.kontinuum_energy", energy.get("battery", "?"), {
-        "friendly_name": "Energie", "icon": "mdi:battery", **energy,
-    })
-    next_room = spatial.predict_next_room()
-    hass.states.async_set("sensor.kontinuum_location", spatial.get_current_location(), {
-        "friendly_name": "Standort", "icon": "mdi:crosshairs-gps",
-        "presence_map": spatial.stats.get("presence_map", {}),
-        "predicted_next": next_room[0] if next_room else None,
-        "movement_patterns": len(spatial.movement_memory),
-    })
-    hass.states.async_set("sensor.kontinuum_cerebellum", f"{len(cerebellum.rules)} Regeln", {
-        "friendly_name": "Cerebellum", "icon": "mdi:cog-transfer",
-        "rules_count": len(cerebellum.rules),
-        "rules_1gram": cerebellum.stats.get("rules_1gram", 0),
-        "rules_2gram": cerebellum.stats.get("rules_2gram", 0),
-        "rules_3gram": cerebellum.stats.get("rules_3gram", 0),
-        "top_rules": cerebellum.stats.get("top_rules", []),
-    })
-    # Basalganglien Sensor (v0.13.1)
-    bg = brain["basal_ganglia"]
-    hass.states.async_set("sensor.kontinuum_basal_ganglia",
-        f"{bg.total_habits} Habits", {
-        "friendly_name": "Basalganglien", "icon": "mdi:brain",
-        "total_updates": bg.total_updates,
-        "total_habits": bg.total_habits,
-        "go_actions": bg.stats.get("go_actions", 0),
-        "nogo_actions": bg.stats.get("nogo_actions", 0),
-        "dopamine_signal": bg.stats.get("dopamine_signal", 0),
-        "q_entries": len(bg.q_values),
-        "active_habits": bg.stats.get("active_habits", []),
-    })
-    hass.states.async_set("sensor.kontinuum_persons_home", 0, {
-        "friendly_name": "Personen Zuhause", "icon": "mdi:account-group",
-        "unit_of_measurement": "Personen", "home": [], "away": [],
-    })
-    # Unassigned Entities Sensor (v0.12.1)
-    thalamus = brain["thalamus"]
-    unassigned = thalamus.get_unassigned_report(10)
-    hass.states.async_set("sensor.kontinuum_unknown_entities",
-        len(thalamus._unassigned_entities), {
-        "friendly_name": "Entities ohne Raum",
-        "icon": "mdi:help-circle-outline",
-        "unit_of_measurement": "Entities",
-        "top_unassigned": [
-            {"entity_id": eid, "events": cnt, "semantic": sem,
-             "name": name, "suggested_room": sug}
-            for eid, cnt, sem, name, sug in unassigned
-        ],
-    })
-
-
-def _update_sensors(hass, brain, last_signal=None, predictions=None):
-    """Aktualisiert KONTINUUM Sensoren (inkl. Dashboard)."""
-    hippocampus = brain["hippocampus"]
-    insula = brain["insula"]
-    spatial = brain["spatial"]
-    cerebellum = brain["cerebellum"]
-    hypothalamus = brain["hypothalamus"]
-    thalamus = brain["thalamus"]
-
-    hass.states.async_set("sensor.kontinuum_status", "learning", {
-        "friendly_name": "KONTINUUM Status", "icon": "mdi:brain",
-        "version": VERSION, "preset": brain.get("preset", "?"),
-        "rules": len(cerebellum.rules),
-    })
-    hass.states.async_set("sensor.kontinuum_events", hippocampus.total_events, {
-        "friendly_name": "KONTINUUM Events", "icon": "mdi:counter",
-        "unit_of_measurement": "events",
-    })
-    hass.states.async_set("sensor.kontinuum_accuracy", f"{hippocampus.accuracy:.1%}", {
-        "friendly_name": "KONTINUUM Accuracy", "icon": "mdi:target",
-        "hits": hippocampus.shadow_hits, "misses": hippocampus.shadow_misses,
-        "total": hippocampus.shadow_total,
-        "accuracy_by_window": hippocampus.stats.get("accuracy_by_window", {}),
-    })
-    hass.states.async_set("sensor.kontinuum_mode", insula.current_mode, {
-        "friendly_name": "KONTINUUM Modus", "icon": "mdi:home-automation",
-        "confidence": insula.stats.get("confidence", 0),
-    })
-    hass.states.async_set("sensor.kontinuum_room", spatial.get_current_location(), {
-        "friendly_name": "KONTINUUM Raum", "icon": "mdi:map-marker",
-    })
-
-    # Dashboard-Sensoren
-    if last_signal:
-        hass.states.async_set("sensor.kontinuum_last_event", last_signal.get("token", "?"), {
-            "friendly_name": "Letztes Event", "icon": "mdi:lightning-bolt",
-            "token": last_signal.get("token", ""),
-            "room": last_signal.get("room", ""),
-            "semantic": last_signal.get("semantic", ""),
-            "entity_id": last_signal.get("entity_id", ""),
-        })
-
-    if predictions:
-        top = predictions[0] if predictions else (0, 0, 0, "")
-        tok_id, prob, conf, src = top
-        hass.states.async_set("sensor.kontinuum_prediction",
-            thalamus.decode_token(tok_id), {
-            "friendly_name": "Vorhersage", "icon": "mdi:crystal-ball",
-            "confidence": conf, "probability": prob,
-            "token": thalamus.decode_token(tok_id), "source": src,
-            "alternatives": [
-                {"token": thalamus.decode_token(t), "conf": c}
-                for t, p, c, s in predictions[1:3]
-            ],
-        })
-
-    energy = hypothalamus.get_energy_summary()
-    hass.states.async_set("sensor.kontinuum_energy", energy.get("battery", "?"), {
-        "friendly_name": "Energie", "icon": "mdi:battery", **energy,
-    })
-    next_room = spatial.predict_next_room()
-    hass.states.async_set("sensor.kontinuum_location", spatial.get_current_location(), {
-        "friendly_name": "Standort", "icon": "mdi:crosshairs-gps",
-        "presence_map": spatial.stats.get("presence_map", {}),
-        "predicted_next": next_room[0] if next_room else None,
-        "movement_patterns": len(spatial.movement_memory),
-    })
-    hass.states.async_set("sensor.kontinuum_cerebellum", f"{len(cerebellum.rules)} Regeln", {
-        "friendly_name": "Cerebellum", "icon": "mdi:cog-transfer",
-        "rules_count": len(cerebellum.rules),
-        "rules_1gram": cerebellum.stats.get("rules_1gram", 0),
-        "rules_2gram": cerebellum.stats.get("rules_2gram", 0),
-        "rules_3gram": cerebellum.stats.get("rules_3gram", 0),
-        "top_rules": cerebellum.stats.get("top_rules", []),
-    })
-    # Basalganglien aktualisieren (v0.13.1)
-    bg = brain["basal_ganglia"]
-    hass.states.async_set("sensor.kontinuum_basal_ganglia",
-        f"{bg.total_habits} Habits", {
-        "friendly_name": "Basalganglien", "icon": "mdi:brain",
-        "total_updates": bg.total_updates,
-        "total_habits": bg.total_habits,
-        "go_actions": bg.stats.get("go_actions", 0),
-        "nogo_actions": bg.stats.get("nogo_actions", 0),
-        "dopamine_signal": bg.stats.get("dopamine_signal", 0),
-        "q_entries": len(bg.q_values),
-        "active_habits": bg.stats.get("active_habits", []),
-    })
-    # Unassigned Entities aktualisieren (v0.12.1)
-    unassigned = thalamus.get_unassigned_report(10)
-    hass.states.async_set("sensor.kontinuum_unknown_entities",
-        len(thalamus._unassigned_entities), {
-        "friendly_name": "Entities ohne Raum",
-        "icon": "mdi:help-circle-outline",
-        "unit_of_measurement": "Entities",
-        "top_unassigned": [
-            {"entity_id": eid, "events": cnt, "semantic": sem,
-             "name": name, "suggested_room": sug}
-            for eid, cnt, sem, name, sug in unassigned
-        ],
-    })
-
-
-def _update_persons_sensor(hass, brain):
-    """Aktualisiert den Personen-Zähler."""
+def _update_persons_sensor(hass):
+    """Aktualisiert den Personen-Zähler via Dispatcher."""
     home_list = []
     away_list = []
 
@@ -969,13 +839,8 @@ def _update_persons_sensor(hass, brain):
         else:
             away_list.append(name)
 
-    hass.states.async_set("sensor.kontinuum_persons_home", len(home_list), {
-        "friendly_name": "Personen Zuhause",
-        "icon": "mdi:account-group",
-        "unit_of_measurement": "Personen",
-        "home": home_list,
-        "away": away_list,
-    })
+    async_dispatcher_send(hass, SIGNAL_PERSONS_UPDATE,
+                          home=home_list, away=away_list)
 
 
 # ══════════════════════════════════════════════════════════════════

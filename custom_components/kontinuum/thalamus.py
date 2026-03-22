@@ -172,23 +172,24 @@ class Thalamus:
     
     def register_entity(self, entity_id: str, ha_area: str = "",
                         device_class: str = "", domain: str = "",
-                        friendly_name: str = "", unit: str = ""):
+                        friendly_name: str = "", unit: str = "",
+                        labels: list = None):
         """Registriert eine Entity mit Raum und Semantik."""
         if not entity_id:
             return
-        
+
         if not domain:
             domain = entity_id.split(".")[0] if "." in entity_id else ""
-        
+
         if domain in self.IGNORED_DOMAINS:
             return
-        
+
         for pat in self.IGNORED_PATTERNS:
             if pat.search(entity_id):
                 return
-        
+
         # Raum ermitteln
-        room = self._resolve_room(entity_id, ha_area, friendly_name)
+        room = self._resolve_room(entity_id, ha_area, friendly_name, labels)
         
         # Semantik ermitteln
         semantic = self._resolve_semantic(entity_id, domain, device_class,
@@ -224,7 +225,8 @@ class Thalamus:
 
         self.stats["entities_registered"] = len(self.entity_semantic)
     
-    def _resolve_room(self, entity_id: str, ha_area: str, friendly_name: str) -> str:
+    def _resolve_room(self, entity_id: str, ha_area: str, friendly_name: str,
+                       labels: list = None) -> str:
         """Ermittelt den Raum einer Entity."""
         # 1. HA Area (beste Quelle)
         if ha_area:
@@ -232,20 +234,33 @@ class Thalamus:
             for pattern, room in HA_AREA_MAP.items():
                 if pattern == area_lower or pattern in area_lower:
                     return room
-        
+            # Area vorhanden aber nicht in Map → direkt als Raum nutzen
+            # (slugified: Leerzeichen → _, Sonderzeichen entfernt)
+            slug = re.sub(r"[^a-z0-9_]", "", area_lower.replace(" ", "_"))
+            if slug:
+                return slug
+
+        # 1b. Labels als Raum-Hinweis (v0.14.0)
+        if labels:
+            for label in labels:
+                label_lower = label.lower().strip()
+                for pattern, room in HA_AREA_MAP.items():
+                    if pattern == label_lower or pattern in label_lower:
+                        return room
+
         # 2. Friendly Name
         if friendly_name:
             name_lower = friendly_name.lower()
             for hint, room in NAME_ROOM_HINTS.items():
                 if hint in name_lower:
                     return room
-        
+
         # 3. Entity ID
         eid_lower = entity_id.lower()
         for hint, room in NAME_ROOM_HINTS.items():
             if hint in eid_lower:
                 return room
-        
+
         return "unknown"
     
     def _resolve_semantic(self, entity_id: str, domain: str,
