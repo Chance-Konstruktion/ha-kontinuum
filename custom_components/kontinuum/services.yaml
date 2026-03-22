@@ -59,3 +59,9 @@ set_scene:
 status:
   name: Status anzeigen
   description: Zeigt detaillierten KONTINUUM-Status als Notification.
+
+export_brain:
+  name: Brain exportieren
+  description: >
+    Exportiert die komprimierte brain.json.gz als lesbare brain_export.json
+    nach /config/. Für externe Analyse mit DeepSeek oder anderen Tools.

@@ -739,12 +739,36 @@ def _register_services(hass, brain):
             "notification_id": "kontinuum_status_detail",
         })
 
+    async def handle_export_brain(call):
+        """Exportiert brain.json.gz als lesbare brain_export.json (für externe Analyse)."""
+        brain_path = hass.config.path(BRAIN_FILE)
+        export_path = hass.config.path("brain_export.json")
+        try:
+            with gzip.open(brain_path, "rb") as f:
+                raw = f.read()
+            with open(export_path, "w", encoding="utf-8") as f:
+                data = json.loads(raw)
+                json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+            size_kb = len(raw) // 1024
+            export_kb = os.path.getsize(export_path) // 1024
+            await hass.services.async_call("persistent_notification", "create", {
+                "title": "🧠 KONTINUUM – Brain Export",
+                "message": f"Exportiert nach `/config/brain_export.json`\n\n"
+                           f"Komprimiert: {size_kb} KB → Lesbar: {export_kb} KB\n\n"
+                           f"Für DeepSeek-Analyse im Datei-Browser öffnen.",
+                "notification_id": "kontinuum_export",
+            })
+            _LOGGER.info("Brain exportiert: %s (%d KB)", export_path, export_kb)
+        except Exception as e:
+            _LOGGER.error("Export fehlgeschlagen: %s", e)
+
     hass.services.async_register(DOMAIN, "enable_scenes", handle_enable_scenes)
     hass.services.async_register(DOMAIN, "disable_scenes", handle_disable_scenes)
     hass.services.async_register(DOMAIN, "set_scene", handle_set_scene)
     hass.services.async_register(DOMAIN, "status", handle_status)
+    hass.services.async_register(DOMAIN, "export_brain", handle_export_brain)
 
-    _LOGGER.info("Services registriert: enable_scenes, disable_scenes, set_scene, status")
+    _LOGGER.info("Services registriert: enable_scenes, disable_scenes, set_scene, status, export_brain")
 
 
 # ══════════════════════════════════════════════════════════════════

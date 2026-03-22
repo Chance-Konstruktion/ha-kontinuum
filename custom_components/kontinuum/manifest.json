@@ -2,7 +2,7 @@
   "domain": "kontinuum",
   "name": "KONTINUUM - Neuroinspired Home Intelligence",
   "version": "0.14.0",
-  "documentation": "https://github.com/kontinuum-ai",
+  "documentation": "https://github.com/Chance-Konstruktion/ha-kontinuum",
   "requirements": [],
   "dependencies": [],
   "codeowners": [],
