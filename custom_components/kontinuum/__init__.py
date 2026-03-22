@@ -47,7 +47,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.14.0"
+VERSION = "0.14.2"
 BRAIN_FILE = "brain.json.gz"
 BRAIN_FILE_LEGACY = "brain.json"
 SAVE_INTERVAL = 600
@@ -946,6 +946,9 @@ def _load_brain(brain, path):
         # v0.11.0 Migration: Unknown-Tokens bereinigen
         _migrate_purge_unknown(brain)
 
+        # v0.14.2 Migration: Float-Tokens und HACS-Pre-Release-Tokens bereinigen
+        _migrate_purge_float_tokens(brain)
+
         hp = brain["hippocampus"]
         _LOGGER.info(
             "Gehirn geladen: %d Events, %d Tokens, Accuracy %s",
@@ -1047,4 +1050,59 @@ def _migrate_purge_unknown(brain):
         "v0.11.0 Migration: %d unknown-Tokens entfernt, %d Transitions bereinigt, "
         "%d Entities gefiltert, Accuracy-Zähler zurückgesetzt",
         len(unknown_token_ids), purged_transitions, len(unknown_entities),
+    )
+
+
+def _migrate_purge_float_tokens(brain):
+    """
+    v0.14.2 Migration: Bereinigt Float-Tokens und HACS-Tokens aus dem Vokabular.
+    Entfernt Token-Strings wie:
+    - "server.network.0.546"  (unbucketed Float-Wert)
+    - "area_unknown.solar.*"  (falsche Semantik durch pv→pve-Bug)
+    - "*._pre_release*"       (HACS Pre-Release Switches)
+    - "*._cell_voltage*"      (Batteriezellen-Spannungen)
+    """
+    thalamus = brain["thalamus"]
+    hippocampus = brain["hippocampus"]
+
+    # Float-Tokens: state ist eine Zahl mit Dezimalstelle (z.B. "server.network.0.546")
+    float_pattern = re.compile(r"^[^.]+\.[^.]+\.\d+\.\d+$")
+    noise_patterns = [
+        re.compile(r"_pre_release"),
+        re.compile(r"_cell_voltage"),
+        re.compile(r"_cell_\d+"),
+    ]
+
+    purge_ids = set()
+    for token_str, token_id in list(thalamus.token_to_id.items()):
+        is_noise = bool(float_pattern.match(token_str))
+        if not is_noise:
+            for pat in noise_patterns:
+                if pat.search(token_str):
+                    is_noise = True
+                    break
+        if is_noise:
+            purge_ids.add(token_id)
+            del thalamus.token_to_id[token_str]
+            thalamus.id_to_token.pop(token_id, None)
+
+    if not purge_ids:
+        _LOGGER.info("v0.14.2 Migration: Keine Float/Noise-Tokens gefunden.")
+        return
+
+    # Hippocampus: Transitions und Totals bereinigen
+    purged = 0
+    for bucket in list(hippocampus.transitions.keys()):
+        for ngram in list(hippocampus.transitions[bucket].keys()):
+            if any(t in purge_ids for t in ngram):
+                del hippocampus.transitions[bucket][ngram]
+                hippocampus.totals[bucket].pop(ngram, None)
+                purged += 1
+
+    _LOGGER.warning(
+        "v0.14.2 Migration: %d Float/Noise-Tokens bereinigt, %d Transitions entfernt. "
+        "Vokabular: %d → %d Einträge",
+        len(purge_ids), purged,
+        len(thalamus.token_to_id) + len(purge_ids),
+        len(thalamus.token_to_id),
     )
