@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  KONTINUUM v0.13.1 – Neuroinspired Home Intelligence           ║
+║  KONTINUUM v0.13.2 – Neuroinspired Home Intelligence           ║
 ║  Home Assistant Custom Component                                 ║
 ║                                                                  ║
 ║  Architektur:                                                    ║
@@ -17,6 +17,7 @@
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
+import gzip
 import json
 import logging
 import os
@@ -42,9 +43,10 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.13.1"
-BRAIN_FILE = "brain.json"
-SAVE_INTERVAL = 300
+VERSION = "0.13.2"
+BRAIN_FILE = "brain.json.gz"
+BRAIN_FILE_LEGACY = "brain.json"
+SAVE_INTERVAL = 600
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -981,7 +983,7 @@ def _update_persons_sensor(hass, brain):
 # ══════════════════════════════════════════════════════════════════
 
 def _save_brain(brain, path=None):
-    """Speichert das Gehirn in eine JSON-Datei."""
+    """Speichert das Gehirn komprimiert als JSON.gz (RPi-SD-Card-schonend)."""
     if not path:
         return
 
@@ -1004,24 +1006,41 @@ def _save_brain(brain, path=None):
         }
 
         tmp_path = path + ".tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(data, f, indent=1, default=str)
+        raw = json.dumps(data, separators=(",", ":"), default=str).encode()
+        with gzip.open(tmp_path, "wb", compresslevel=6) as f:
+            f.write(raw)
         os.replace(tmp_path, path)
 
-        _LOGGER.debug("Gehirn gespeichert: %s", path)
+        _LOGGER.debug("Gehirn gespeichert (%d KB): %s", len(raw) // 1024, path)
     except Exception as e:
         _LOGGER.error("Fehler beim Speichern: %s", e)
 
 
 def _load_brain(brain, path):
-    """Lädt das Gehirn aus einer JSON-Datei."""
+    """Lädt das Gehirn aus einer JSON.gz-Datei (mit Fallback auf altes brain.json)."""
+    # Fallback: altes unkomprimiertes brain.json migrieren
+    legacy_path = os.path.join(os.path.dirname(path), BRAIN_FILE_LEGACY)
+    if not os.path.exists(path) and os.path.exists(legacy_path):
+        _LOGGER.info("Migriere brain.json → brain.json.gz …")
+        try:
+            with open(legacy_path) as f:
+                legacy_data = json.load(f)
+            raw = json.dumps(legacy_data, separators=(",", ":"), default=str).encode()
+            with gzip.open(path, "wb", compresslevel=6) as f:
+                f.write(raw)
+            os.rename(legacy_path, legacy_path + ".migrated")
+            _LOGGER.info("Migration abgeschlossen, altes brain.json umbenannt.")
+        except Exception as e:
+            _LOGGER.warning("Migration fehlgeschlagen (%s), starte frisch.", e)
+            return
+
     if not os.path.exists(path):
         _LOGGER.info("Kein gespeichertes Gehirn gefunden – starte frisch.")
         return
 
     try:
-        with open(path) as f:
-            data = json.load(f)
+        with gzip.open(path, "rb") as f:
+            data = json.loads(f.read())
 
         brain["thalamus"].from_dict(data.get("thalamus", {}))
         brain["hippocampus"].from_dict(data.get("hippocampus", {}))
