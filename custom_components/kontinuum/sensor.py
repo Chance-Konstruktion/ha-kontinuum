@@ -419,9 +419,11 @@ class KontinuumActivitySensor(KontinuumSensorBase):
         super().__init__(
             brain, entry,
             f"{module_key}_activity",
-            f"KONTINUUM {module_key.replace('_', ' ').title()} Aktivität",
+            f"kontinuum_{module_key}_activity",  # Ergibt entity_id sensor.kontinuum_*_activity
             icon,
         )
+        # Entity-ID explizit setzen (kompatibel mit alten template-Sensoren)
+        self.entity_id = f"sensor.kontinuum_{module_key}_activity"
         self._module_key = module_key
 
     @property
