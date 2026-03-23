@@ -217,23 +217,20 @@ class Thalamus:
         if not semantic:
             return
 
-        # v0.13.0: Entities ohne Raum → area_unknown statt verwerfen
-        # Vorher: 12.5M Events komplett gefiltert. Jetzt: Weiterleiten
-        # an area_unknown damit das System daraus lernen kann.
+        # v0.14.3: Entities ohne Raum → nur tracken, KEINE Tokens erzeugen.
+        # area_unknown erzeugte 18 Tokens / 51% Transitions → reiner Noise.
         if room == "unknown":
             self.stats["entities_filtered"] = self.stats.get("entities_filtered", 0) + 1
-            # v0.12.1: Unassigned tracken für Vorschläge
             self._unassigned_entities[entity_id] = {
                 "semantic": semantic,
                 "name": friendly_name or entity_id,
                 "domain": domain,
             }
-            # Vorschlag-basierte Soft-Zuweisung probieren
             suggested = self.suggest_room(entity_id)
             if suggested:
                 room = suggested
             else:
-                room = "area_unknown"
+                return  # Kein Raum → nicht registrieren, nur tracken
 
         self.entity_room[entity_id] = room
         self.entity_semantic[entity_id] = semantic
@@ -731,7 +728,21 @@ class Thalamus:
     def decode_token(self, token_id: int) -> str:
         """Token-ID → Token-String."""
         return self.id_to_token.get(token_id, f"?{token_id}")
-    
+
+    def resolve_entities(self, token: str) -> list:
+        """
+        Reverse-Lookup: Token-String → passende Entity-IDs.
+        z.B. "bedroom.light.on" → ["light.wiz_schlafzimmer_lampe", ...]
+        """
+        parts = token.split(".")
+        if len(parts) != 3:
+            return []
+        room, semantic, state = parts
+        return [
+            eid for eid, sem in self.entity_semantic.items()
+            if sem == semantic and self.entity_room.get(eid) == room
+        ]
+
     def update_sun(self, elevation: float, is_daylight: bool):
         """Aktualisiert Sonnenstand aus sun.sun Entity (v0.12.0)."""
         self._sun_elevation = elevation

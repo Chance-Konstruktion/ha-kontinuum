@@ -309,13 +309,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     predictions = _rank_with_basal_ganglia(
                         predictions, basal_ganglia, bucket)
 
-                # PFC entscheidet
-                decision = prefrontal.evaluate(predictions, thalamus)
+                # PFC entscheidet (mit Q-Value Boost aus Basalganglien)
+                decision = prefrontal.evaluate(
+                    predictions, thalamus, basal_ganglia, bucket)
                 if decision:
                     # Basalganglien: Aktion registrieren für Outcome-Tracking
-                    basal_ganglia.register_action(
-                        decision.entity_id, decision.token_id,
-                        bucket, decision.token)
+                    if decision.entity_id:
+                        basal_ganglia.register_action(
+                            decision.entity_id, decision.token_id,
+                            bucket, decision.token)
                     _process_decision(hass, brain, decision)
 
                 # Sensoren updaten (native Entitäten via Dispatcher)
@@ -502,14 +504,38 @@ def _inject_token(hass, brain, token_info, timestamp):
 
 def _process_decision(hass, brain, decision):
     """Verarbeitet eine PFC-Entscheidung."""
-    if decision.stage == "SUGGEST":
+    prefrontal = brain["prefrontal"]
+
+    if decision.stage == "EXECUTE":
+        # Tatsächlich ausführen
+        service_call = prefrontal.get_service_call(decision)
+        if service_call and decision.entity_id:
+            domain = service_call["domain"]
+            service = service_call["service"]
+            entity_id = decision.entity_id
+            parts = decision.token.split(".")
+            semantic = parts[1] if len(parts) == 3 else ""
+
+            _LOGGER.info(
+                "KONTINUUM EXECUTE: %s.%s → %s (conf=%.0f%%, util=%.2f, risk=%.2f)",
+                domain, service, entity_id,
+                decision.confidence * 100, decision.utility, decision.risk,
+            )
+
+            _async_service_call(hass, domain, service, {"entity_id": entity_id})
+            prefrontal.mark_own_action(entity_id, token=decision.token, semantic=semantic)
+        else:
+            _LOGGER.warning(
+                "KONTINUUM EXECUTE abgebrochen: kein Service/Entity für %s", decision.token)
+
+    elif decision.stage == "SUGGEST":
         _notify(hass,
-            "🧠 KONTINUUM – Vorschlag",
+            "KONTINUUM – Vorschlag",
             f"KONTINUUM würde gerne **{decision.token}** ausführen.\n"
+            f"Entity: {decision.entity_id or '?'}\n"
             f"Confidence: {decision.confidence:.0%} | "
             f"Risiko: {decision.risk:.2f}\n"
-            f"Quelle: {decision.source}\n\n"
-            f"(Noch im Lernmodus – keine Aktion)",
+            f"Quelle: {decision.source}",
             "kontinuum_suggest",
         )
 
@@ -796,13 +822,73 @@ def _register_services(hass, brain):
         except Exception as e:
             _LOGGER.error("Export fehlgeschlagen: %s", e)
 
+    async def handle_activate(call):
+        """
+        Schaltet autonome Ausführung für einen semantischen Typ frei.
+        Service-Call: kontinuum.activate mit data: {semantic: "light"}
+
+        Schrittweise Freischaltung:
+        1. Erst "light" freischalten, beobachten
+        2. Dann "switch", "fan", etc.
+        3. Jederzeit mit kontinuum.deactivate zurücknehmen
+        """
+        semantic = call.data.get("semantic", "").strip().lower()
+        if not semantic:
+            _LOGGER.warning("kontinuum.activate: 'semantic' fehlt")
+            return
+
+        valid = {"light", "switch", "fan", "cover", "climate",
+                 "media", "automation", "vacuum"}
+        if semantic not in valid:
+            _LOGGER.warning("kontinuum.activate: '%s' ist kein gültiger Typ. "
+                            "Erlaubt: %s", semantic, ", ".join(sorted(valid)))
+            return
+
+        prefrontal = brain["prefrontal"]
+        prefrontal.activated_semantics.add(semantic)
+        _LOGGER.info("KONTINUUM: '%s' für autonome Ausführung freigeschaltet", semantic)
+
+        await hass.services.async_call("persistent_notification", "create", {
+            "title": f"KONTINUUM – {semantic} aktiviert",
+            "message": f"**{semantic}** ist jetzt für autonome Ausführung freigeschaltet.\n\n"
+                       f"KONTINUUM wird {semantic}-Entities selbständig steuern, "
+                       f"wenn Confidence und Utility hoch genug sind.\n\n"
+                       f"Aktive Typen: {', '.join(sorted(prefrontal.activated_semantics)) or 'keine'}\n\n"
+                       f"Zum Deaktivieren: `kontinuum.deactivate` mit `semantic: {semantic}`",
+            "notification_id": "kontinuum_activate",
+        })
+
+    async def handle_deactivate(call):
+        """Deaktiviert autonome Ausführung für einen semantischen Typ."""
+        semantic = call.data.get("semantic", "").strip().lower()
+        prefrontal = brain["prefrontal"]
+
+        if semantic == "all":
+            prefrontal.activated_semantics.clear()
+            _LOGGER.info("KONTINUUM: Alle Semantiken deaktiviert")
+        elif semantic in prefrontal.activated_semantics:
+            prefrontal.activated_semantics.discard(semantic)
+            _LOGGER.info("KONTINUUM: '%s' deaktiviert", semantic)
+        else:
+            _LOGGER.warning("KONTINUUM: '%s' war nicht aktiviert", semantic)
+            return
+
+        await hass.services.async_call("persistent_notification", "create", {
+            "title": "KONTINUUM – Deaktiviert",
+            "message": f"Aktive Typen: {', '.join(sorted(prefrontal.activated_semantics)) or 'keine'}",
+            "notification_id": "kontinuum_activate",
+        })
+
     hass.services.async_register(DOMAIN, "enable_scenes", handle_enable_scenes)
     hass.services.async_register(DOMAIN, "disable_scenes", handle_disable_scenes)
     hass.services.async_register(DOMAIN, "set_scene", handle_set_scene)
     hass.services.async_register(DOMAIN, "status", handle_status)
     hass.services.async_register(DOMAIN, "export_brain", handle_export_brain)
+    hass.services.async_register(DOMAIN, "activate", handle_activate)
+    hass.services.async_register(DOMAIN, "deactivate", handle_deactivate)
 
-    _LOGGER.info("Services registriert: enable_scenes, disable_scenes, set_scene, status, export_brain")
+    _LOGGER.info("Services registriert: enable_scenes, disable_scenes, set_scene, "
+                 "status, export_brain, activate, deactivate")
 
 
 # ══════════════════════════════════════════════════════════════════

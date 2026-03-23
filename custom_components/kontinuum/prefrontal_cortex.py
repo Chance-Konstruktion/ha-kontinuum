@@ -77,37 +77,51 @@ class PrefrontalCortex:
         self.amygdala = amygdala
         self.shadow_mode = True
         self.total_decisions = 0
+        self.total_executions = 0
         self.overrides_detected = 0
         self.own_actions = {}
         self.utility_weights = {}
         self._feedback_log = []
-    
-    def evaluate(self, predictions: list, thalamus) -> Decision:
-        """Bewertet Predictions und trifft eine Entscheidung."""
+        # v0.14.3: FAL – freigeschaltete Semantiken für autonome Ausführung
+        self.activated_semantics = set()  # z.B. {"light", "switch"}
+
+    def evaluate(self, predictions: list, thalamus,
+                 basal_ganglia=None, bucket: int = 0) -> Decision:
+        """
+        Bewertet Predictions und trifft eine Entscheidung.
+        v0.14.3: Q-Value aus BasalGanglia fließt in Utility ein.
+                 Entity-ID wird per Reverse-Lookup aufgelöst.
+        """
         best_decision = None
         best_utility = -1
-        
+
         for token_id, prob, conf, source in predictions:
             token = thalamus.decode_token(token_id)
             parts = token.split(".")
             if len(parts) != 3:
                 continue
-            
+
             room, semantic, state = parts
             if semantic not in ACTIONABLE_SEMANTICS:
                 continue
-            
+
             # Amygdala fragen
             assessment = self.amygdala.assess(
                 token, semantic, room, state, conf)
-            
+
             if assessment["decision"] == "VETO":
                 continue
-            
+
             risk = assessment["risk"]
             weight = self.utility_weights.get(semantic, 1.0)
-            utility = conf * weight - risk * 0.5
-            
+
+            # Q-Value Boost aus Basalganglien (±0.2 Einfluss)
+            q_boost = 0.0
+            if basal_ganglia:
+                q_boost = basal_ganglia.get_action_priority(token_id, bucket) * 0.2
+
+            utility = conf * weight - risk * 0.5 + q_boost
+
             if utility > best_utility:
                 best_utility = utility
                 d = Decision()
@@ -118,21 +132,29 @@ class PrefrontalCortex:
                 d.risk = risk
                 d.source = source
                 d.reasons = assessment["reasons"]
-                
-                if self.shadow_mode:
+
+                # Entity-ID per Reverse-Lookup auflösen
+                candidates = thalamus.resolve_entities(token)
+                d.entity_id = candidates[0] if candidates else ""
+
+                # Stage bestimmen: shadow_mode → OBSERVE
+                # activated_semantics → EXECUTE nur für freigeschaltete Typen
+                if self.shadow_mode and semantic not in self.activated_semantics:
                     d.stage = Decision.OBSERVE
-                elif utility >= self.UTILITY_THRESHOLD_EXECUTE:
+                elif semantic in self.activated_semantics and utility >= self.UTILITY_THRESHOLD_EXECUTE:
                     d.stage = Decision.EXECUTE
                 elif utility >= self.UTILITY_THRESHOLD_SUGGEST:
                     d.stage = Decision.SUGGEST
                 else:
                     d.stage = Decision.OBSERVE
-                
+
                 best_decision = d
-        
+
         if best_decision:
             self.total_decisions += 1
-        
+            if best_decision.stage == Decision.EXECUTE:
+                self.total_executions += 1
+
         return best_decision
     
     def get_service_call(self, decision: Decision) -> dict:
@@ -253,24 +275,30 @@ class PrefrontalCortex:
         return {
             "shadow_mode": self.shadow_mode,
             "total_decisions": self.total_decisions,
+            "total_executions": self.total_executions,
             "overrides_detected": self.overrides_detected,
             "utility_weights": self.utility_weights,
+            "activated_semantics": list(self.activated_semantics),
             "feedback_log": self._feedback_log[-20:],
         }
-    
+
     def from_dict(self, data: dict):
         self.shadow_mode = data.get("shadow_mode", True)
         self.total_decisions = data.get("total_decisions", 0)
+        self.total_executions = data.get("total_executions", 0)
         self.overrides_detected = data.get("overrides_detected", 0)
         self.utility_weights = data.get("utility_weights", {})
+        self.activated_semantics = set(data.get("activated_semantics", []))
         self._feedback_log = data.get("feedback_log", [])
-    
+
     @property
     def stats(self) -> dict:
         return {
             "shadow_mode": self.shadow_mode,
             "total_decisions": self.total_decisions,
+            "total_executions": self.total_executions,
             "overrides_detected": self.overrides_detected,
+            "activated_semantics": list(self.activated_semantics),
             "utility_weights": self.utility_weights,
             "override_rate": f"{self.overrides_detected / max(1, self.total_decisions):.1%}",
         }
