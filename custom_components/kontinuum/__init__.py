@@ -90,6 +90,22 @@ def _install_dashboard(hass):
     return True
 
 
+async def _register_dashboard_panel(hass):
+    """Registriert das KONTINUUM Dashboard als Panel in der HA Sidebar."""
+    try:
+        hass.components.frontend.async_register_built_in_panel(
+            component_name="iframe",
+            sidebar_title="KONTINUUM",
+            sidebar_icon="mdi:brain",
+            frontend_url_path="kontinuum",
+            config={"url": "/local/kontinuum.html"},
+            require_admin=False,
+        )
+        _LOGGER.info("KONTINUUM Dashboard Panel in Sidebar registriert")
+    except Exception as e:
+        _LOGGER.warning("Dashboard Panel konnte nicht registriert werden: %s", e)
+
+
 def _notify(hass, title, message, notification_id):
     """Async-safe Notification (fire-and-forget)."""
     hass.async_create_task(
@@ -132,6 +148,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             installed = await hass.async_add_executor_job(_install_dashboard, hass)
             if installed:
                 _LOGGER.info("KONTINUUM Dashboard verfügbar unter /local/kontinuum.html")
+                await _register_dashboard_panel(hass)
 
         # ── Module initialisieren ─────────────────────────────
         thalamus = Thalamus()
@@ -428,6 +445,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
     if brain:
         brain_path = hass.config.path(BRAIN_FILE)
         await hass.async_add_executor_job(_save_brain, brain, brain_path)
+
+    # Dashboard-Panel entfernen
+    try:
+        hass.components.frontend.async_remove_panel("kontinuum")
+    except Exception:
+        pass
 
     hass.data.pop(DOMAIN, None)
     _LOGGER.info("KONTINUUM entladen und gespeichert.")
