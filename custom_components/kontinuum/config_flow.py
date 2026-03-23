@@ -113,6 +113,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
                 **self.config_entry.data,
                 "preset": preset_key,
                 "enable_dashboard": user_input.get("enable_dashboard", True),
+                "enable_cortex": user_input.get("enable_cortex", False),
                 **{k: v for k, v in preset.items() if k != "label"},
             }
             self.hass.config_entries.async_update_entry(
@@ -123,6 +124,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
 
         current = self.config_entry.data.get("preset", "ausgeglichen")
         current_dashboard = self.config_entry.data.get("enable_dashboard", True)
+        current_cortex = self.config_entry.data.get("enable_cortex", False)
         preset_options = {k: v["label"] for k, v in PRESETS.items()}
 
         return self.async_show_form(
@@ -132,5 +134,6 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
                     preset_options
                 ),
                 vol.Required("enable_dashboard", default=current_dashboard): bool,
+                vol.Required("enable_cortex", default=current_cortex): bool,
             }),
         )

@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "KONTINUUM Einrichtung",
-        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als Nächstes passiert. Wähle eine Persönlichkeit \u2013 sie bestimmt, wie schnell das System lernt und handelt.",
+        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als N\u00e4chstes passiert. W\u00e4hle eine Pers\u00f6nlichkeit \u2013 sie bestimmt, wie schnell das System lernt und handelt.",
         "data": {
-          "preset": "Persönlichkeit"
+          "preset": "Pers\u00f6nlichkeit"
         }
       },
       "dashboard": {
         "title": "Dashboard",
-        "description": "KONTINUUM enthält ein Gehirn-Visualisierungs-Dashboard. Wenn aktiviert, wird es automatisch nach /config/www/ installiert und ist als Iframe-Panel erreichbar.",
+        "description": "KONTINUUM enth\u00e4lt ein Gehirn-Visualisierungs-Dashboard. Wenn aktiviert, wird es automatisch nach /config/www/ installiert und ist als Iframe-Panel erreichbar.",
         "data": {
           "enable_dashboard": "Dashboard aktivieren"
         }
@@ -24,10 +24,11 @@
     "step": {
       "init": {
         "title": "KONTINUUM Einstellungen",
-        "description": "Ändere wie schnell KONTINUUM lernt und handelt. Änderungen werden nach Neustart wirksam.",
+        "description": "\u00c4ndere wie schnell KONTINUUM lernt und handelt. Aktiviere Cortex f\u00fcr LLM-gest\u00fctzte Multi-Agent-Entscheidungen (ben\u00f6tigt Ollama oder Cloud-API).",
         "data": {
-          "preset": "Persönlichkeit",
-          "enable_dashboard": "Dashboard aktivieren"
+          "preset": "Pers\u00f6nlichkeit",
+          "enable_dashboard": "Dashboard aktivieren",
+          "enable_cortex": "Cortex aktivieren (LLM-Agents)"
         }
       }
     }
