@@ -21,6 +21,9 @@ SIGNAL_SENSORS_UPDATE = f"{DOMAIN}_sensors_update"
 SIGNAL_PERSONS_UPDATE = f"{DOMAIN}_persons_update"
 
 
+SIGNAL_CORTEX_UPDATE = f"{DOMAIN}_cortex_update"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -54,6 +57,14 @@ async def async_setup_entry(
         KontinuumActivitySensor(brain, entry, "spatial", "mdi:map-marker-radius"),
         KontinuumActivitySensor(brain, entry, "basalganglia", "mdi:arrow-decision"),
     ]
+
+    # ── Cortex Agent-Sensoren (1 pro konfiguriertem Agent) ────
+    cortex = brain.get("cortex")
+    if cortex and cortex.enabled:
+        for i, agent in enumerate(cortex.agents, 1):
+            sensors.append(
+                KontinuumCortexAgentSensor(brain, entry, agent, slot=i)
+            )
 
     async_add_entities(sensors)
     _LOGGER.info("KONTINUUM: %d Sensoren als native Entitäten erstellt", len(sensors))
@@ -447,3 +458,92 @@ class KontinuumActivitySensor(KontinuumSensorBase):
     @property
     def extra_state_attributes(self):
         return {"module": self._module_key}
+
+
+# ══════════════════════════════════════════════════════════════════
+# CORTEX AGENT-SENSOREN (1 pro konfiguriertem Agent)
+# ══════════════════════════════════════════════════════════════════
+
+AGENT_ROLE_ICONS = {
+    "comfort": "mdi:sofa",
+    "energy": "mdi:solar-power",
+    "safety": "mdi:shield-check",
+    "custom": "mdi:robot",
+}
+
+
+class KontinuumCortexAgentSensor(KontinuumSensorBase):
+    """
+    Status-Sensor für einen einzelnen Cortex-Agent.
+
+    Zeigt: Provider, Modell, Aufrufe, Fehlerrate, letzter Call.
+    State: "active" / "idle" / "error" / "disabled"
+    """
+
+    def __init__(self, brain, entry, agent, slot: int):
+        icon = AGENT_ROLE_ICONS.get(agent.name, "mdi:robot")
+        super().__init__(
+            brain, entry,
+            f"cortex_agent_{slot}",
+            f"Cortex Agent {slot} ({agent.name})",
+            icon,
+        )
+        self._agent = agent
+        self._slot = slot
+        self._signal = SIGNAL_CORTEX_UPDATE
+
+    async def async_added_to_hass(self) -> None:
+        """Beide Signale verbinden (Cortex + allgemein)."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, SIGNAL_CORTEX_UPDATE, self._handle_update
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, SIGNAL_SENSORS_UPDATE, self._handle_update
+            )
+        )
+
+    @property
+    def native_value(self):
+        agent = self._agent
+        if agent.total_errors > 0 and agent.total_calls > 0:
+            error_rate = agent.total_errors / agent.total_calls
+            if error_rate > 0.5:
+                return "error"
+        if agent.total_calls == 0:
+            return "idle"
+        # Aktiv wenn letzter Call < 10min her
+        import time
+        if time.time() - agent.last_call_time < 600:
+            return "active"
+        return "idle"
+
+    @property
+    def extra_state_attributes(self):
+        agent = self._agent
+        import time
+        last_ago = ""
+        if agent.last_call_time > 0:
+            secs = int(time.time() - agent.last_call_time)
+            if secs < 60:
+                last_ago = f"{secs}s ago"
+            elif secs < 3600:
+                last_ago = f"{secs // 60}m ago"
+            else:
+                last_ago = f"{secs // 3600}h ago"
+
+        return {
+            "slot": self._slot,
+            "role": agent.name,
+            "provider": agent.provider,
+            "model": agent.model,
+            "url": agent.url,
+            "total_calls": agent.total_calls,
+            "total_errors": agent.total_errors,
+            "error_rate": (
+                f"{agent.total_errors / max(1, agent.total_calls):.0%}"
+            ),
+            "last_call": last_ago,
+        }

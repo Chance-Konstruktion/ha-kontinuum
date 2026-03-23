@@ -57,6 +57,7 @@ SAVE_INTERVAL = 600
 PLATFORMS = [Platform.SENSOR]
 SIGNAL_SENSORS_UPDATE = f"{DOMAIN}_sensors_update"
 SIGNAL_PERSONS_UPDATE = f"{DOMAIN}_persons_update"
+SIGNAL_CORTEX_UPDATE = f"{DOMAIN}_cortex_update"
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -979,6 +980,10 @@ def _register_services(hass, brain):
             return
 
         result = await cortex.consult(brain)
+
+        # Agent-Sensoren updaten (unabhängig vom Ergebnis)
+        async_dispatcher_send(hass, SIGNAL_CORTEX_UPDATE)
+
         if not result:
             return
 

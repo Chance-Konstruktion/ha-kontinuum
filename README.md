@@ -5,7 +5,7 @@
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.14.0-blue)
+![Version](https://img.shields.io/badge/version-0.15.0-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 KONTINUUM ist eine experimentelle Home-Assistant-Integration, die dein Zuhause ohne Regeln, ohne Konfiguration und ohne Cloud versteht.
@@ -145,6 +145,8 @@ Thalamus → Hippocampus → Cerebellum → PFC → Aktion
 Hypothalamus  Spatial    Basalganglien Amygdala
     ↑         Cortex    (Belohnung)
   Insula ←─────┘
+                  ↓
+               Cortex (LLM-Agents)
 ```
 
 Die einzelnen Module erfüllen unterschiedliche Aufgaben:
@@ -193,6 +195,17 @@ Bewertet Aktionen nach Sicherheit und kann Veto einlegen, bevor etwas Unerwünsc
 ### Präfrontaler Kortex – Die Entscheidung
 
 Wägt Vorhersagen ab, bewertet Nutzen gegen Risiko und entscheidet ob gehandelt wird.
+
+### Cortex – Bewusstes Denken (LLM-Agents)
+
+Optional: Bis zu 3 LLM-Agents (Ollama, OpenAI, Claude, Gemini, Grok) mit eigenen Rollen:
+- **Comfort-Agent** – Optimiert Beleuchtung, Temperatur und Stimmung
+- **Energy-Agent** – Überwacht Solar, Batterie und Verbrauch
+- **Safety-Agent** – Erkennt Anomalien und hat Veto-Recht
+
+Die Agents diskutieren untereinander (Multi-Agent-Diskussion) und finden einen Konsens. KONTINUUM (Prefrontal) ist der Orchestrator und trifft die finale Entscheidung.
+
+**Cortex Bridge:** LLM-Ergebnisse fließen zurück ins Gehirn – Hippocampus speichert sie als Erfahrung, Basalganglien lernen daraus, Amygdala bewertet Risiken und das Cerebellum bildet neue Reflexe. KONTINUUM wird langfristig klüger, auch wenn der Cortex später deaktiviert wird.
 
 ---
 
@@ -276,14 +289,6 @@ Das Ergebnis: Die Kaffeemaschine wird automatisch vorbereitet, noch bevor du dar
 
 Danach beginnt KONTINUUM automatisch zu lernen. **Keine Konfiguration notwendig.**
 
-### Migration von v0.13.x
-
-Bei einem Update von v0.13.x auf v0.14.0:
-
-1. **`brain.json`** wird automatisch zu `brain.json.gz` migriert – kein Lernverlust
-2. **`template`-Sensoren** aus `configuration.yaml` können entfernt werden (die `kontinuum_*_activity`-Sensoren werden jetzt nativ erstellt)
-3. **`input_number.k_*`-Helfer** können manuell gelöscht werden (werden bei Deinstallation automatisch entfernt)
-
 ---
 
 ## Persönlichkeits-Presets
@@ -297,6 +302,38 @@ Bei der Installation wählst du wie schnell KONTINUUM lernt:
 | **Konservativ** | Langsam | ~1 Woche | Niedrig |
 
 Nachträglich änderbar: Integrationen → KONTINUUM → Konfigurieren
+
+---
+
+## Cortex (LLM-Agents) einrichten
+
+Optional kannst du LLM-Agents aktivieren für komplexe Entscheidungen:
+
+1. Integrationen → KONTINUUM → Konfigurieren
+2. **Enable Cortex** aktivieren
+3. Agent konfigurieren:
+   - **Rolle** wählen (Comfort / Energy / Safety / Custom)
+   - **Provider** wählen (Ollama, OpenAI, Claude, Gemini, Grok)
+   - **URL** eingeben – bei Ollama reicht z.B. `localhost` oder `192.168.1.100` (http:// und Port werden automatisch ergänzt)
+4. Im nächsten Schritt: **Modell auswählen**
+   - Bei Ollama werden alle installierten Modelle als Dropdown angezeigt
+   - Bei Cloud-Providern wird das Default-Modell vorgeschlagen
+5. Optional: Weitere Agents hinzufügen (bis zu 3)
+
+### Ollama-Tipps
+
+```bash
+# Ollama installieren (falls noch nicht geschehen)
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Modell herunterladen
+ollama pull llama3.2
+
+# Prüfen welche Modelle installiert sind
+ollama list
+```
+
+Der Config Flow prüft automatisch die Verbindung zu Ollama und zeigt die verfügbaren Modelle an.
 
 ---
 
@@ -323,9 +360,28 @@ KONTINUUM erstellt automatisch diese Sensoren:
 | `sensor.kontinuum_basal_ganglia` | Habits + Go/NoGo |
 | `sensor.kontinuum_unknown_entities` | Entities ohne Raum |
 
+#### Cortex Agent-Sensoren
+
+Wenn Cortex aktiviert ist, wird pro konfiguriertem Agent ein Sensor erstellt:
+
+| Sensor | Beschreibung |
+|--------|-------------|
+| `sensor.kontinuum_cortex_agent_1` | Status Agent 1 (active/idle/error) |
+| `sensor.kontinuum_cortex_agent_2` | Status Agent 2 |
+| `sensor.kontinuum_cortex_agent_3` | Status Agent 3 |
+
+Jeder Agent-Sensor zeigt als Attribute:
+- `role` – Rolle (comfort/energy/safety/custom)
+- `provider` – Provider (ollama/openai/claude/...)
+- `model` – Verwendetes Modell
+- `total_calls` – Anzahl Aufrufe
+- `total_errors` – Fehleranzahl
+- `error_rate` – Fehlerrate
+- `last_call` – Letzter Aufruf (z.B. "5m ago")
+
 #### Aktivitäts-Sensoren (Dashboard)
 
-Diese Sensoren zeigen die Aktivität jedes Gehirnmoduls (0.0 – 1.0) und ersetzen die bisherigen `template`-Sensoren + `input_number`-Helfer aus der `configuration.yaml`:
+Diese Sensoren zeigen die Aktivität jedes Gehirnmoduls (0.0 – 1.0):
 
 | Sensor | Beschreibung |
 |--------|-------------|
@@ -341,6 +397,17 @@ Diese Sensoren zeigen die Aktivität jedes Gehirnmoduls (0.0 – 1.0) und ersetz
 
 ---
 
+## Dashboard
+
+KONTINUUM enthält ein Gehirn-Visualisierungs-Dashboard. Wenn bei der Installation aktiviert, erscheint es als **Sidebar-Eintrag** in Home Assistant:
+
+- Sidebar → **KONTINUUM** (Brain-Icon)
+- Oder direkt: `/kontinuum`
+
+Das Dashboard zeigt alle Gehirnmodule, Aktivitäten, Vorhersagen und den Systemstatus in Echtzeit.
+
+---
+
 ## Services
 
 | Service | Beschreibung |
@@ -349,6 +416,12 @@ Diese Sensoren zeigen die Aktivität jedes Gehirnmoduls (0.0 – 1.0) und ersetz
 | `kontinuum.disable_scenes` | Licht-Szenen deaktivieren |
 | `kontinuum.set_scene` | Szene pro Modus konfigurieren |
 | `kontinuum.status` | Detaillierten Status als Notification |
+| `kontinuum.export_brain` | Gehirn-Snapshot exportieren |
+| `kontinuum.activate` | Semantik für autonome Aktionen aktivieren |
+| `kontinuum.deactivate` | Semantik deaktivieren |
+| `kontinuum.configure_agent` | Cortex-Agent konfigurieren |
+| `kontinuum.cortex_consult` | Cortex-Beratung manuell auslösen |
+| `kontinuum.remove_agent` | Cortex-Agent entfernen |
 
 ---
 
@@ -377,74 +450,17 @@ action:
 ## Technische Details
 
 - **Kein ML, kein Deep Learning** – reine Statistik (N-Gramm Markov-Ketten)
-- **Komplett lokal** – keine Cloud, keine API-Calls
-- **~5.000 Zeilen Python** – läuft auf Raspberry Pi 4
+- **Komplett lokal** – keine Cloud, keine API-Calls (Cortex optional)
+- **~6.000 Zeilen Python** – läuft auf Raspberry Pi 4
 - **21-dimensionaler Kontextvektor** – Zeit, Sonnenstand, Energie, Trends, Modus
 - **Adaptive Kontext-Buckets** – wächst von 6 auf 96 (Zeit × Modus × Energie × Tagestyp)
 - **Persistenz** – Gehirn wird in `brain.json.gz` komprimiert gespeichert (RPi-SD-schonend)
 - **Shadow-Mode** – beobachtet und validiert Vorhersagen bevor es handelt
 - **Label-Support** – HA-Labels als Raum-Hinweis nutzbar
 - **Saubere Deinstallation** – Entfernt brain, Helfer und Entities automatisch
-
----
-
-## Changelog
-
-### v0.14.0 – Native Sensor Platform + Deinstallation
-
-- **Native Sensoren** – Alle Sensoren als echte HA-Entitäten (kein `hass.states.async_set()` mehr)
-- **Aktivitäts-Sensoren** – `sensor.kontinuum_*_activity` direkt in der Integration erstellt. Die `template`-Sensoren und `input_number.k_*`-Helfer aus `configuration.yaml` können entfernt werden
-- **Basalganglien-Sensor** – `sensor.kontinuum_basal_ganglia` zeigt Habits, Go/NoGo, Q-Entries
-- **Area-Fix** – HA-Areas werden jetzt direkt als Raum genutzt, auch wenn sie nicht in der internen Map stehen. Entitäten mit zugewiesener Area werden nicht mehr als `area_unknown` angezeigt
-- **Label-Support** – HA-Labels werden als Raum-Hinweis ausgewertet (z.B. Label „Erdgeschoss" → room)
-- **Saubere Deinstallation** – `async_remove_entry` löscht `brain.json.gz`, `input_number.k_*`-Helfer und alle Entitäten. Keine Spuren nach der Deinstallation
-- **Komprimiertes Speichern** – `brain.json` → `brain.json.gz` (gzip). Automatische Migration beim Start. ~85% kleiner, SD-Karte geschont
-- **SAVE_INTERVAL** – 300s → 600s (weniger SD-Schreibzugriffe)
-- **GitHub-Links** – Repository-URL auf `Chance-Konstruktion/ha-kontinuum` korrigiert
-
-### v0.13.1 – Basalganglien + Fixes
-
-- **Basalganglien** – Belohnungslernen (Go/NoGo, Q-Values, Habits)
-- **Spatial Cortex** – `area_unknown` bei Raumbestimmung ignoriert
-- **Hypothalamus** – Energy Cooldown 600s → 60s
-
-### v0.12.0 – Intelligenz-Upgrade
-
-- **Sonnenstand-Bewusstsein** – Thalamus nutzt `sun.sun` für Sonnenhöhe und Tag/Nacht im Kontextvektor
-- **Hypothalamus-Trends** – erkennt Temperatur-, Batterie- und Solar-Verläufe (steigend/fallend)
-- **Wochentag-Gedächtnis** – Hippocampus unterscheidet Werktage von Wochenenden (Phase 4: 96 Buckets)
-- **Bewegungsmuster** – Spatial Cortex lernt Raum-Sequenzen und sagt den nächsten Raum vorher
-- **Zirkadiane Priors** – Insula nutzt Tageslicht für biologisch plausiblere Modus-Erkennung
-- **Mode-Index-Fix** – Hippocampus las versehentlich Temperatur statt Modus (ctx[12] → ctx[-3])
-- Kontextvektor erweitert: 15 → 21 Dimensionen
-
-### v0.11.0 – Unknown-Filter
-
-- Unknown-Token-Filter: 75% Müll-Transitions eliminiert
-- Entity-Whitelist: nur Entities mit bekanntem Raum erzeugen Tokens
-- Min-Delay-Filter im Cerebellum
-- Migrations-Logik bereinigt alte Unknown-Daten beim Update
-
-### v0.10.0
-
-- Config Flow Fix (OptionsFlow für HA 2024.x+)
-- Adaptive Hippocampus-Buckets (6→24→48 je nach Datenmenge)
-- Self-Loop-Filter im Cerebellum
-- Spatial Cortex Tuning (Hysterese 1.2, Confirmation 30s)
-- 11 Dashboard-kompatible Sensoren
-- 30+ deutsche Raum-Keywords im Thalamus
-
-### v0.9.0
-
-- Config Flow (kein configuration.yaml mehr)
-- Persönlichkeits-Presets (Mutig/Ausgeglichen/Konservativ)
-- Alle Service-Calls async
-
-### v0.8.0
-
-- Personen-Zähler, HA Notifications, Licht-Szenen
-- Services (enable_scenes, set_scene, status)
-- kontinuum_mode_changed Event
+- **Cortex Bridge** – LLM-Ergebnisse fließen ins Gehirn zurück (Hippocampus, Basalganglien, Amygdala, Cerebellum)
+- **Multi-Agent-Diskussion** – Agents diskutieren und finden Konsens
+- **Ollama Model Discovery** – Config Flow erkennt installierte Modelle automatisch
 
 ---
 
