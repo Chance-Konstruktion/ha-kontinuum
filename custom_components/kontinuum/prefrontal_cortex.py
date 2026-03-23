@@ -48,10 +48,11 @@ class Decision:
         self.confidence = 0.0
         self.utility = 0.0
         self.risk = 0.0
+        self.n_obs = 0
         self.stage = self.OBSERVE
         self.source = ""
         self.reasons = []
-    
+
     def to_dict(self):
         return {
             "token": self.token,
@@ -59,6 +60,7 @@ class Decision:
             "confidence": self.confidence,
             "utility": self.utility,
             "risk": self.risk,
+            "n_obs": self.n_obs,
             "stage": self.stage,
             "source": self.source,
             "reasons": self.reasons,
@@ -67,11 +69,14 @@ class Decision:
 
 class PrefrontalCortex:
     """Entscheidungsinstanz von KONTINUUM."""
-    
+
     UTILITY_THRESHOLD_SUGGEST = 0.4
     UTILITY_THRESHOLD_EXECUTE = 0.6
     OVERRIDE_WINDOW = 60
     IMPLICIT_POSITIVE_DELAY = 300
+    # Minimum Beobachtungen bevor ein Pattern handeln darf
+    MIN_OBS_SUGGEST = 20   # n >= 20 für Vorschläge
+    MIN_OBS_EXECUTE = 100  # n >= 100 für autonome Aktionen
     
     def __init__(self, amygdala):
         self.amygdala = amygdala
@@ -83,31 +88,42 @@ class PrefrontalCortex:
         self._feedback_log = []
     
     def evaluate(self, predictions: list, thalamus) -> Decision:
-        """Bewertet Predictions und trifft eine Entscheidung."""
+        """
+        Bewertet Predictions und trifft eine Entscheidung.
+
+        Predictions: [(token_id, prob, conf, source, n_obs), ...]
+        n_obs gatet die Entscheidungsebene:
+        - n < MIN_OBS_SUGGEST → OBSERVE (zu wenig Daten)
+        - n < MIN_OBS_EXECUTE → maximal SUGGEST
+        - n >= MIN_OBS_EXECUTE → EXECUTE möglich
+        """
         best_decision = None
         best_utility = -1
-        
-        for token_id, prob, conf, source in predictions:
+
+        for prediction in predictions:
+            token_id, prob, conf, source = prediction[:4]
+            n_obs = prediction[4] if len(prediction) > 4 else 0
+
             token = thalamus.decode_token(token_id)
             parts = token.split(".")
             if len(parts) != 3:
                 continue
-            
+
             room, semantic, state = parts
             if semantic not in ACTIONABLE_SEMANTICS:
                 continue
-            
+
             # Amygdala fragen
             assessment = self.amygdala.assess(
                 token, semantic, room, state, conf)
-            
+
             if assessment["decision"] == "VETO":
                 continue
-            
+
             risk = assessment["risk"]
             weight = self.utility_weights.get(semantic, 1.0)
             utility = conf * weight - risk * 0.5
-            
+
             if utility > best_utility:
                 best_utility = utility
                 d = Decision()
@@ -117,22 +133,27 @@ class PrefrontalCortex:
                 d.utility = utility
                 d.risk = risk
                 d.source = source
+                d.n_obs = n_obs
                 d.reasons = assessment["reasons"]
-                
+
                 if self.shadow_mode:
                     d.stage = Decision.OBSERVE
-                elif utility >= self.UTILITY_THRESHOLD_EXECUTE:
+                elif n_obs < self.MIN_OBS_SUGGEST:
+                    # Zu wenig Beobachtungen – nur beobachten
+                    d.stage = Decision.OBSERVE
+                    d.reasons = d.reasons + [f"n={n_obs} < {self.MIN_OBS_SUGGEST} (zu wenig Daten)"]
+                elif utility >= self.UTILITY_THRESHOLD_EXECUTE and n_obs >= self.MIN_OBS_EXECUTE:
                     d.stage = Decision.EXECUTE
                 elif utility >= self.UTILITY_THRESHOLD_SUGGEST:
                     d.stage = Decision.SUGGEST
                 else:
                     d.stage = Decision.OBSERVE
-                
+
                 best_decision = d
-        
+
         if best_decision:
             self.total_decisions += 1
-        
+
         return best_decision
     
     def get_service_call(self, decision: Decision) -> dict:

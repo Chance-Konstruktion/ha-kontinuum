@@ -223,17 +223,24 @@ class KontinuumPredictionSensor(KontinuumSensorBase):
     @property
     def extra_state_attributes(self):
         if not self._predictions:
-            return {"confidence": 0, "token": "", "source": ""}
+            return {"confidence": 0, "token": "", "source": "", "observations": 0}
         thalamus = self._brain["thalamus"]
-        tok_id, prob, conf, src = self._predictions[0]
+        top = self._predictions[0]
+        tok_id, prob, conf, src = top[:4]
+        n_obs = top[4] if len(top) > 4 else 0
         return {
             "confidence": conf,
             "probability": prob,
             "token": thalamus.decode_token(tok_id),
             "source": src,
+            "observations": n_obs,
             "alternatives": [
-                {"token": thalamus.decode_token(t), "conf": c}
-                for t, p, c, s in self._predictions[1:3]
+                {
+                    "token": thalamus.decode_token(p[0]),
+                    "conf": p[2],
+                    "observations": p[4] if len(p) > 4 else 0,
+                }
+                for p in self._predictions[1:3]
             ],
         }
 
