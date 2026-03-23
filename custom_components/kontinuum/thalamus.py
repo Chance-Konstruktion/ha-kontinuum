@@ -151,6 +151,20 @@ class Thalamus:
         re.compile(r"_operating_hours$"), re.compile(r"_run_time$"),
         # Disk-I/O bytes (high-cardinality)
         re.compile(r"_disk_(read|write)$"),
+        # ── System-Entities: HA-Infrastruktur, kein menschliches Verhalten ──
+        # Home Assistant Core / Supervisor / Hassio
+        re.compile(r"^sensor\.home_assistant_"),
+        re.compile(r"^sensor\.hassio_"),
+        re.compile(r"^binary_sensor\.hassio_"),
+        re.compile(r"^sensor\.supervisor_"),
+        re.compile(r"^binary_sensor\.supervisor_"),
+        # Addon-States (running/not running – kein Verhaltens-Signal)
+        re.compile(r"^binary_sensor\.\w+_running$"),
+        # CPU/Memory-Metriken von Addons und Containern
+        re.compile(r"_cpu_prozent$"),
+        re.compile(r"_cpu_percent$"),
+        re.compile(r"_memory_percent$"),
+        re.compile(r"_speicher_prozent$"),
     ]
 
     # Vokabular-Begrenzung (v0.14.2)

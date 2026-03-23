@@ -48,10 +48,11 @@ class Decision:
         self.confidence = 0.0
         self.utility = 0.0
         self.risk = 0.0
+        self.n_obs = 0
         self.stage = self.OBSERVE
         self.source = ""
         self.reasons = []
-    
+
     def to_dict(self):
         return {
             "token": self.token,
@@ -59,6 +60,7 @@ class Decision:
             "confidence": self.confidence,
             "utility": self.utility,
             "risk": self.risk,
+            "n_obs": self.n_obs,
             "stage": self.stage,
             "source": self.source,
             "reasons": self.reasons,
@@ -67,11 +69,14 @@ class Decision:
 
 class PrefrontalCortex:
     """Entscheidungsinstanz von KONTINUUM."""
-    
+
     UTILITY_THRESHOLD_SUGGEST = 0.4
     UTILITY_THRESHOLD_EXECUTE = 0.6
     OVERRIDE_WINDOW = 60
     IMPLICIT_POSITIVE_DELAY = 300
+    # Minimum Beobachtungen bevor ein Pattern handeln darf
+    MIN_OBS_SUGGEST = 20   # n >= 20 für Vorschläge
+    MIN_OBS_EXECUTE = 100  # n >= 100 für autonome Aktionen
     
     def __init__(self, amygdala):
         self.amygdala = amygdala
@@ -91,11 +96,25 @@ class PrefrontalCortex:
         Bewertet Predictions und trifft eine Entscheidung.
         v0.14.3: Q-Value aus BasalGanglia fließt in Utility ein.
                  Entity-ID wird per Reverse-Lookup aufgelöst.
+    
+    def evaluate(self, predictions: list, thalamus) -> Decision:
+        """
+        Bewertet Predictions und trifft eine Entscheidung.
+
+        Predictions: [(token_id, prob, conf, source, n_obs), ...]
+        n_obs gatet die Entscheidungsebene:
+        - n < MIN_OBS_SUGGEST → OBSERVE (zu wenig Daten)
+        - n < MIN_OBS_EXECUTE → maximal SUGGEST
+        - n >= MIN_OBS_EXECUTE → EXECUTE möglich
         """
         best_decision = None
         best_utility = -1
 
         for token_id, prob, conf, source in predictions:
+        for prediction in predictions:
+            token_id, prob, conf, source = prediction[:4]
+            n_obs = prediction[4] if len(prediction) > 4 else 0
+
             token = thalamus.decode_token(token_id)
             parts = token.split(".")
             if len(parts) != 3:
@@ -121,6 +140,7 @@ class PrefrontalCortex:
                 q_boost = basal_ganglia.get_action_priority(token_id, bucket) * 0.2
 
             utility = conf * weight - risk * 0.5 + q_boost
+            utility = conf * weight - risk * 0.5
 
             if utility > best_utility:
                 best_utility = utility
@@ -131,6 +151,7 @@ class PrefrontalCortex:
                 d.utility = utility
                 d.risk = risk
                 d.source = source
+                d.n_obs = n_obs
                 d.reasons = assessment["reasons"]
 
                 # Entity-ID per Reverse-Lookup auflösen
@@ -142,6 +163,13 @@ class PrefrontalCortex:
                 if self.shadow_mode and semantic not in self.activated_semantics:
                     d.stage = Decision.OBSERVE
                 elif semantic in self.activated_semantics and utility >= self.UTILITY_THRESHOLD_EXECUTE:
+                if self.shadow_mode:
+                    d.stage = Decision.OBSERVE
+                elif n_obs < self.MIN_OBS_SUGGEST:
+                    # Zu wenig Beobachtungen – nur beobachten
+                    d.stage = Decision.OBSERVE
+                    d.reasons = d.reasons + [f"n={n_obs} < {self.MIN_OBS_SUGGEST} (zu wenig Daten)"]
+                elif utility >= self.UTILITY_THRESHOLD_EXECUTE and n_obs >= self.MIN_OBS_EXECUTE:
                     d.stage = Decision.EXECUTE
                 elif utility >= self.UTILITY_THRESHOLD_SUGGEST:
                     d.stage = Decision.SUGGEST

@@ -13,6 +13,10 @@
 ║  - Multi-Window Shadow Validation (60s, 300s, 1800s)           ║
 ║  - Früheres Bucketing (Phase 2 ab 100 statt 2000 Events)      ║
 ║  - Accuracy pro Zeithorizont getrackt                          ║
+║                                                                  ║
+║  v0.15.0 – Stichprobengröße (n_obs):                           ║
+║  - Predictions enthalten jetzt n_obs (Beobachtungsanzahl)      ║
+║  - PFC kann Patterns nach statistischer Signifikanz gaten      ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -230,40 +234,47 @@ class Hippocampus:
                 del tots[ngram]
     
     def predict(self, ctx: list, top_k: int = 5) -> list:
-        """Sagt die wahrscheinlichsten nächsten Events vorher."""
+        """
+        Sagt die wahrscheinlichsten nächsten Events vorher.
+
+        Returns:
+            Liste von (token_id, prob, conf, source, n_obs) Tupeln.
+            n_obs = Anzahl Beobachtungen für dieses Pattern (Stichprobengröße).
+        """
         seq = list(self.buffer)
         bucket = self._context_bucket(ctx)
         scores = self._score_predictions(seq, bucket)
-        
+
         results = []
         for token_id, data in scores.items():
             conf = min(data["prob"] * data["weight"] * 2, 1.0)
             if conf >= 0.15:
                 results.append((token_id, round(data["prob"], 4),
-                                round(conf, 4), data["source"]))
-        
+                                round(conf, 4), data["source"],
+                                data["n_obs"]))
+
         results.sort(key=lambda x: x[1] * x[2], reverse=True)
-        
-        for tok_id, prob, conf, src in results[:3]:
+
+        for tok_id, prob, conf, src, _n in results[:3]:
             if conf >= 0.3:
                 self.shadow_predictions.append((
                     self.last_event_time or datetime.now(timezone.utc),
                     tok_id, conf
                 ))
-        
+
         return results[:top_k]
     
     def _score_predictions(self, seq: list, bucket: int) -> dict:
-        """Berechnet Vorhersage-Scores."""
-        scores = defaultdict(lambda: {"prob": 0, "weight": 0, "source": ""})
+        """Berechnet Vorhersage-Scores mit Stichprobengröße."""
+        scores = defaultdict(lambda: {"prob": 0, "weight": 0, "source": "", "n_obs": 0})
         neighbors = self._neighbor_buckets(bucket)
-        
+
         for n in self.NGRAM_SIZES:
             if len(seq) < n:
                 continue
             ngram = tuple(seq[-n:])
             w = self.NGRAM_WEIGHTS[n]
-            
+
             for bk in [bucket] + neighbors:
                 if bk == bucket:
                     discount = 1.0
@@ -271,13 +282,13 @@ class Hippocampus:
                     discount = 0.4
                 else:
                     discount = 0.3
-                
+
                 if ngram not in self.transitions[bk]:
                     continue
                 total = self.totals[bk][ngram]
                 if total < self.MIN_OBSERVATIONS:
                     continue
-                
+
                 for token_id, count in self.transitions[bk][ngram].items():
                     prob = (count / total) * discount
                     eff_weight = w * discount
@@ -286,8 +297,9 @@ class Hippocampus:
                             "prob": prob,
                             "weight": eff_weight,
                             "source": f"{n}-gram(n={total:.0f})",
+                            "n_obs": int(total),
                         }
-        
+
         return scores
     
     def predict_duration(self, from_token: int, to_token: int) -> float:

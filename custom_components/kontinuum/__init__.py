@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  KONTINUUM v0.14.0 – Neuroinspired Home Intelligence           ║
+║  KONTINUUM v0.15.0 – Neuroinspired Home Intelligence           ║
 ║  Home Assistant Custom Component                                 ║
 ║                                                                  ║
 ║  Architektur:                                                    ║
@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import shutil
+import re
 import time
 from collections import Counter, deque
 from datetime import datetime, timezone
@@ -48,7 +49,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.14.2"
+VERSION = "0.15.0"
 BRAIN_FILE = "brain.json.gz"
 BRAIN_FILE_LEGACY = "brain.json"
 SAVE_INTERVAL = 600
@@ -462,14 +463,17 @@ def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket):
     Basalganglien-Ranking: Sortiert Predictions nach Go/NoGo-Pathway.
     Go (positive Q-Values) → nach oben
     NoGo (negative Q-Values) → nach unten
+    Predictions: [(token_id, prob, conf, source, n_obs), ...]
     """
     ranked = []
-    for token_id, prob, conf, source in predictions:
+    for prediction in predictions:
+        token_id, prob, conf, source = prediction[:4]
+        n_obs = prediction[4] if len(prediction) > 4 else 0
         priority = basal_ganglia.get_action_priority(token_id, bucket)
         # Confidence durch Basalganglien modifizieren
         bg_conf = conf + priority * 0.1  # Max ±0.2 Einfluss
         bg_conf = max(0.05, min(1.0, bg_conf))
-        ranked.append((token_id, prob, bg_conf, source))
+        ranked.append((token_id, prob, bg_conf, source, n_obs))
     # Re-sort by modified confidence * probability
     ranked.sort(key=lambda x: x[1] * x[2], reverse=True)
     return ranked
@@ -1069,6 +1073,9 @@ def _load_brain(brain, path):
         # v0.14.2 Migration: Float-Tokens und HACS-Pre-Release-Tokens bereinigen
         _migrate_purge_float_tokens(brain)
 
+        # v0.15.0 Migration: System-Entity-Tokens bereinigen
+        _migrate_purge_system_tokens(brain)
+
         hp = brain["hippocampus"]
         _LOGGER.info(
             "Gehirn geladen: %d Events, %d Tokens, Accuracy %s",
@@ -1225,4 +1232,84 @@ def _migrate_purge_float_tokens(brain):
         len(purge_ids), purged,
         len(thalamus.token_to_id) + len(purge_ids),
         len(thalamus.token_to_id),
+    )
+
+
+def _migrate_purge_system_tokens(brain):
+    """
+    v0.15.0 Migration: Entfernt System-Entity-Tokens aus dem Gehirn.
+
+    HA-Infrastruktur-Entities (CPU-Metriken, Addon-States, Supervisor)
+    erzeugen Transitions die nichts mit menschlichem Verhalten zu tun haben.
+    """
+    thalamus = brain["thalamus"]
+    hippocampus = brain["hippocampus"]
+
+    # Tokens die von System-Entities stammen (area_unknown.cpu.*, etc.)
+    system_patterns = [
+        re.compile(r"\.cpu\."),        # CPU-Metriken
+        re.compile(r"\.gpu\."),        # GPU-Metriken
+        re.compile(r"\.network\."),    # Network-I/O
+    ]
+    # Entity-IDs die jetzt von IGNORED_PATTERNS gefiltert werden
+    system_entity_patterns = [
+        re.compile(r"^sensor\.home_assistant_"),
+        re.compile(r"^sensor\.hassio_"),
+        re.compile(r"^binary_sensor\.hassio_"),
+        re.compile(r"^sensor\.supervisor_"),
+        re.compile(r"^binary_sensor\.supervisor_"),
+        re.compile(r"^binary_sensor\.\w+_running$"),
+        re.compile(r"_cpu_prozent$"),
+        re.compile(r"_cpu_percent$"),
+        re.compile(r"_memory_percent$"),
+        re.compile(r"_speicher_prozent$"),
+    ]
+
+    # 1. System-Entity-IDs aus Thalamus-Mapping entfernen
+    purge_entities = []
+    for entity_id in list(thalamus.entity_room.keys()):
+        for pat in system_entity_patterns:
+            if pat.search(entity_id):
+                purge_entities.append(entity_id)
+                break
+
+    for eid in purge_entities:
+        thalamus.entity_room.pop(eid, None)
+        thalamus.entity_semantic.pop(eid, None)
+        thalamus.entity_last_token.pop(eid, None)
+
+    # 2. System-Tokens aus Vokabular entfernen
+    purge_ids = set()
+    for token_str, token_id in list(thalamus.token_to_id.items()):
+        for pat in system_patterns:
+            if pat.search(token_str):
+                purge_ids.add(token_id)
+                del thalamus.token_to_id[token_str]
+                thalamus.id_to_token.pop(token_id, None)
+                break
+
+    if not purge_ids and not purge_entities:
+        return
+
+    # 3. Hippocampus: Transitions bereinigen
+    purged = 0
+    for bucket in list(hippocampus.transitions.keys()):
+        for ngram in list(hippocampus.transitions[bucket].keys()):
+            if any(t in purge_ids for t in ngram):
+                del hippocampus.transitions[bucket][ngram]
+                hippocampus.totals[bucket].pop(ngram, None)
+                purged += 1
+                continue
+            for tok_id in list(hippocampus.transitions[bucket][ngram].keys()):
+                if tok_id in purge_ids:
+                    count = hippocampus.transitions[bucket][ngram].pop(tok_id)
+                    hippocampus.totals[bucket][ngram] = max(
+                        0, hippocampus.totals[bucket].get(ngram, 0) - count
+                    )
+                    purged += 1
+
+    _LOGGER.warning(
+        "v0.15.0 Migration: %d System-Entities entfernt, %d System-Tokens bereinigt, "
+        "%d Transitions entfernt",
+        len(purge_entities), len(purge_ids), purged,
     )
