@@ -373,6 +373,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     hass.async_add_executor_job(_save_brain, brain, brain_path)
                     brain["_last_save"] = now_ts
 
+                # ── Brain Review: Monatlich automatisch ──
+                BRAIN_REVIEW_INTERVAL = 30 * 86400  # 30 Tage
+                if (cortex.enabled
+                        and now_ts - brain.get("_last_review_ts", 0) > BRAIN_REVIEW_INTERVAL
+                        and hippocampus.total_events > 500):
+                    brain["_last_review_ts"] = now_ts
+                    hass.async_create_task(
+                        hass.services.async_call(
+                            DOMAIN, "brain_review", {}
+                        )
+                    )
+                    _LOGGER.info("Automatischer Brain Review gestartet (monatlich)")
+
                 # Personen-Zähler
                 if now_ts - brain["_last_persons_update"] > 30:
                     _update_persons_sensor(hass)
@@ -1036,6 +1049,49 @@ def _register_services(hass, brain):
             brain["cortex"].configure(list(agents.values()))
             _LOGGER.info("Cortex Agent %s entfernt", slot)
 
+    async def handle_brain_review(call):
+        """
+        Brain Review: Cortex-Agents analysieren den Gehirn-Zustand.
+
+        Gibt den Agents Zugriff auf die vollständige Gehirn-Statistik
+        und lässt sie Empfehlungen ableiten. Ergebnis wird als
+        persistent_notification gesendet.
+        """
+        cortex = brain["cortex"]
+        if not cortex.enabled:
+            _LOGGER.warning("Brain Review: Cortex nicht aktiv")
+            return
+
+        review = await cortex.brain_review(brain)
+
+        # Ergebnis als Notification
+        score = review.get("health_score", 0)
+        analyses = review.get("analyses", [])
+
+        msg_parts = [f"**Brain Health: {score}/100**\n"]
+        for a in analyses:
+            agent_name = a.get("agent", "?")
+            analysis = a.get("analysis", a.get("error", "keine Antwort"))
+            suggestions = a.get("suggestions", [])
+            msg_parts.append(f"### {agent_name}")
+            msg_parts.append(f"{analysis}")
+            if suggestions:
+                for s in suggestions:
+                    msg_parts.append(f"- {s}")
+            msg_parts.append("")
+
+        message = "\n".join(msg_parts)
+        await hass.services.async_call(
+            "persistent_notification", "create",
+            {"title": f"KONTINUUM Brain Review (Score: {score}/100)",
+             "message": message,
+             "notification_id": "kontinuum_brain_review"},
+        )
+
+        # Review im Brain speichern
+        brain["_last_brain_review"] = review
+        _LOGGER.info("Brain Review abgeschlossen: Score %d/100", score)
+
     hass.services.async_register(DOMAIN, "enable_scenes", handle_enable_scenes)
     hass.services.async_register(DOMAIN, "disable_scenes", handle_disable_scenes)
     hass.services.async_register(DOMAIN, "set_scene", handle_set_scene)
@@ -1046,10 +1102,11 @@ def _register_services(hass, brain):
     hass.services.async_register(DOMAIN, "configure_agent", handle_configure_agent)
     hass.services.async_register(DOMAIN, "cortex_consult", handle_cortex_consult)
     hass.services.async_register(DOMAIN, "remove_agent", handle_cortex_remove_agent)
+    hass.services.async_register(DOMAIN, "brain_review", handle_brain_review)
 
     _LOGGER.info("Services registriert: enable_scenes, disable_scenes, set_scene, "
                  "status, export_brain, activate, deactivate, "
-                 "configure_agent, cortex_consult, remove_agent")
+                 "configure_agent, cortex_consult, remove_agent, brain_review")
 
 
 # ══════════════════════════════════════════════════════════════════
