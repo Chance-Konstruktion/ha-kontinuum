@@ -24,11 +24,49 @@
     "step": {
       "init": {
         "title": "KONTINUUM Settings",
-        "description": "Change how fast KONTINUUM learns and acts. Enable Cortex for LLM-powered multi-agent decisions (requires Ollama or Cloud API).",
+        "description": "Change personality and enable Cortex for LLM-powered multi-agent decisions.",
         "data": {
           "preset": "Personality",
           "enable_dashboard": "Enable Dashboard",
           "enable_cortex": "Enable Cortex (LLM Agents)"
+        }
+      },
+      "agent_1": {
+        "title": "Cortex – Agent 1",
+        "description": "Configure the first LLM agent. For Ollama leave API Key empty. Choose a role or create a custom agent.",
+        "data": {
+          "role": "Role",
+          "provider": "Provider",
+          "model": "Model (leave empty for default)",
+          "url": "URL (leave empty for default)",
+          "api_key": "API Key (Cloud only)",
+          "system_prompt": "System Prompt (leave empty for default)",
+          "add_more": "Add another agent"
+        }
+      },
+      "agent_2": {
+        "title": "Cortex – Agent 2",
+        "description": "Configure the second agent. Different agents discuss and find consensus together.",
+        "data": {
+          "role": "Role",
+          "provider": "Provider",
+          "model": "Model",
+          "url": "URL",
+          "api_key": "API Key",
+          "system_prompt": "System Prompt",
+          "add_more": "Add a third agent"
+        }
+      },
+      "agent_3": {
+        "title": "Cortex – Agent 3 (final)",
+        "description": "Configure the third and final agent. KONTINUUM (Prefrontal) acts as the leader and makes the final decision.",
+        "data": {
+          "role": "Role",
+          "provider": "Provider",
+          "model": "Model",
+          "url": "URL",
+          "api_key": "API Key",
+          "system_prompt": "System Prompt"
         }
       }
     }
