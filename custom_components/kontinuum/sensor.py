@@ -307,6 +307,7 @@ class KontinuumCerebellumSensor(KontinuumSensorBase):
             "rules_1gram": cb.stats.get("rules_1gram", 0),
             "rules_2gram": cb.stats.get("rules_2gram", 0),
             "rules_3gram": cb.stats.get("rules_3gram", 0),
+            "rules_4gram": cb.stats.get("rules_4gram", 0),
             "top_rules": cb.stats.get("top_rules", []),
         }
 

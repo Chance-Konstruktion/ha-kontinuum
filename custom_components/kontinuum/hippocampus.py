@@ -39,18 +39,18 @@ class Hippocampus:
         Mode-Index: ctx[-3] (robust, unabhängig von Hypothalamus-Dimensionen)
     """
 
-    NGRAM_SIZES = [1, 2, 3]
+    NGRAM_SIZES = [1, 2, 3, 4]
 
     TIME_BLOCKS = 6
     MODE_GROUPS = 4
     ENERGY_LEVELS = 2
     DAY_TYPES = 2
     TOTAL_BUCKETS = TIME_BLOCKS * MODE_GROUPS * ENERGY_LEVELS * DAY_TYPES  # 96
-    
+
     DECAY_RATE = 0.993        # Default für "ausgeglichen"
-    MIN_OBSERVATIONS = 3
-    NGRAM_WEIGHTS = {1: 0.2, 2: 0.5, 3: 0.8}
-    MAX_NGRAMS_PER_BUCKET = 500
+    MIN_OBSERVATIONS = 2
+    NGRAM_WEIGHTS = {1: 0.15, 2: 0.4, 3: 0.7, 4: 0.95}
+    MAX_NGRAMS_PER_BUCKET = 1000
     
     # Multi-Window Shadow Validation (v0.13.0)
     SHADOW_WINDOWS = [60, 300, 1800]  # 1min, 5min, 30min
@@ -61,7 +61,7 @@ class Hippocampus:
         )
         self.totals = defaultdict(lambda: defaultdict(float))
         self.durations = defaultdict(list)
-        self.buffer = deque(maxlen=20)
+        self.buffer = deque(maxlen=30)
         self.last_event_time = None
         self.shadow_predictions = deque(maxlen=200)
         self.shadow_hits = 0
@@ -405,7 +405,7 @@ class Hippocampus:
             self.shadow_hits_by_window.setdefault(w, 0)
             self.shadow_total_by_window.setdefault(w, 0)
         self.durations = defaultdict(list, data.get("durations", {}))
-        self.buffer = deque(data.get("buffer", []), maxlen=20)
+        self.buffer = deque(data.get("buffer", []), maxlen=30)
         lt = data.get("last_event_time")
         if lt:
             try:

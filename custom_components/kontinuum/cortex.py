@@ -827,3 +827,135 @@ class Cortex:
     def from_dict(self, data: dict):
         self.total_consultations = data.get("total_consultations", 0)
         self.total_discussions = data.get("total_discussions", 0)
+
+    # ── Brain Review: Periodische Gehirn-Analyse durch LLM ────
+
+    async def brain_review(self, brain: dict) -> dict:
+        """
+        Lässt alle Agents den aktuellen Brain-Zustand analysieren.
+
+        Wird periodisch aufgerufen (z.B. monatlich) und gibt den Agents
+        Zugriff auf die vollständige Gehirn-Statistik: Patterns, Accuracy,
+        Regeln, Habits, Energieprofile, Raummuster etc.
+
+        Die Agents können daraus Empfehlungen ableiten:
+        - Welche Muster sind stabil vs. fragil?
+        - Gibt es vergessene Routinen, die reaktiviert werden sollten?
+        - Welche Räume/Zeiten haben schlechte Accuracy?
+        - Sind die Preset-Parameter optimal?
+
+        Returns: Dict mit Agent-Analysen und ggf. Optimierungsvorschlägen.
+        """
+        if not self.agents:
+            return {"error": "no_agents"}
+
+        session = await self._get_session()
+
+        # Brain-Snapshot für die Agents zusammenstellen
+        hippocampus = brain["hippocampus"]
+        cerebellum = brain["cerebellum"]
+        basal_ganglia = brain["basal_ganglia"]
+        spatial = brain["spatial"]
+        insula = brain["insula"]
+        hypothalamus = brain["hypothalamus"]
+        amygdala = brain["amygdala"]
+        prefrontal = brain["prefrontal"]
+
+        brain_summary = json.dumps({
+            "hippocampus": {
+                "total_events": hippocampus.total_events,
+                "accuracy": f"{hippocampus.accuracy:.1%}",
+                "accuracy_by_window": hippocampus.stats.get("accuracy_by_window", {}),
+                "patterns": hippocampus.stats.get("patterns", 0),
+                "transitions": hippocampus.stats.get("transitions", 0),
+                "buckets_active": hippocampus.stats.get("buckets_active", 0),
+                "memory_kb": hippocampus.stats.get("memory_kb", 0),
+            },
+            "cerebellum": {
+                "rules_count": len(cerebellum.rules),
+                "rules_1gram": cerebellum.stats.get("rules_1gram", 0),
+                "rules_2gram": cerebellum.stats.get("rules_2gram", 0),
+                "rules_3gram": cerebellum.stats.get("rules_3gram", 0),
+                "rules_4gram": cerebellum.stats.get("rules_4gram", 0),
+                "top_rules": cerebellum.stats.get("top_rules", []),
+                "success_rate": cerebellum.stats.get("success_rate", "0%"),
+            },
+            "basal_ganglia": {
+                "total_habits": basal_ganglia.total_habits,
+                "total_updates": basal_ganglia.total_updates,
+                "go_actions": basal_ganglia.stats.get("go_actions", 0),
+                "nogo_actions": basal_ganglia.stats.get("nogo_actions", 0),
+                "q_entries": len(basal_ganglia.q_values),
+            },
+            "spatial": {
+                "current_room": spatial.get_current_location(),
+                "presence_map": spatial.stats.get("presence_map", {}),
+                "movement_patterns": len(spatial.movement_memory),
+            },
+            "insula": {
+                "current_mode": insula.current_mode,
+                "confidence": insula.stats.get("confidence", 0),
+            },
+            "hypothalamus": hypothalamus.get_energy_summary(),
+            "amygdala": {
+                "last_risk": amygdala.stats.get("last_risk", 0) if hasattr(amygdala, "stats") else 0,
+            },
+            "prefrontal": {
+                "decision_rate": prefrontal.stats.get("decision_rate", 0) if hasattr(prefrontal, "stats") else 0,
+            },
+            "cortex": {
+                "total_consultations": self.total_consultations,
+                "total_discussions": self.total_discussions,
+                "cortex_patterns": dict(list(brain.get("_cortex_patterns", {}).items())[:20]),
+            },
+        }, indent=2, default=str)
+
+        prompt = (
+            "Du bist ein Gehirn-Analyst für KONTINUUM, ein neuroinspiriertes "
+            "Smart-Home-System. Hier ist der aktuelle Zustand des Gehirns:\n\n"
+            f"{brain_summary}\n\n"
+            "Analysiere den Zustand und antworte als JSON mit:\n"
+            '{"analysis": "Kurze Bewertung des Lernfortschritts", '
+            '"strengths": ["Was gut läuft"], '
+            '"weaknesses": ["Was verbessert werden könnte"], '
+            '"suggestions": ["Konkrete Vorschläge"], '
+            '"health_score": 0-100, '
+            '"priority": 0}'
+        )
+
+        # Alle Agents parallel analysieren lassen
+        import asyncio
+        tasks = [agent.think(prompt, session) for agent in self.agents]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        analyses = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                analyses.append({
+                    "agent": self.agents[i].name,
+                    "error": str(result),
+                })
+            else:
+                analyses.append(result)
+
+        # Durchschnittlicher Health Score
+        scores = [
+            a.get("health_score", 50)
+            for a in analyses
+            if isinstance(a, dict) and "health_score" in a
+        ]
+        avg_score = sum(scores) / len(scores) if scores else 50
+
+        review = {
+            "timestamp": time.time(),
+            "analyses": analyses,
+            "health_score": round(avg_score),
+            "agents_consulted": len(self.agents),
+        }
+
+        _LOGGER.info(
+            "Cortex Brain Review: Health=%d/100, %d Agents analysiert",
+            avg_score, len(analyses),
+        )
+
+        return review
