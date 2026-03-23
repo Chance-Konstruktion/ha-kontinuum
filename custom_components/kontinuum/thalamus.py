@@ -165,6 +165,24 @@ class Thalamus:
         re.compile(r"_cpu_percent$"),
         re.compile(r"_memory_percent$"),
         re.compile(r"_speicher_prozent$"),
+        # ── Server / NAS / Proxmox – kein menschliches Verhalten ──
+        re.compile(r"^sensor\.pve_"),         # Proxmox VE
+        re.compile(r"^sensor\.proxmox_"),
+        re.compile(r"^binary_sensor\.pve_"),
+        re.compile(r"^sensor\.nas_"),          # NAS (Synology, TrueNAS, etc.)
+        re.compile(r"^sensor\.synology_"),
+        re.compile(r"^sensor\.truenas_"),
+        re.compile(r"^sensor\.qnap_"),
+        re.compile(r"^sensor\.unraid_"),
+        re.compile(r"^sensor\.docker_"),       # Docker Container
+        re.compile(r"^sensor\.portainer_"),
+        re.compile(r"^sensor\.server_"),        # Generic server sensors
+        re.compile(r"^sensor\.pi_hole_"),       # Pi-hole
+        re.compile(r"^sensor\.adguard_"),       # AdGuard
+        re.compile(r"^sensor\.speedtest_"),     # Speedtest (kein Verhalten)
+        re.compile(r"^sensor\.unifi_"),         # UniFi Netzwerk-Infrastruktur
+        re.compile(r"^sensor\.fritzbox_"),      # FritzBox Router-Metriken
+        re.compile(r"^sensor\.glances_"),       # Glances System-Monitor
     ]
 
     # Vokabular-Begrenzung (v0.14.2)

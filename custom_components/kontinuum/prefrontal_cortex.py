@@ -94,23 +94,17 @@ class PrefrontalCortex:
                  basal_ganglia=None, bucket: int = 0) -> Decision:
         """
         Bewertet Predictions und trifft eine Entscheidung.
-        v0.14.3: Q-Value aus BasalGanglia fließt in Utility ein.
-                 Entity-ID wird per Reverse-Lookup aufgelöst.
-    
-    def evaluate(self, predictions: list, thalamus) -> Decision:
-        """
-        Bewertet Predictions und trifft eine Entscheidung.
 
         Predictions: [(token_id, prob, conf, source, n_obs), ...]
-        n_obs gatet die Entscheidungsebene:
-        - n < MIN_OBS_SUGGEST → OBSERVE (zu wenig Daten)
-        - n < MIN_OBS_EXECUTE → maximal SUGGEST
-        - n >= MIN_OBS_EXECUTE → EXECUTE möglich
+
+        Doppeltes Gating:
+        1. n_obs gatet die Entscheidungsebene (Stichprobengröße)
+        2. activated_semantics gatet welche Typen EXECUTE dürfen
+        3. Q-Value aus BasalGanglia fließt in Utility ein
         """
         best_decision = None
         best_utility = -1
 
-        for token_id, prob, conf, source in predictions:
         for prediction in predictions:
             token_id, prob, conf, source = prediction[:4]
             n_obs = prediction[4] if len(prediction) > 4 else 0
@@ -140,7 +134,6 @@ class PrefrontalCortex:
                 q_boost = basal_ganglia.get_action_priority(token_id, bucket) * 0.2
 
             utility = conf * weight - risk * 0.5 + q_boost
-            utility = conf * weight - risk * 0.5
 
             if utility > best_utility:
                 best_utility = utility
@@ -158,18 +151,18 @@ class PrefrontalCortex:
                 candidates = thalamus.resolve_entities(token)
                 d.entity_id = candidates[0] if candidates else ""
 
-                # Stage bestimmen: shadow_mode → OBSERVE
-                # activated_semantics → EXECUTE nur für freigeschaltete Typen
+                # Stage bestimmen – dreistufiges Gating:
+                # 1. Shadow-Mode + nicht aktiviert → OBSERVE
+                # 2. Zu wenig Beobachtungen → OBSERVE
+                # 3. Genug Beobachtungen → SUGGEST oder EXECUTE
                 if self.shadow_mode and semantic not in self.activated_semantics:
                     d.stage = Decision.OBSERVE
-                elif semantic in self.activated_semantics and utility >= self.UTILITY_THRESHOLD_EXECUTE:
-                if self.shadow_mode:
-                    d.stage = Decision.OBSERVE
                 elif n_obs < self.MIN_OBS_SUGGEST:
-                    # Zu wenig Beobachtungen – nur beobachten
                     d.stage = Decision.OBSERVE
                     d.reasons = d.reasons + [f"n={n_obs} < {self.MIN_OBS_SUGGEST} (zu wenig Daten)"]
-                elif utility >= self.UTILITY_THRESHOLD_EXECUTE and n_obs >= self.MIN_OBS_EXECUTE:
+                elif (semantic in self.activated_semantics
+                      and utility >= self.UTILITY_THRESHOLD_EXECUTE
+                      and n_obs >= self.MIN_OBS_EXECUTE):
                     d.stage = Decision.EXECUTE
                 elif utility >= self.UTILITY_THRESHOLD_SUGGEST:
                     d.stage = Decision.SUGGEST
