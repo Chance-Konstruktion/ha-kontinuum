@@ -976,6 +976,12 @@ def _register_services(hass, brain):
             "notification_id": "kontinuum_cortex_result",
         })
 
+        # ── Cortex → Gehirn: Ergebnisse integrieren ──────────
+        bridge_result = cortex.integrate_into_brain(brain, result)
+        if bridge_result.get("integrated"):
+            _LOGGER.info("Cortex Bridge: %s",
+                         ", ".join(bridge_result.get("actions", [])))
+
         # Wenn Konsens eine Aktion vorschlägt und kein Veto → ausführen
         action = result.get("consensus_action")
         entity = result.get("consensus_entity")
@@ -984,6 +990,13 @@ def _register_services(hass, brain):
             if len(parts) == 2:
                 _LOGGER.info("Cortex EXECUTE: %s → %s", action, entity)
                 _async_service_call(hass, parts[0], parts[1], {"entity_id": entity})
+
+                # Ausführung im Prefrontal tracken (für Override-Detection)
+                prefrontal = brain["prefrontal"]
+                semantic = parts[0] if parts else ""
+                prefrontal.mark_own_action(
+                    entity, token=f"cortex.{action}", semantic=semantic,
+                )
 
     async def handle_cortex_remove_agent(call):
         """Entfernt einen Cortex-Agent. Data: {slot: 1-3}"""
@@ -1132,6 +1145,7 @@ def _save_brain(brain, path=None):
             "prefrontal": brain["prefrontal"].to_dict(),
             "cortex": brain["cortex"].to_dict(),
             "cortex_agents": brain.get("_cortex_agents", {}),
+            "cortex_patterns": brain.get("_cortex_patterns", {}),
             "scenes_enabled": brain.get("_scenes_enabled", False),
             "scene_config": brain.get("_scene_config", {}),
         }
@@ -1188,6 +1202,7 @@ def _load_brain(brain, path):
         if cortex_agents:
             brain["_cortex_agents"] = cortex_agents
             brain["cortex"].configure(list(cortex_agents.values()))
+        brain["_cortex_patterns"] = data.get("cortex_patterns", {})
         brain["_scenes_enabled"] = data.get("scenes_enabled", False)
         brain["_scene_config"] = data.get("scene_config", _default_scene_config())
 
