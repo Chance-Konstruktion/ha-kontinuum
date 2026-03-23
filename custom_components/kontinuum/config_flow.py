@@ -55,13 +55,9 @@ class KontinuumConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             preset_key = user_input["preset"]
             preset = PRESETS[preset_key]
 
-            return self.async_create_entry(
-                title="KONTINUUM",
-                data={
-                    "preset": preset_key,
-                    **{k: v for k, v in preset.items() if k != "label"},
-                },
-            )
+            # Weiter zum Dashboard-Schritt
+            self._preset_key = preset_key
+            return await self.async_step_dashboard()
 
         preset_options = {k: v["label"] for k, v in PRESETS.items()}
 
@@ -71,6 +67,28 @@ class KontinuumConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("preset", default="ausgeglichen"): vol.In(
                     preset_options
                 ),
+            }),
+        )
+
+    async def async_step_dashboard(self, user_input=None):
+        """Zweiter Schritt: Dashboard aktivieren?"""
+        if user_input is not None:
+            preset_key = self._preset_key
+            preset = PRESETS[preset_key]
+
+            return self.async_create_entry(
+                title="KONTINUUM",
+                data={
+                    "preset": preset_key,
+                    "enable_dashboard": user_input.get("enable_dashboard", True),
+                    **{k: v for k, v in preset.items() if k != "label"},
+                },
+            )
+
+        return self.async_show_form(
+            step_id="dashboard",
+            data_schema=vol.Schema({
+                vol.Required("enable_dashboard", default=True): bool,
             }),
         )
 
@@ -94,6 +112,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             new_data = {
                 **self.config_entry.data,
                 "preset": preset_key,
+                "enable_dashboard": user_input.get("enable_dashboard", True),
                 **{k: v for k, v in preset.items() if k != "label"},
             }
             self.hass.config_entries.async_update_entry(
@@ -103,6 +122,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data={})
 
         current = self.config_entry.data.get("preset", "ausgeglichen")
+        current_dashboard = self.config_entry.data.get("enable_dashboard", True)
         preset_options = {k: v["label"] for k, v in PRESETS.items()}
 
         return self.async_show_form(
@@ -111,5 +131,6 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
                 vol.Required("preset", default=current): vol.In(
                     preset_options
                 ),
+                vol.Required("enable_dashboard", default=current_dashboard): bool,
             }),
         )

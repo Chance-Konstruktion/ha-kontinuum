@@ -7,6 +7,13 @@
         "data": {
           "preset": "Personality"
         }
+      },
+      "dashboard": {
+        "title": "Dashboard",
+        "description": "KONTINUUM includes a brain visualization dashboard. If enabled, it will be auto-installed to /config/www/ and accessible via iframe panel.",
+        "data": {
+          "enable_dashboard": "Enable Dashboard"
+        }
       }
     },
     "abort": {
@@ -19,7 +26,8 @@
         "title": "KONTINUUM Settings",
         "description": "Change how fast KONTINUUM learns and acts. Changes take effect after restart.",
         "data": {
-          "preset": "Personality"
+          "preset": "Personality",
+          "enable_dashboard": "Enable Dashboard"
         }
       }
     }

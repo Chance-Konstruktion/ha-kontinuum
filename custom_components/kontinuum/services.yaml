@@ -65,3 +65,41 @@ export_brain:
   description: >
     Exportiert die komprimierte brain.json.gz als lesbare brain_export.json
     nach /config/. Für externe Analyse mit DeepSeek oder anderen Tools.
+
+activate:
+  name: Semantik aktivieren
+  description: >
+    Schaltet autonome Ausführung für einen Gerätetyp frei.
+    Schrittweise: Erst "light", dann "switch", etc.
+    KONTINUUM steuert dann diese Geräte selbständig.
+  fields:
+    semantic:
+      name: Gerätetyp
+      description: Der zu aktivierende semantische Typ
+      required: true
+      example: light
+      selector:
+        select:
+          options:
+            - light
+            - switch
+            - fan
+            - cover
+            - climate
+            - media
+            - automation
+            - vacuum
+
+deactivate:
+  name: Semantik deaktivieren
+  description: >
+    Deaktiviert autonome Ausführung für einen Gerätetyp.
+    Mit semantic: "all" werden alle Typen deaktiviert.
+  fields:
+    semantic:
+      name: Gerätetyp
+      description: Der zu deaktivierende Typ (oder "all" für alle)
+      required: true
+      example: light
+      selector:
+        text:

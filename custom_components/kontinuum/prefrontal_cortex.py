@@ -82,10 +82,20 @@ class PrefrontalCortex:
         self.amygdala = amygdala
         self.shadow_mode = True
         self.total_decisions = 0
+        self.total_executions = 0
         self.overrides_detected = 0
         self.own_actions = {}
         self.utility_weights = {}
         self._feedback_log = []
+        # v0.14.3: FAL – freigeschaltete Semantiken für autonome Ausführung
+        self.activated_semantics = set()  # z.B. {"light", "switch"}
+
+    def evaluate(self, predictions: list, thalamus,
+                 basal_ganglia=None, bucket: int = 0) -> Decision:
+        """
+        Bewertet Predictions und trifft eine Entscheidung.
+        v0.14.3: Q-Value aus BasalGanglia fließt in Utility ein.
+                 Entity-ID wird per Reverse-Lookup aufgelöst.
     
     def evaluate(self, predictions: list, thalamus) -> Decision:
         """
@@ -100,6 +110,7 @@ class PrefrontalCortex:
         best_decision = None
         best_utility = -1
 
+        for token_id, prob, conf, source in predictions:
         for prediction in predictions:
             token_id, prob, conf, source = prediction[:4]
             n_obs = prediction[4] if len(prediction) > 4 else 0
@@ -122,6 +133,13 @@ class PrefrontalCortex:
 
             risk = assessment["risk"]
             weight = self.utility_weights.get(semantic, 1.0)
+
+            # Q-Value Boost aus Basalganglien (±0.2 Einfluss)
+            q_boost = 0.0
+            if basal_ganglia:
+                q_boost = basal_ganglia.get_action_priority(token_id, bucket) * 0.2
+
+            utility = conf * weight - risk * 0.5 + q_boost
             utility = conf * weight - risk * 0.5
 
             if utility > best_utility:
@@ -136,6 +154,15 @@ class PrefrontalCortex:
                 d.n_obs = n_obs
                 d.reasons = assessment["reasons"]
 
+                # Entity-ID per Reverse-Lookup auflösen
+                candidates = thalamus.resolve_entities(token)
+                d.entity_id = candidates[0] if candidates else ""
+
+                # Stage bestimmen: shadow_mode → OBSERVE
+                # activated_semantics → EXECUTE nur für freigeschaltete Typen
+                if self.shadow_mode and semantic not in self.activated_semantics:
+                    d.stage = Decision.OBSERVE
+                elif semantic in self.activated_semantics and utility >= self.UTILITY_THRESHOLD_EXECUTE:
                 if self.shadow_mode:
                     d.stage = Decision.OBSERVE
                 elif n_obs < self.MIN_OBS_SUGGEST:
@@ -153,6 +180,8 @@ class PrefrontalCortex:
 
         if best_decision:
             self.total_decisions += 1
+            if best_decision.stage == Decision.EXECUTE:
+                self.total_executions += 1
 
         return best_decision
     
@@ -274,24 +303,30 @@ class PrefrontalCortex:
         return {
             "shadow_mode": self.shadow_mode,
             "total_decisions": self.total_decisions,
+            "total_executions": self.total_executions,
             "overrides_detected": self.overrides_detected,
             "utility_weights": self.utility_weights,
+            "activated_semantics": list(self.activated_semantics),
             "feedback_log": self._feedback_log[-20:],
         }
-    
+
     def from_dict(self, data: dict):
         self.shadow_mode = data.get("shadow_mode", True)
         self.total_decisions = data.get("total_decisions", 0)
+        self.total_executions = data.get("total_executions", 0)
         self.overrides_detected = data.get("overrides_detected", 0)
         self.utility_weights = data.get("utility_weights", {})
+        self.activated_semantics = set(data.get("activated_semantics", []))
         self._feedback_log = data.get("feedback_log", [])
-    
+
     @property
     def stats(self) -> dict:
         return {
             "shadow_mode": self.shadow_mode,
             "total_decisions": self.total_decisions,
+            "total_executions": self.total_executions,
             "overrides_detected": self.overrides_detected,
+            "activated_semantics": list(self.activated_semantics),
             "utility_weights": self.utility_weights,
             "override_rate": f"{self.overrides_detected / max(1, self.total_decisions):.1%}",
         }
