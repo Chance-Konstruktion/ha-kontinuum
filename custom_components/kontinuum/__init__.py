@@ -24,6 +24,7 @@ import gzip
 import json
 import logging
 import os
+import shutil
 import time
 from collections import Counter, deque
 from datetime import datetime, timezone
@@ -59,6 +60,33 @@ SIGNAL_PERSONS_UPDATE = f"{DOMAIN}_persons_update"
 # ══════════════════════════════════════════════════════════════════
 # ASYNC-SAFE HELPERS
 # ══════════════════════════════════════════════════════════════════
+
+def _install_dashboard(hass):
+    """Kopiert kontinuum.html nach /config/www/ falls nötig."""
+    src = os.path.join(os.path.dirname(__file__), "..", "..", "www", "kontinuum.html")
+    # Fallback: Datei liegt im Package selbst (nach HACS-Install)
+    if not os.path.isfile(src):
+        src = os.path.join(os.path.dirname(__file__), "assets", "kontinuum.html")
+    if not os.path.isfile(src):
+        _LOGGER.warning("KONTINUUM Dashboard HTML nicht gefunden – übersprungen")
+        return False
+
+    dst_dir = hass.config.path("www")
+    os.makedirs(dst_dir, exist_ok=True)
+    dst = os.path.join(dst_dir, "kontinuum.html")
+
+    # Nur kopieren wenn Quelle neuer ist oder Ziel fehlt
+    if os.path.isfile(dst):
+        src_mtime = os.path.getmtime(src)
+        dst_mtime = os.path.getmtime(dst)
+        if src_mtime <= dst_mtime:
+            _LOGGER.debug("KONTINUUM Dashboard bereits aktuell")
+            return True
+
+    shutil.copy2(src, dst)
+    _LOGGER.info("KONTINUUM Dashboard installiert: %s", dst)
+    return True
+
 
 def _notify(hass, title, message, notification_id):
     """Async-safe Notification (fire-and-forget)."""
@@ -96,6 +124,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         preset_key = entry.data.get("preset", "ausgeglichen")
         preset = PRESETS.get(preset_key, PRESETS["ausgeglichen"])
         config_data = {**preset, **entry.data}
+
+        # ── Dashboard Auto-Install ─────────────────────────────
+        if entry.data.get("enable_dashboard", True):
+            installed = await hass.async_add_executor_job(_install_dashboard, hass)
+            if installed:
+                _LOGGER.info("KONTINUUM Dashboard verfügbar unter /local/kontinuum.html")
 
         # ── Module initialisieren ─────────────────────────────
         thalamus = Thalamus()

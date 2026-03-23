@@ -3,9 +3,16 @@
     "step": {
       "user": {
         "title": "KONTINUUM Einrichtung",
-        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als Nächstes passiert. Wähle eine Persönlichkeit – sie bestimmt, wie schnell das System lernt und handelt.",
+        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als Nächstes passiert. Wähle eine Persönlichkeit \u2013 sie bestimmt, wie schnell das System lernt und handelt.",
         "data": {
           "preset": "Persönlichkeit"
+        }
+      },
+      "dashboard": {
+        "title": "Dashboard",
+        "description": "KONTINUUM enthält ein Gehirn-Visualisierungs-Dashboard. Wenn aktiviert, wird es automatisch nach /config/www/ installiert und ist als Iframe-Panel erreichbar.",
+        "data": {
+          "enable_dashboard": "Dashboard aktivieren"
         }
       }
     },
@@ -19,7 +26,8 @@
         "title": "KONTINUUM Einstellungen",
         "description": "Ändere wie schnell KONTINUUM lernt und handelt. Änderungen werden nach Neustart wirksam.",
         "data": {
-          "preset": "Persönlichkeit"
+          "preset": "Persönlichkeit",
+          "enable_dashboard": "Dashboard aktivieren"
         }
       }
     }
