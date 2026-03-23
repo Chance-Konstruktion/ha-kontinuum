@@ -24,10 +24,11 @@
     "step": {
       "init": {
         "title": "KONTINUUM Settings",
-        "description": "Change how fast KONTINUUM learns and acts. Changes take effect after restart.",
+        "description": "Change how fast KONTINUUM learns and acts. Enable Cortex for LLM-powered multi-agent decisions (requires Ollama or Cloud API).",
         "data": {
           "preset": "Personality",
-          "enable_dashboard": "Enable Dashboard"
+          "enable_dashboard": "Enable Dashboard",
+          "enable_cortex": "Enable Cortex (LLM Agents)"
         }
       }
     }

@@ -44,6 +44,7 @@ from .amygdala import Amygdala
 from .cerebellum import Cerebellum
 from .prefrontal_cortex import PrefrontalCortex
 from .basal_ganglia import BasalGanglia
+from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
 
 from .config_flow import PRESETS
 
@@ -142,6 +143,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         cerebellum = Cerebellum()
         basal_ganglia = BasalGanglia()
         prefrontal = PrefrontalCortex(amygdala)
+        cortex = Cortex()
 
         # Optional: Context-Profile für erweiterte Semantik/Thresholds
         profile_path = hass.config.path("kontinuum_context_profile.json")
@@ -174,6 +176,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "cerebellum": cerebellum,
             "basal_ganglia": basal_ganglia,
             "prefrontal": prefrontal,
+            "cortex": cortex,
             "preset": preset_key,
             "_scenes_enabled": False,
             "_scene_config": _default_scene_config(),
@@ -357,6 +360,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         # ── Shutdown-Handler ──────────────────────────────────
         async def on_shutdown(event):
             _LOGGER.info("KONTINUUM wird heruntergefahren – speichere Gehirn...")
+            await cortex.close()
             await hass.async_add_executor_job(_save_brain, brain, brain_path)
 
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_shutdown)
@@ -883,6 +887,106 @@ def _register_services(hass, brain):
             "notification_id": "kontinuum_activate",
         })
 
+    async def handle_configure_agent(call):
+        """
+        Konfiguriert einen Cortex-Agent.
+        Service: kontinuum.configure_agent
+        Data: {slot: 1-3, name: "comfort", provider: "ollama",
+               model: "llama3.2", url: "http://...", api_key: "", prompt: "..."}
+        """
+        cortex = brain["cortex"]
+        slot = int(call.data.get("slot", 1))
+        if slot < 1 or slot > 3:
+            _LOGGER.warning("Cortex: Slot muss 1-3 sein, nicht %s", slot)
+            return
+
+        provider = call.data.get("provider", "ollama")
+        if provider not in PROVIDERS:
+            _LOGGER.warning("Cortex: Unbekannter Provider '%s'", provider)
+            return
+
+        provider_info = PROVIDERS[provider]
+        name = call.data.get("name", f"agent_{slot}")
+        model = call.data.get("model", provider_info["default_model"])
+        url = call.data.get("url", provider_info["default_url"])
+        api_key = call.data.get("api_key", "")
+        prompt = call.data.get("prompt", DEFAULT_PROMPTS.get(name, ""))
+
+        # Agent-Config im Brain speichern
+        agents = dict(brain.get("_cortex_agents", {}))
+        agents[str(slot)] = {
+            "name": name, "provider": provider, "model": model,
+            "url": url, "api_key": api_key, "system_prompt": prompt,
+        }
+        brain["_cortex_agents"] = agents
+
+        # Cortex neu konfigurieren
+        cortex.configure(list(agents.values()))
+
+        _LOGGER.info("Cortex Agent %d konfiguriert: %s (%s/%s)",
+                     slot, name, provider, model)
+
+        await hass.services.async_call("persistent_notification", "create", {
+            "title": f"KONTINUUM Cortex – Agent {slot} konfiguriert",
+            "message": (
+                f"**{name}** ({provider_info['label']})\n"
+                f"Modell: {model}\n"
+                f"URL: {url}\n"
+                f"Agents aktiv: {len(cortex.agents)}"
+            ),
+            "notification_id": "kontinuum_cortex_config",
+        })
+
+    async def handle_cortex_consult(call):
+        """
+        Löst manuell eine Cortex-Beratung aus.
+        Service: kontinuum.cortex_consult
+        """
+        cortex = brain["cortex"]
+        if not cortex.enabled:
+            _LOGGER.warning("Cortex nicht konfiguriert – nutze kontinuum.configure_agent")
+            return
+
+        result = await cortex.consult(brain)
+        if not result:
+            return
+
+        proposals_text = "\n".join(
+            f"- **{p.get('agent', '?')}**: {p.get('reason', '?')} "
+            f"(Priorität: {p.get('priority', 0)})"
+            for p in result.get("proposals", [])
+        )
+
+        await hass.services.async_call("persistent_notification", "create", {
+            "title": "KONTINUUM Cortex – Beratung",
+            "message": (
+                f"**Konsens:** {result.get('consensus_action') or 'Keine Aktion'}\n"
+                f"**Grund:** {result.get('consensus_reason', '?')}\n"
+                f"**Veto:** {'JA' if result.get('vetoed') else 'Nein'}\n\n"
+                f"**Vorschläge:**\n{proposals_text}"
+            ),
+            "notification_id": "kontinuum_cortex_result",
+        })
+
+        # Wenn Konsens eine Aktion vorschlägt und kein Veto → ausführen
+        action = result.get("consensus_action")
+        entity = result.get("consensus_entity")
+        if action and entity and not result.get("vetoed"):
+            parts = action.split(".")
+            if len(parts) == 2:
+                _LOGGER.info("Cortex EXECUTE: %s → %s", action, entity)
+                _async_service_call(hass, parts[0], parts[1], {"entity_id": entity})
+
+    async def handle_cortex_remove_agent(call):
+        """Entfernt einen Cortex-Agent. Data: {slot: 1-3}"""
+        slot = str(call.data.get("slot", ""))
+        agents = dict(brain.get("_cortex_agents", {}))
+        if slot in agents:
+            del agents[slot]
+            brain["_cortex_agents"] = agents
+            brain["cortex"].configure(list(agents.values()))
+            _LOGGER.info("Cortex Agent %s entfernt", slot)
+
     hass.services.async_register(DOMAIN, "enable_scenes", handle_enable_scenes)
     hass.services.async_register(DOMAIN, "disable_scenes", handle_disable_scenes)
     hass.services.async_register(DOMAIN, "set_scene", handle_set_scene)
@@ -890,9 +994,13 @@ def _register_services(hass, brain):
     hass.services.async_register(DOMAIN, "export_brain", handle_export_brain)
     hass.services.async_register(DOMAIN, "activate", handle_activate)
     hass.services.async_register(DOMAIN, "deactivate", handle_deactivate)
+    hass.services.async_register(DOMAIN, "configure_agent", handle_configure_agent)
+    hass.services.async_register(DOMAIN, "cortex_consult", handle_cortex_consult)
+    hass.services.async_register(DOMAIN, "remove_agent", handle_cortex_remove_agent)
 
     _LOGGER.info("Services registriert: enable_scenes, disable_scenes, set_scene, "
-                 "status, export_brain, activate, deactivate")
+                 "status, export_brain, activate, deactivate, "
+                 "configure_agent, cortex_consult, remove_agent")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1014,6 +1122,8 @@ def _save_brain(brain, path=None):
             "cerebellum": brain["cerebellum"].to_dict(),
             "basal_ganglia": brain["basal_ganglia"].to_dict(),
             "prefrontal": brain["prefrontal"].to_dict(),
+            "cortex": brain["cortex"].to_dict(),
+            "cortex_agents": brain.get("_cortex_agents", {}),
             "scenes_enabled": brain.get("_scenes_enabled", False),
             "scene_config": brain.get("_scene_config", {}),
         }
@@ -1064,6 +1174,12 @@ def _load_brain(brain, path):
         brain["cerebellum"].from_dict(data.get("cerebellum", {}))
         brain["basal_ganglia"].from_dict(data.get("basal_ganglia", {}))
         brain["prefrontal"].from_dict(data.get("prefrontal", {}))
+        brain["cortex"].from_dict(data.get("cortex", {}))
+        # Cortex-Agent-Config wiederherstellen
+        cortex_agents = data.get("cortex_agents", {})
+        if cortex_agents:
+            brain["_cortex_agents"] = cortex_agents
+            brain["cortex"].configure(list(cortex_agents.values()))
         brain["_scenes_enabled"] = data.get("scenes_enabled", False)
         brain["_scene_config"] = data.get("scene_config", _default_scene_config())
 
