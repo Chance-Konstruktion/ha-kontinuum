@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "KONTINUUM Einrichtung",
-        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als N\u00e4chstes passiert. W\u00e4hle eine Pers\u00f6nlichkeit \u2013 sie bestimmt, wie schnell das System lernt und handelt.",
+        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als N\u00e4chstes passiert. W\u00e4hle eine Pers\u00f6nlichkeit.",
         "data": {
           "preset": "Pers\u00f6nlichkeit"
         }
       },
       "dashboard": {
         "title": "Dashboard",
-        "description": "KONTINUUM enth\u00e4lt ein Gehirn-Visualisierungs-Dashboard. Wenn aktiviert, wird es automatisch nach /config/www/ installiert und ist als Iframe-Panel erreichbar.",
+        "description": "KONTINUUM enth\u00e4lt ein Gehirn-Dashboard. Wenn aktiviert, wird es automatisch installiert.",
         "data": {
           "enable_dashboard": "Dashboard aktivieren"
         }
@@ -24,11 +24,49 @@
     "step": {
       "init": {
         "title": "KONTINUUM Einstellungen",
-        "description": "\u00c4ndere wie schnell KONTINUUM lernt und handelt. Aktiviere Cortex f\u00fcr LLM-gest\u00fctzte Multi-Agent-Entscheidungen (ben\u00f6tigt Ollama oder Cloud-API).",
+        "description": "\u00c4ndere Pers\u00f6nlichkeit und aktiviere Cortex f\u00fcr LLM-gest\u00fctzte Multi-Agent-Entscheidungen.",
         "data": {
           "preset": "Pers\u00f6nlichkeit",
           "enable_dashboard": "Dashboard aktivieren",
           "enable_cortex": "Cortex aktivieren (LLM-Agents)"
+        }
+      },
+      "agent_1": {
+        "title": "Cortex \u2013 Agent 1",
+        "description": "Konfiguriere den ersten LLM-Agent. F\u00fcr Ollama den API-Key leer lassen. W\u00e4hle eine Rolle oder erstelle einen eigenen Agent.",
+        "data": {
+          "role": "Rolle",
+          "provider": "Provider",
+          "model": "Modell (leer = Standard)",
+          "url": "URL (leer = Standard)",
+          "api_key": "API-Key (nur Cloud)",
+          "system_prompt": "System-Prompt (leer = Standard)",
+          "add_more": "Weiteren Agent hinzuf\u00fcgen"
+        }
+      },
+      "agent_2": {
+        "title": "Cortex \u2013 Agent 2",
+        "description": "Konfiguriere den zweiten Agent. Verschiedene Agents diskutieren und finden gemeinsam einen Konsens.",
+        "data": {
+          "role": "Rolle",
+          "provider": "Provider",
+          "model": "Modell",
+          "url": "URL",
+          "api_key": "API-Key",
+          "system_prompt": "System-Prompt",
+          "add_more": "Dritten Agent hinzuf\u00fcgen"
+        }
+      },
+      "agent_3": {
+        "title": "Cortex \u2013 Agent 3 (letzter)",
+        "description": "Konfiguriere den dritten und letzten Agent. KONTINUUM (Prefrontal) ist der Leader und trifft die finale Entscheidung.",
+        "data": {
+          "role": "Rolle",
+          "provider": "Provider",
+          "model": "Modell",
+          "url": "URL",
+          "api_key": "API-Key",
+          "system_prompt": "System-Prompt"
         }
       }
     }

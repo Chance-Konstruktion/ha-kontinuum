@@ -192,6 +192,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         brain_path = hass.config.path(BRAIN_FILE)
         await hass.async_add_executor_job(_load_brain, brain, brain_path)
 
+        # ── Cortex aus Config Entry konfigurieren ────────────────
+        entry_agents = entry.data.get("cortex_agents", {})
+        if entry_agents and entry.data.get("enable_cortex", False):
+            brain["_cortex_agents"] = entry_agents
+            cortex.configure(list(entry_agents.values()))
+            _LOGGER.info("Cortex aus Config geladen: %d Agents",
+                         len(cortex.agents))
+
         # ── Entities entdecken ────────────────────────────────
         await _discover_entities(hass, thalamus)
 
