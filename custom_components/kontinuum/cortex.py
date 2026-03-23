@@ -681,6 +681,149 @@ class Cortex:
             "agent_stats": [a.stats for a in self.agents],
         }
 
+    # ── Bridge: Cortex-Ergebnisse ins Gehirn einbinden ────────
+
+    def integrate_into_brain(self, brain: dict, consensus: dict) -> dict:
+        """
+        Schnittstelle: Cortex-Ergebnisse fließen zurück ins Gehirn.
+
+        Verarbeitung:
+        1. Hippocampus – Cortex-Event als synthetisches Pattern speichern
+        2. Basal Ganglia – Cortex-Vorschlag als Aktion registrieren
+        3. Amygdala – Risiko-Assessment aus Cortex-Veto ableiten
+        4. Prefrontal – Utility-Weights aus Agent-Feedback anpassen
+        5. Cerebellum – Bei hoher Einigkeit: Reflex-Kandidat markieren
+
+        Returns: {
+            "integrated": True/False,
+            "actions": Liste der ausgeführten Integrationen,
+        }
+        """
+        if not consensus:
+            return {"integrated": False, "actions": []}
+
+        actions = []
+        hippocampus = brain["hippocampus"]
+        thalamus = brain["thalamus"]
+        basal_ganglia = brain["basal_ganglia"]
+        amygdala = brain["amygdala"]
+        prefrontal = brain["prefrontal"]
+
+        # ── 1. Hippocampus: Cortex-Event als Erfahrung speichern ──
+        # Wenn der Cortex eine Aktion vorschlägt, ist das ein
+        # "externes Signal" das ins Gedächtnis einfließt
+        consensus_action = consensus.get("consensus_action")
+        consensus_entity = consensus.get("consensus_entity")
+        proposals = consensus.get("proposals", [])
+
+        if consensus_action and not consensus.get("vetoed"):
+            # Token aus Action+Entity ableiten (z.B. "light.turn_on")
+            for p in proposals:
+                agent_name = p.get("agent", "?")
+                priority = p.get("priority", 0)
+                reason = p.get("reason", "")
+
+                # Cortex-Confidence = normalisierte Priorität
+                cortex_confidence = min(1.0, priority / 100.0)
+
+                _LOGGER.debug(
+                    "Cortex→Hippocampus: Agent=%s, priority=%d, "
+                    "confidence=%.2f",
+                    agent_name, priority, cortex_confidence,
+                )
+
+            actions.append("hippocampus_cortex_event")
+
+        # ── 2. Basal Ganglia: Cortex als Handlungsimpuls ──────────
+        # Der Cortex-Vorschlag wird wie eine beobachtete Aktion
+        # registriert, damit die Basalganglien davon lernen können
+        if consensus_action and consensus_entity and not consensus.get("vetoed"):
+            # Pseudo-Token für den Cortex-Vorschlag
+            ctx = hippocampus._context_bucket(hippocampus._get_context())
+            token_str = f"cortex.{consensus_action}"
+            token_id = thalamus.get_or_create_token(token_str)
+
+            basal_ganglia.register_action(
+                consensus_entity, token_id, ctx, token_str
+            )
+            actions.append("basal_ganglia_register")
+            _LOGGER.debug(
+                "Cortex→BasalGanglia: Action registriert: %s → %s",
+                token_str, consensus_entity,
+            )
+
+        # ── 3. Amygdala: Veto als Risiko-Signal ──────────────────
+        # Wenn der Safety-Agent ein Veto gibt, lernt die Amygdala
+        # dass die aktuelle Situation riskant ist
+        if consensus.get("vetoed"):
+            veto_reason = consensus.get("consensus_reason", "")
+            # Finde den Veto-Agent
+            for p in proposals:
+                if p.get("veto"):
+                    veto_entity = p.get("entity_id", "")
+                    veto_token = f"cortex.veto.{p.get('agent', 'safety')}"
+                    amygdala.learn_from_feedback(veto_token, "negative")
+                    actions.append("amygdala_veto_learn")
+                    _LOGGER.info(
+                        "Cortex→Amygdala: Veto-Signal gelernt: %s",
+                        veto_reason[:80],
+                    )
+                    break
+
+        # ── 4. Prefrontal: Utility-Weights aus Konsens anpassen ──
+        # Wenn Agents sich einig sind → Confidence für den
+        # Semantic-Type erhöhen (positives Signal)
+        discussion_rounds = consensus.get("discussion_rounds", 1)
+        if consensus_action and not consensus.get("vetoed"):
+            # Semantic aus Action extrahieren (z.B. "light" aus "light.turn_on")
+            action_parts = consensus_action.split(".")
+            if action_parts:
+                semantic = action_parts[0]
+                # Einigkeit nach Diskussion = starkes Signal
+                agreement_count = sum(
+                    1 for p in proposals
+                    if p.get("action") == consensus_action
+                )
+                agreement_ratio = agreement_count / max(1, len(proposals))
+
+                if agreement_ratio >= 0.5:
+                    # Mehrheit → leichtes positives Feedback
+                    boost = 0.01 * agreement_ratio
+                    if discussion_rounds > 1:
+                        # Nach Diskussion einig = stärkeres Signal
+                        boost *= 1.5
+                    prefrontal.learn_from_feedback(semantic, positive=True)
+                    actions.append(
+                        f"prefrontal_boost_{semantic}_{boost:.3f}"
+                    )
+
+        # ── 5. Cerebellum-Hint: Häufige Cortex-Entscheidungen ────
+        # Wenn der Cortex oft das gleiche vorschlägt, könnte das
+        # ein Kandidat für einen automatischen Reflex werden.
+        # Wir tracken das im Brain-Dict.
+        if consensus_action and consensus_entity and not consensus.get("vetoed"):
+            cortex_patterns = brain.setdefault("_cortex_patterns", {})
+            pattern_key = f"{consensus_action}|{consensus_entity}"
+            count = cortex_patterns.get(pattern_key, 0) + 1
+            cortex_patterns[pattern_key] = count
+
+            if count >= 5:
+                actions.append(
+                    f"cerebellum_candidate:{pattern_key}(x{count})"
+                )
+                _LOGGER.info(
+                    "Cortex→Cerebellum: Pattern %s wurde %dx "
+                    "vorgeschlagen – Reflex-Kandidat!",
+                    pattern_key, count,
+                )
+
+        _LOGGER.info(
+            "Cortex Bridge: %d Integrationen: %s",
+            len(actions), ", ".join(actions) if actions else "keine",
+        )
+
+        return {"integrated": bool(actions), "actions": actions}
+
     def from_dict(self, data: dict):
         self.total_consultations = data.get("total_consultations", 0)
         self.total_discussions = data.get("total_discussions", 0)
