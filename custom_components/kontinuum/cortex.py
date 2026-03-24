@@ -849,7 +849,8 @@ class Cortex:
         if not self.agents:
             return {"error": "no_agents"}
 
-        session = await self._get_session()
+        if not self._session or self._session.closed:
+            self._session = aiohttp.ClientSession()
 
         # Brain-Snapshot für die Agents zusammenstellen
         hippocampus = brain["hippocampus"]
@@ -925,7 +926,7 @@ class Cortex:
 
         # Alle Agents parallel analysieren lassen
         import asyncio
-        tasks = [agent.think(prompt, session) for agent in self.agents]
+        tasks = [agent.think(prompt, self._session) for agent in self.agents]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         analyses = []
