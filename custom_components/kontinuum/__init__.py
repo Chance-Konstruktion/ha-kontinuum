@@ -67,46 +67,104 @@ SIGNAL_CORTEX_UPDATE = f"{DOMAIN}_cortex_update"
 # ══════════════════════════════════════════════════════════════════
 
 def _install_dashboard(hass):
-    """Kopiert kontinuum.html nach /config/www/ falls nötig."""
-    src = os.path.join(os.path.dirname(__file__), "..", "..", "www", "kontinuum.html")
-    # Fallback: Datei liegt im Package selbst (nach HACS-Install)
-    if not os.path.isfile(src):
-        src = os.path.join(os.path.dirname(__file__), "assets", "kontinuum.html")
+    """Kopiert kontinuum.html nach /config/www/community/kontinuum/ falls nötig."""
+    src = os.path.join(os.path.dirname(__file__), "assets", "kontinuum.html")
     if not os.path.isfile(src):
         _LOGGER.warning("KONTINUUM Dashboard HTML nicht gefunden – übersprungen")
         return False
 
+    # In /config/www/ ablegen (wird von HA unter /local/ bereitgestellt)
     dst_dir = hass.config.path("www")
     os.makedirs(dst_dir, exist_ok=True)
     dst = os.path.join(dst_dir, "kontinuum.html")
 
-    # Nur kopieren wenn Quelle neuer ist oder Ziel fehlt
-    if os.path.isfile(dst):
+    # Immer kopieren wenn Quelle neuer ist oder Ziel fehlt
+    needs_copy = not os.path.isfile(dst)
+    if not needs_copy:
         src_mtime = os.path.getmtime(src)
         dst_mtime = os.path.getmtime(dst)
-        if src_mtime <= dst_mtime:
-            _LOGGER.debug("KONTINUUM Dashboard bereits aktuell")
-            return True
+        needs_copy = src_mtime > dst_mtime
 
-    shutil.copy2(src, dst)
-    _LOGGER.info("KONTINUUM Dashboard installiert: %s", dst)
+    if needs_copy:
+        shutil.copy2(src, dst)
+        _LOGGER.info("KONTINUUM Dashboard installiert: %s", dst)
+    else:
+        _LOGGER.debug("KONTINUUM Dashboard bereits aktuell")
+
     return True
 
 
 async def _register_dashboard_panel(hass):
-    """Registriert das KONTINUUM Dashboard als Panel in der HA Sidebar."""
+    """Registriert das KONTINUUM Dashboard als iframe-Panel in der HA Sidebar.
+
+    Nutzt mehrere Methoden als Fallback für verschiedene HA-Versionen.
+    """
+    url_path = "kontinuum"
+
+    # Panel entfernen falls es bereits existiert (bei Reload)
     try:
-        hass.components.frontend.async_register_built_in_panel(
+        from homeassistant.components.frontend import async_remove_panel
+        async_remove_panel(hass, url_path)
+    except Exception:
+        pass
+
+    # Methode 1: Direkte Import-Funktion (Standard in HA 2023+)
+    try:
+        from homeassistant.components.frontend import async_register_built_in_panel
+        async_register_built_in_panel(
+            hass,
             component_name="iframe",
             sidebar_title="KONTINUUM",
             sidebar_icon="mdi:brain",
-            frontend_url_path="kontinuum",
+            frontend_url_path=url_path,
             config={"url": "/local/kontinuum.html"},
             require_admin=False,
         )
-        _LOGGER.info("KONTINUUM Dashboard Panel in Sidebar registriert")
+        _LOGGER.info("KONTINUUM Dashboard registriert (async_register_built_in_panel)")
+        return
     except Exception as e:
-        _LOGGER.warning("Dashboard Panel konnte nicht registriert werden: %s", e)
+        _LOGGER.debug("Methode 1 fehlgeschlagen: %s", e)
+
+    # Methode 2: panel_custom Integration
+    try:
+        from homeassistant.components.panel_custom import async_register_panel
+        await async_register_panel(
+            hass,
+            frontend_url_path=url_path,
+            webcomponent_name="iframe",
+            sidebar_title="KONTINUUM",
+            sidebar_icon="mdi:brain",
+            module_url="/local/kontinuum.html",
+            require_admin=False,
+            config={"url": "/local/kontinuum.html"},
+        )
+        _LOGGER.info("KONTINUUM Dashboard registriert (panel_custom)")
+        return
+    except Exception as e:
+        _LOGGER.debug("Methode 2 fehlgeschlagen: %s", e)
+
+    # Methode 3: Direkt über hass.data["frontend_panels"]
+    try:
+        key = "frontend_panels"
+        if key in hass.data:
+            hass.data[key][url_path] = {
+                "component_name": "iframe",
+                "sidebar_title": "KONTINUUM",
+                "sidebar_icon": "mdi:brain",
+                "url_path": url_path,
+                "config": {"url": "/local/kontinuum.html"},
+                "require_admin": False,
+            }
+            _LOGGER.info("KONTINUUM Dashboard registriert (frontend_panels dict)")
+            return
+    except Exception as e:
+        _LOGGER.debug("Methode 3 fehlgeschlagen: %s", e)
+
+    _LOGGER.warning(
+        "KONTINUUM Dashboard konnte nicht als Sidebar-Panel registriert werden. "
+        "Dashboard erreichbar unter: /local/kontinuum.html – "
+        "Manuell als iframe-Karte in Lovelace einbinden."
+    )
 
 
 def _notify(hass, title, message, notification_id):
@@ -525,7 +583,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 
     # Dashboard-Panel entfernen
     try:
-        hass.components.frontend.async_remove_panel("kontinuum")
+        from homeassistant.components.frontend import async_remove_panel
+        async_remove_panel(hass, "kontinuum")
     except Exception:
         pass
 
