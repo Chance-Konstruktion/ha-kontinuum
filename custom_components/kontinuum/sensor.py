@@ -87,8 +87,10 @@ class KontinuumSensorBase(SensorEntity):
         self._attr_name = name
         self._attr_icon = icon
         self._signal = SIGNAL_SENSORS_UPDATE
-        # v0.18.0: entity_id explizit setzen damit Dashboard-IDs stabil sind
+        self._sensor_key = key  # Für Dashboard-Discovery
+        # entity_id explizit setzen – wird von HA als Vorschlag übernommen
         self.entity_id = f"sensor.kontinuum_{key}"
+
 
     async def async_added_to_hass(self) -> None:
         """Dispatcher-Signal verbinden."""
@@ -228,7 +230,7 @@ class KontinuumAccuracySensor(KontinuumSensorBase):
 class KontinuumModeSensor(KontinuumSensorBase):
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "mode",
-                         "KONTINUUM Modus", "mdi:home-automation")
+                         "KONTINUUM Mode", "mdi:home-automation")
 
     @property
     def native_value(self):
@@ -244,7 +246,7 @@ class KontinuumModeSensor(KontinuumSensorBase):
 class KontinuumRoomSensor(KontinuumSensorBase):
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "room",
-                         "KONTINUUM Raum", "mdi:map-marker")
+                         "KONTINUUM Room", "mdi:map-marker")
 
     @property
     def native_value(self):
@@ -254,7 +256,7 @@ class KontinuumRoomSensor(KontinuumSensorBase):
 class KontinuumLastEventSensor(KontinuumSensorBase):
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "last_event",
-                         "Letztes Event", "mdi:lightning-bolt")
+                         "KONTINUUM Last Event", "mdi:lightning-bolt")
         self._last_signal = None
 
     @callback
@@ -284,7 +286,7 @@ class KontinuumLastEventSensor(KontinuumSensorBase):
 class KontinuumPredictionSensor(KontinuumSensorBase):
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "prediction",
-                         "Vorhersage", "mdi:crystal-ball")
+                         "KONTINUUM Prediction", "mdi:crystal-ball")
         self._predictions = None
 
     @callback
@@ -328,7 +330,7 @@ class KontinuumPredictionSensor(KontinuumSensorBase):
 class KontinuumEnergySensor(KontinuumSensorBase):
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "energy",
-                         "Energie", "mdi:battery")
+                         "KONTINUUM Energy", "mdi:battery")
 
     @property
     def native_value(self):
@@ -342,7 +344,7 @@ class KontinuumEnergySensor(KontinuumSensorBase):
 class KontinuumLocationSensor(KontinuumSensorBase):
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "location",
-                         "Standort", "mdi:crosshairs-gps")
+                         "KONTINUUM Location", "mdi:crosshairs-gps")
 
     @property
     def native_value(self):
@@ -362,7 +364,7 @@ class KontinuumLocationSensor(KontinuumSensorBase):
 class KontinuumCerebellumSensor(KontinuumSensorBase):
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "cerebellum",
-                         "Cerebellum", "mdi:cog-transfer")
+                         "KONTINUUM Cerebellum", "mdi:cog-transfer")
 
     @property
     def native_value(self):
@@ -384,7 +386,7 @@ class KontinuumCerebellumSensor(KontinuumSensorBase):
 class KontinuumBasalGangliaSensor(KontinuumSensorBase):
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "basal_ganglia",
-                         "Basalganglien", "mdi:brain")
+                         "KONTINUUM Basal Ganglia", "mdi:brain")
 
     @property
     def native_value(self):
@@ -407,7 +409,7 @@ class KontinuumBasalGangliaSensor(KontinuumSensorBase):
 class KontinuumPersonsSensor(KontinuumSensorBase):
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "persons_home",
-                         "Personen Zuhause", "mdi:account-group")
+                         "KONTINUUM Persons Home", "mdi:account-group")
         self._attr_native_unit_of_measurement = "Personen"
         self._home = []
         self._away = []
@@ -447,7 +449,7 @@ class KontinuumPersonsSensor(KontinuumSensorBase):
 class KontinuumUnknownEntitiesSensor(KontinuumSensorBase):
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "unknown_entities",
-                         "Entities ohne Raum", "mdi:help-circle-outline")
+                         "KONTINUUM Unknown Entities", "mdi:help-circle-outline")
         self._attr_native_unit_of_measurement = "Entities"
 
     @property
