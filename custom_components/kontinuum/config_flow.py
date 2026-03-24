@@ -60,6 +60,7 @@ AGENT_ROLES = {
     "comfort": "Comfort – Beleuchtung, Temperatur, Stimmung",
     "energy": "Energy – Solar, Batterie, Verbrauch",
     "safety": "Safety – Sicherheit, Anomalien, Veto-Recht",
+    "coordinator": "Coordinator – Leitet die anderen Agents, trifft finale Entscheidung",
     "custom": "Custom – Eigene Rolle mit eigenem Prompt",
 }
 
@@ -303,7 +304,24 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         """Agent 3: Modell wählen."""
         return await self._handle_agent_model(
             user_input, slot=3,
-            next_step=None, step_id="agent_3_model",
+            next_step="agent_4_setup", step_id="agent_3_model",
+            show_add_more=True,
+        )
+
+    # ── Agent 4: Setup + Model (Coordinator) ─────────────────────
+
+    async def async_step_agent_4_setup(self, user_input=None):
+        """Agent 4: Provider, Rolle und URL wählen."""
+        return await self._handle_agent_setup(
+            user_input, slot=4, next_step="agent_4_model",
+            step_id="agent_4_setup",
+        )
+
+    async def async_step_agent_4_model(self, user_input=None):
+        """Agent 4: Modell wählen."""
+        return await self._handle_agent_model(
+            user_input, slot=4,
+            next_step=None, step_id="agent_4_model",
             show_add_more=False,
         )
 
@@ -342,9 +360,10 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             "cortex_agents", {}
         ).get(str(slot), {})
 
+        slot_defaults = {1: "comfort", 2: "energy", 3: "safety", 4: "coordinator"}
         default_role = existing.get(
             "name",
-            "comfort" if slot == 1 else "energy" if slot == 2 else "safety",
+            slot_defaults.get(slot, "custom"),
         )
 
         schema_dict = {

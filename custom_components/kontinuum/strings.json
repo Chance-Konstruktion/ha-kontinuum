@@ -84,6 +84,25 @@
         "description": "{status}",
         "data": {
           "model": "Model",
+          "system_prompt": "System Prompt",
+          "add_more": "Add a coordinator agent"
+        }
+      },
+      "agent_4_setup": {
+        "title": "Cortex – Agent 4 / Coordinator (Connection)",
+        "description": "The coordinator sees all other agents' proposals and makes the final decision via LLM instead of algorithmic consensus.",
+        "data": {
+          "role": "Role",
+          "provider": "Provider",
+          "url": "URL / Host",
+          "api_key": "API Key"
+        }
+      },
+      "agent_4_model": {
+        "title": "Cortex – Agent 4 / Coordinator (Model)",
+        "description": "{status}",
+        "data": {
+          "model": "Model",
           "system_prompt": "System Prompt"
         }
       }
