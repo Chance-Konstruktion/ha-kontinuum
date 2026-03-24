@@ -595,18 +595,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 
 async def async_remove_entry(hass: HomeAssistant, entry: config_entries.ConfigEntry):
     """Deinstallation: Entfernt /config/kontinuum/ und input_number-Helfer."""
-    # Kompletten kontinuum-Ordner löschen
-    data_dir = hass.config.path(DATA_DIR)
-    if os.path.isdir(data_dir):
-        shutil.rmtree(data_dir)
-        _LOGGER.info("Entfernt: %s", data_dir)
+    # Kompletten kontinuum-Ordner löschen (blocking I/O → Executor)
+    def _cleanup_files():
+        data_dir = hass.config.path(DATA_DIR)
+        if os.path.isdir(data_dir):
+            shutil.rmtree(data_dir)
+            _LOGGER.info("Entfernt: %s", data_dir)
+        for fname in (BRAIN_FILE, BRAIN_FILE_LEGACY, BRAIN_FILE_LEGACY + ".migrated"):
+            path = hass.config.path(fname)
+            if os.path.exists(path):
+                os.remove(path)
+                _LOGGER.info("Entfernt: %s", path)
 
-    # Alte Dateien im Hauptverzeichnis (falls noch vorhanden)
-    for fname in (BRAIN_FILE, BRAIN_FILE_LEGACY, BRAIN_FILE_LEGACY + ".migrated"):
-        path = hass.config.path(fname)
-        if os.path.exists(path):
-            os.remove(path)
-            _LOGGER.info("Entfernt: %s", path)
+    await hass.async_add_executor_job(_cleanup_files)
 
     # input_number.k_* Helfer entfernen
     try:
