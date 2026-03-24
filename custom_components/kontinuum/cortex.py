@@ -95,6 +95,16 @@ DEFAULT_PROMPTS = {
         '{"action": "service.call oder null", "entity_id": "entity oder null", '
         '"reason": "kurze Begründung", "priority": 0-100, "veto": false}'
     ),
+    "coordinator": (
+        "Du bist der Coordinator-Agent im KONTINUUM Haus-Gehirn. "
+        "Du leitest die anderen Agents (Comfort, Energy, Safety). "
+        "Du siehst alle Vorschläge und triffst die finale Entscheidung. "
+        "Wäge Komfort, Energie und Sicherheit gegeneinander ab. "
+        "Sicherheits-Vetos haben absoluten Vorrang. "
+        "Antworte NUR mit JSON: "
+        '{"action": "service.call oder null", "entity_id": "entity oder null", '
+        '"reason": "kurze Begründung mit Abwägung", "priority": 0-100}'
+    ),
 }
 
 
@@ -372,11 +382,17 @@ class Cortex:
         if not self._session or self._session.closed:
             self._session = aiohttp.ClientSession()
 
-        # ── Runde 1: Initiale Vorschläge ────────────────────────
+        # Coordinator separieren (nimmt nicht an Runde 1 teil)
+        worker_agents = [a for a in self.agents if a.name != "coordinator"]
+        coordinator = next(
+            (a for a in self.agents if a.name == "coordinator"), None
+        )
+
+        # ── Runde 1: Initiale Vorschläge (nur Worker-Agents) ───
         context_msg = self._format_context(context)
         tasks = [
             agent.think(context_msg, self._session)
-            for agent in self.agents
+            for agent in (worker_agents or self.agents)
         ]
         proposals = await asyncio.gather(*tasks)
 
@@ -385,10 +401,11 @@ class Cortex:
             len([p for p in proposals if p.get("action")])
         )
 
-        # ── Runde 2: Diskussion (nur wenn >1 Agent) ────────────
+        # ── Runde 2: Diskussion (nur wenn >1 Worker-Agent) ─────
         revisions = []
+        active_agents = worker_agents or self.agents
         needs_discussion = (
-            len(self.agents) > 1
+            len(active_agents) > 1
             and self._has_disagreement(proposals)
         )
 
@@ -397,7 +414,7 @@ class Cortex:
             discussion_msg = self._format_discussion(context, proposals)
             tasks = [
                 agent.think(discussion_msg, self._session)
-                for agent in self.agents
+                for agent in active_agents
             ]
             revisions = await asyncio.gather(*tasks)
 
@@ -406,10 +423,17 @@ class Cortex:
                 len([r for r in revisions if r.get("action")])
             )
 
-        # ── KONTINUUM entscheidet (Prefrontal = Leader) ─────────
-        # Revisionen haben Vorrang über initiale Vorschläge
+        # ── Finale Entscheidung ─────────────────────────────────
         final_proposals = revisions if revisions else proposals
-        consensus = self._resolve_consensus(final_proposals)
+
+        if coordinator:
+            # Coordinator entscheidet via LLM
+            consensus = await self._coordinator_decide(
+                coordinator, context, final_proposals
+            )
+        else:
+            # Algorithmischer Konsens (Prefrontal = Leader)
+            consensus = self._resolve_consensus(final_proposals)
         consensus["proposals"] = proposals
         consensus["revisions"] = revisions
         consensus["discussion_rounds"] = 2 if needs_discussion else 1
@@ -562,6 +586,60 @@ class Cortex:
         return False
 
     # ── Konsens-Bildung (KONTINUUM ist Leader) ──────────────────
+
+    async def _coordinator_decide(self, coordinator, context, proposals):
+        """Coordinator-Agent trifft finale Entscheidung über alle Vorschläge."""
+        # Safety-Veto prüfen (hat immer absoluten Vorrang, auch vor Coordinator)
+        for p in proposals:
+            if p.get("veto", False):
+                _LOGGER.warning("Cortex VETO (vor Coordinator): %s", p.get("reason"))
+                return {
+                    "consensus_action": None,
+                    "consensus_entity": None,
+                    "consensus_reason": (
+                        f"VETO von {p.get('agent', '?')}: {p.get('reason', '')}"
+                    ),
+                    "vetoed": True,
+                }
+
+        # Coordinator bekommt Kontext + alle Vorschläge
+        lines = [
+            "=== HAUS-ZUSTAND ===",
+            self._format_context(context),
+            "",
+            "=== VORSCHLÄGE DER AGENTS ===",
+        ]
+        for p in proposals:
+            agent_name = p.get("agent", "?")
+            action = p.get("action") or "keine Aktion"
+            entity = p.get("entity_id") or ""
+            reason = p.get("reason", "?")
+            priority = p.get("priority", 0)
+            lines.append(
+                f"  [{agent_name}] → {action} {entity} "
+                f"(Priorität: {priority}) Grund: {reason}"
+            )
+        lines.extend([
+            "",
+            "Du bist der Coordinator. Triff die finale Entscheidung.",
+            "Wähle den besten Vorschlag oder kombiniere sie.",
+            "Antworte NUR mit JSON: "
+            '{"action": "...", "entity_id": "...", "reason": "...", "priority": 0-100}',
+        ])
+
+        decision = await coordinator.think("\n".join(lines), self._session)
+
+        result = {
+            "consensus_action": decision.get("action"),
+            "consensus_entity": decision.get("entity_id"),
+            "consensus_reason": (
+                f"Coordinator: {decision.get('reason', '?')}"
+            ),
+            "vetoed": False,
+        }
+
+        _LOGGER.info("Cortex Coordinator-Entscheidung: %s", result["consensus_reason"][:80])
+        return result
 
     def _resolve_consensus(self, proposals: list) -> dict:
         """

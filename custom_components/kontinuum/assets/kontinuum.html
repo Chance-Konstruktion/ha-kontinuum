@@ -437,18 +437,36 @@
 // KONTINUUM Dashboard – Real HA Integration
 // ══════════════════════════════════════════════════════════════
 //
-// INSTALLATION:
-// 1. Kopiere diese Datei nach /config/www/kontinuum.html
-// 2. Erstelle einen Long-Lived Access Token in HA:
-//    Profil → Long-Lived Access Tokens → Token erstellen
-// 3. Trage den Token unten bei HA_TOKEN ein
-// 4. Lovelace: type: iframe | url: /local/kontinuum.html
+// Das Dashboard erkennt den HA-Auth-Token automatisch (same-origin iframe).
+// Kein manueller Token nötig.
 //
 // ══════════════════════════════════════════════════════════════
 
 // ── KONFIGURATION ──
-const HA_BASE = window.location.origin; // funktioniert im HA iframe automatisch
-const HA_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJlZjE0NjdjNmRiZmQ0MjhlYmRkYzA5NDU4MzBiODg4MiIsImlhdCI6MTc3MjA4MjQ5NiwiZXhwIjoyMDg3NDQyNDk2fQ.05ix2LcLRkpL6eSnlJZNN64rl0hO8ELFtqqI3Y436is'; // ← HIER EINTRAGEN
+const HA_BASE = window.location.origin;
+
+// Auth-Token automatisch aus HA-Session lesen (same-origin iframe)
+function _getHAToken() {
+  // 1. HA speichert Tokens in localStorage
+  try {
+    const stored = localStorage.getItem('hassTokens');
+    if (stored) {
+      const tokens = JSON.parse(stored);
+      if (tokens && tokens.access_token) return tokens.access_token;
+    }
+  } catch(e) { /* ignore */ }
+  // 2. Fallback: aus Parent-Frame (HA Frontend)
+  try {
+    if (window.parent && window.parent.hassConnection) {
+      const conn = window.parent.hassConnection;
+      if (conn.options && conn.options.auth && conn.options.auth.accessToken) {
+        return conn.options.auth.accessToken;
+      }
+    }
+  } catch(e) { /* cross-origin blocked – ignore */ }
+  return null;
+}
+let HA_TOKEN = _getHAToken();
 
 const SENSORS = [
   'sensor.kontinuum_status',
@@ -514,12 +532,22 @@ function setConn(state) {
 // ══════════════════════════════════════════════════════════════
 
 async function fetchSensors() {
+  if (!HA_TOKEN) {
+    setConn('err');
+    log('Kein Auth-Token gefunden – bitte HA-Seite neu laden', 'var(--red)');
+    return;
+  }
   try {
     const resp = await fetch(HA_BASE + '/api/states', {
       headers: { 'Authorization': 'Bearer ' + HA_TOKEN, 'Content-Type': 'application/json' }
     });
 
     if (!resp.ok) {
+      if (resp.status === 401) {
+        // Token abgelaufen – neu lesen
+        const fresh = _getHAToken();
+        if (fresh && fresh !== HA_TOKEN) { HA_TOKEN = fresh; return fetchSensors(); }
+      }
       if (!connected) setConn('err');
       return;
     }

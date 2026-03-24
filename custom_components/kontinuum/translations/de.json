@@ -31,44 +31,84 @@
           "enable_cortex": "Cortex aktivieren (LLM-Agents)"
         }
       },
-      "agent_1": {
-        "title": "Cortex \u2013 Agent 1",
-        "description": "Konfiguriere den ersten LLM-Agent. F\u00fcr Ollama den API-Key leer lassen. W\u00e4hle eine Rolle oder erstelle einen eigenen Agent.",
+      "agent_1_setup": {
+        "title": "Cortex \u2013 Agent 1 (Verbindung)",
+        "description": "W\u00e4hle Rolle und Provider. F\u00fcr Ollama einfach den Host eingeben (z.B. 'localhost' oder '192.168.1.100').",
         "data": {
           "role": "Rolle",
           "provider": "Provider",
-          "model": "Modell (leer = Standard)",
-          "url": "URL (leer = Standard)",
-          "api_key": "API-Key (nur Cloud)",
+          "url": "URL / Host (leer = Standard)",
+          "api_key": "API-Key (nur Cloud)"
+        }
+      },
+      "agent_1_model": {
+        "title": "Cortex \u2013 Agent 1 (Modell)",
+        "description": "{status}",
+        "data": {
+          "model": "Modell",
           "system_prompt": "System-Prompt (leer = Standard)",
           "add_more": "Weiteren Agent hinzuf\u00fcgen"
         }
       },
-      "agent_2": {
-        "title": "Cortex \u2013 Agent 2",
+      "agent_2_setup": {
+        "title": "Cortex \u2013 Agent 2 (Verbindung)",
         "description": "Konfiguriere den zweiten Agent. Verschiedene Agents diskutieren und finden gemeinsam einen Konsens.",
         "data": {
           "role": "Rolle",
           "provider": "Provider",
+          "url": "URL / Host",
+          "api_key": "API-Key"
+        }
+      },
+      "agent_2_model": {
+        "title": "Cortex \u2013 Agent 2 (Modell)",
+        "description": "{status}",
+        "data": {
           "model": "Modell",
-          "url": "URL",
-          "api_key": "API-Key",
           "system_prompt": "System-Prompt",
           "add_more": "Dritten Agent hinzuf\u00fcgen"
         }
       },
-      "agent_3": {
-        "title": "Cortex \u2013 Agent 3 (letzter)",
-        "description": "Konfiguriere den dritten und letzten Agent. KONTINUUM (Prefrontal) ist der Leader und trifft die finale Entscheidung.",
+      "agent_3_setup": {
+        "title": "Cortex \u2013 Agent 3 (Verbindung)",
+        "description": "Konfiguriere den dritten Agent.",
         "data": {
           "role": "Rolle",
           "provider": "Provider",
+          "url": "URL / Host",
+          "api_key": "API-Key"
+        }
+      },
+      "agent_3_model": {
+        "title": "Cortex \u2013 Agent 3 (Modell)",
+        "description": "{status}",
+        "data": {
           "model": "Modell",
-          "url": "URL",
-          "api_key": "API-Key",
+          "system_prompt": "System-Prompt",
+          "add_more": "Coordinator-Agent hinzuf\u00fcgen"
+        }
+      },
+      "agent_4_setup": {
+        "title": "Cortex \u2013 Agent 4 / Coordinator (Verbindung)",
+        "description": "Der Coordinator sieht alle Vorschl\u00e4ge der anderen Agents und trifft per LLM die finale Entscheidung.",
+        "data": {
+          "role": "Rolle",
+          "provider": "Provider",
+          "url": "URL / Host",
+          "api_key": "API-Key"
+        }
+      },
+      "agent_4_model": {
+        "title": "Cortex \u2013 Agent 4 / Coordinator (Modell)",
+        "description": "{status}",
+        "data": {
+          "model": "Modell",
           "system_prompt": "System-Prompt"
         }
       }
+    },
+    "error": {
+      "ollama_unreachable": "Ollama nicht erreichbar. Pr\u00fcfe ob Ollama l\u00e4uft und die URL stimmt."
     }
   }
 }

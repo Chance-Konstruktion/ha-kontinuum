@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.17.0 – Coordinator-Agent, Dashboard-Auth & Auto-Reload
+
+### Cortex – 4. Agent-Slot mit Coordinator-Rolle
+- **4 Agent-Slots** – Erweitert von 3 auf 4 konfigurierbare LLM-Agents
+- **Coordinator-Rolle** – Neuer Agent-Typ: sieht alle Worker-Vorschläge und trifft die finale Entscheidung per LLM
+- **Worker/Coordinator-Split** – Worker-Agents (1-3) denken parallel, Coordinator entscheidet danach
+- **Safety-Veto** hat weiterhin absoluten Vorrang (auch vor dem Coordinator)
+- **Coordinator-Prompt** – Spezialisierter System-Prompt für Abwägung zwischen Komfort, Energie und Sicherheit
+- Services `configure_agent` und `remove_agent` unterstützen Slot 1-4
+
+### Dashboard – Automatische Authentifizierung
+- **Kein manueller Token mehr nötig** – Dashboard liest Auth-Token automatisch aus der HA-Session (same-origin iframe)
+- **Token-Refresh bei 401** – Abgelaufene Tokens werden automatisch erneuert
+- **Hardcodierten JWT entfernt** – Keine Secrets mehr in der HTML-Datei
+
+### Options-Flow – Auto-Reload
+- **Automatisches Neuladen** – Nach Speichern der Konfiguration wird die Integration automatisch neu geladen
+- **Neue Entitäten sofort verfügbar** – Cortex-Agent-Sensoren werden ohne manuelles Neuladen erstellt
+
+### Blocking I/O Fix
+- **async_remove_entry** – `shutil.rmtree` und `os.remove` laufen jetzt im Executor-Thread statt im Event Loop
+
+### Dokumentation
+- **README.md** – Komplett überarbeitet: Dashboard-Services dokumentiert, Cortex klar als optional gekennzeichnet
+- **README_EN.md** – Neue englische README für internationales Publikum
+- **HACS-Readiness** – codeowners in manifest.json gesetzt
+
+---
+
 ## v0.16.0 – 4-Gramme, Brain Review & Bugfixes
 
 ### Hippocampus – Tiefere Muster

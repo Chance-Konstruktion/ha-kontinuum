@@ -50,7 +50,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.16.0"
+VERSION = "0.17.0"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
@@ -1081,13 +1081,13 @@ def _register_services(hass, brain):
         """
         Konfiguriert einen Cortex-Agent.
         Service: kontinuum.configure_agent
-        Data: {slot: 1-3, name: "comfort", provider: "ollama",
+        Data: {slot: 1-4, name: "comfort", provider: "ollama",
                model: "llama3.2", url: "http://...", api_key: "", prompt: "..."}
         """
         cortex = brain["cortex"]
         slot = int(call.data.get("slot", 1))
-        if slot < 1 or slot > 3:
-            _LOGGER.warning("Cortex: Slot muss 1-3 sein, nicht %s", slot)
+        if slot < 1 or slot > 4:
+            _LOGGER.warning("Cortex: Slot muss 1-4 sein, nicht %s", slot)
             return
 
         provider = call.data.get("provider", "ollama")
@@ -1221,7 +1221,7 @@ def _register_services(hass, brain):
                 )
 
     async def handle_cortex_remove_agent(call):
-        """Entfernt einen Cortex-Agent. Data: {slot: 1-3}"""
+        """Entfernt einen Cortex-Agent. Data: {slot: 1-4}"""
         slot = str(call.data.get("slot", ""))
         agents = dict(brain.get("_cortex_agents", {}))
         if slot in agents:

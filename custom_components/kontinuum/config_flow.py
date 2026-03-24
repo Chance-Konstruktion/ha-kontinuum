@@ -60,6 +60,7 @@ AGENT_ROLES = {
     "comfort": "Comfort – Beleuchtung, Temperatur, Stimmung",
     "energy": "Energy – Solar, Batterie, Verbrauch",
     "safety": "Safety – Sicherheit, Anomalien, Veto-Recht",
+    "coordinator": "Coordinator – Leitet die anderen Agents, trifft finale Entscheidung",
     "custom": "Custom – Eigene Rolle mit eigenem Prompt",
 }
 
@@ -238,7 +239,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             if user_input.get("enable_cortex", False):
                 return await self.async_step_agent_1_setup()
             # Sonst direkt speichern
-            return self._save_and_finish()
+            return await self._save_and_finish()
 
         current = self.config_entry.data.get("preset", "ausgeglichen")
         current_dashboard = self.config_entry.data.get("enable_dashboard", True)
@@ -303,7 +304,24 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         """Agent 3: Modell wählen."""
         return await self._handle_agent_model(
             user_input, slot=3,
-            next_step=None, step_id="agent_3_model",
+            next_step="agent_4_setup", step_id="agent_3_model",
+            show_add_more=True,
+        )
+
+    # ── Agent 4: Setup + Model (Coordinator) ─────────────────────
+
+    async def async_step_agent_4_setup(self, user_input=None):
+        """Agent 4: Provider, Rolle und URL wählen."""
+        return await self._handle_agent_setup(
+            user_input, slot=4, next_step="agent_4_model",
+            step_id="agent_4_setup",
+        )
+
+    async def async_step_agent_4_model(self, user_input=None):
+        """Agent 4: Modell wählen."""
+        return await self._handle_agent_model(
+            user_input, slot=4,
+            next_step=None, step_id="agent_4_model",
             show_add_more=False,
         )
 
@@ -342,9 +360,10 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             "cortex_agents", {}
         ).get(str(slot), {})
 
+        slot_defaults = {1: "comfort", 2: "energy", 3: "safety", 4: "coordinator"}
         default_role = existing.get(
             "name",
-            "comfort" if slot == 1 else "energy" if slot == 2 else "safety",
+            slot_defaults.get(slot, "custom"),
         )
 
         schema_dict = {
@@ -400,7 +419,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             # Weiter oder fertig?
             if show_add_more and user_input.get("add_more", False):
                 return await getattr(self, f"async_step_{next_step}")()
-            return self._save_and_finish()
+            return await self._save_and_finish()
 
         # ── Formular bauen ──
         existing = self.config_entry.data.get(
@@ -476,8 +495,8 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
 
     # ── Speichern ───────────────────────────────────────────────
 
-    def _save_and_finish(self):
-        """Speichert alle Einstellungen und beendet den Flow."""
+    async def _save_and_finish(self):
+        """Speichert alle Einstellungen und lädt die Integration neu."""
         preset_key = self._data.get(
             "preset",
             self.config_entry.data.get("preset", "ausgeglichen"),
@@ -502,5 +521,8 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         self.hass.config_entries.async_update_entry(
             self.config_entry, data=new_data
         )
+
+        # Integration neu laden damit neue Entitäten erstellt werden
+        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
 
         return self.async_create_entry(title="", data={})
