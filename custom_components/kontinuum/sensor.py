@@ -87,6 +87,8 @@ class KontinuumSensorBase(SensorEntity):
         self._attr_name = name
         self._attr_icon = icon
         self._signal = SIGNAL_SENSORS_UPDATE
+        # v0.18.0: entity_id explizit setzen damit Dashboard-IDs stabil sind
+        self.entity_id = f"sensor.kontinuum_{key}"
 
     async def async_added_to_hass(self) -> None:
         """Dispatcher-Signal verbinden."""

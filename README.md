@@ -5,7 +5,7 @@
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.17.0-blue)
+![Version](https://img.shields.io/badge/version-0.18.0-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [English version](README_EN.md)
@@ -222,8 +222,11 @@ Im Debug-Panel können folgende **Services direkt ausgelöst** werden:
 | **Brain Review** | `kontinuum.brain_review` | Alle Cortex-Agents analysieren gemeinsam den Brain-Zustand (Patterns, Accuracy, Regeln, Habits). Liefert Health-Score + Verbesserungsvorschläge. |
 | **Status** | `kontinuum.status` | Zeigt detaillierten KONTINUUM-Status als persistent_notification -- Version, Module, Statistiken. |
 | **Brain Export** | `kontinuum.export_brain` | Exportiert die komprimierte brain.json.gz als lesbare brain_export.json nach /config/. Für externe Analyse. |
+| **Shadow** | `kontinuum.set_mode` | Setzt Betriebsmodus auf Shadow -- KONTINUUM beobachtet nur und führt keine Aktionen aus. |
+| **Confirm** | `kontinuum.set_mode` | Setzt Betriebsmodus auf Confirm -- KONTINUUM fragt per Notification bevor es handelt. |
+| **Active** | `kontinuum.set_mode` | Setzt Betriebsmodus auf Active -- KONTINUUM schaltet freigeschaltete Gerätetypen selbständig. |
 | **Activate Light** | `kontinuum.activate` | Schaltet autonome Ausführung für Lichter frei. KONTINUUM steuert dann Lichter selbständig basierend auf gelernten Mustern. |
-| **Deactivate All** | `kontinuum.deactivate` | Deaktiviert autonome Ausführung für alle Gerätetypen. KONTINUUM beobachtet dann nur noch (Shadow-Mode). |
+| **Deactivate All** | `kontinuum.deactivate` | Deaktiviert autonome Ausführung für alle Gerätetypen. |
 
 ---
 
@@ -289,6 +292,9 @@ Zeigen die Aktivität jedes Gehirnmoduls (0.0 -- 1.0):
 | `kontinuum.export_brain` | Gehirn als lesbare JSON exportieren (brain_export.json) |
 | `kontinuum.activate` | Autonome Ausführung für einen Gerätetyp freischalten (light, switch, fan, cover, climate, media, automation, vacuum) |
 | `kontinuum.deactivate` | Autonome Ausführung deaktivieren (pro Typ oder `all`) |
+| `kontinuum.set_mode` | Betriebsmodus setzen: `shadow` (nur beobachten), `confirm` (Bestätigung vor Aktion), `active` (autonomes Schalten) |
+| `kontinuum.confirm_action` | Eine wartende Bestätigungs-Aktion genehmigen (per `confirm_id`) |
+| `kontinuum.reject_action` | Eine wartende Bestätigungs-Aktion ablehnen (per `confirm_id`) |
 | `kontinuum.enable_scenes` | Automatische Licht-Szenen nach erkanntem Modus aktivieren |
 | `kontinuum.disable_scenes` | Licht-Szenen deaktivieren |
 | `kontinuum.set_scene` | Licht-Szene pro Modus konfigurieren (Helligkeit, Farbtemperatur) |
@@ -298,6 +304,7 @@ Zeigen die Aktivität jedes Gehirnmoduls (0.0 -- 1.0):
 | Service | Beschreibung |
 |---------|-------------|
 | `kontinuum.cortex_consult` | Manuelle Beratung aller Cortex-Agents auslösen |
+| `kontinuum.cortex_sequential` | Sequentiellen Cortex-Modus umschalten (für Systeme mit nur einer GPU/Ollama-Instanz) |
 | `kontinuum.brain_review` | Brain-Analyse durch alle Agents (Health-Score + Vorschläge) |
 | `kontinuum.configure_agent` | Agent per Service konfigurieren (Slot 1-4) |
 | `kontinuum.remove_agent` | Agent aus Slot entfernen |
@@ -334,7 +341,7 @@ action:
 - **21-dimensionaler Kontextvektor** -- Zeit, Sonnenstand, Energie, Trends, Modus
 - **Adaptive Kontext-Buckets** -- wächst von 6 auf 96 (Zeit x Modus x Energie x Tagestyp)
 - **Persistenz** -- Gehirn wird in `brain.json.gz` komprimiert gespeichert (RPi-SD-schonend)
-- **Shadow-Mode** -- beobachtet und validiert Vorhersagen bevor es handelt
+- **3 Betriebsmodi** -- Shadow (beobachten), Confirm (Bestätigung), Active (autonomes Schalten)
 - **Label-Support** -- HA-Labels als Raum-Hinweis nutzbar
 - **Saubere Deinstallation** -- Entfernt brain, Helfer und Entities automatisch
 - **Cortex Bridge** -- LLM-Ergebnisse fließen ins Gehirn zurück

@@ -5,7 +5,7 @@
 **Your home learns by itself.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.17.0-blue)
+![Version](https://img.shields.io/badge/version-0.18.0-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [Deutsche Version](README.md)
@@ -281,6 +281,9 @@ Show the activity of each brain module (0.0 -- 1.0):
 | `kontinuum.export_brain` | Export brain as readable JSON (brain_export.json) |
 | `kontinuum.activate` | Enable autonomous control for a device type (light, switch, fan, cover, climate, media, automation, vacuum) |
 | `kontinuum.deactivate` | Disable autonomous control (per type or `all`) |
+| `kontinuum.set_mode` | Set operation mode: `shadow` (observe only), `confirm` (ask before acting), `active` (autonomous control) |
+| `kontinuum.confirm_action` | Approve a pending confirmation action (by `confirm_id`) |
+| `kontinuum.reject_action` | Reject a pending confirmation action (by `confirm_id`) |
 | `kontinuum.enable_scenes` | Enable automatic light scenes based on detected mode |
 | `kontinuum.disable_scenes` | Disable light scenes |
 | `kontinuum.set_scene` | Configure light scene per mode (brightness, color temperature) |
@@ -290,6 +293,7 @@ Show the activity of each brain module (0.0 -- 1.0):
 | Service | Description |
 |---------|-------------|
 | `kontinuum.cortex_consult` | Manually trigger consultation of all Cortex agents |
+| `kontinuum.cortex_sequential` | Toggle sequential Cortex mode (for systems with a single GPU/Ollama instance) |
 | `kontinuum.brain_review` | Brain analysis by all agents (health score + suggestions) |
 | `kontinuum.configure_agent` | Configure agent via service (slot 1-4) |
 | `kontinuum.remove_agent` | Remove agent from slot |
