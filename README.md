@@ -5,7 +5,7 @@
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.15.0-blue)
+![Version](https://img.shields.io/badge/version-0.16.0-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 KONTINUUM ist eine experimentelle Home-Assistant-Integration, die dein Zuhause ohne Regeln, ohne Konfiguration und ohne Cloud versteht.
@@ -157,7 +157,7 @@ Filtert den Strom aller Home-Assistant-Events, erkennt Räume und Semantik, erze
 
 ### Hippocampus – Das Gedächtnis
 
-Lernt Sequenzen von Ereignissen mithilfe von N-Gramm-Markov-Ketten. Hier entstehen die Muster deines Alltags. Unterscheidet zwischen Werktagen und Wochenenden und passt sich adaptiv an die Datenmenge an – von 6 bis zu 96 Kontext-Buckets.
+Lernt Sequenzen von Ereignissen mithilfe von N-Gramm-Markov-Ketten (1- bis 4-Gramme). Hier entstehen die Muster deines Alltags. Unterscheidet zwischen Werktagen und Wochenenden und passt sich adaptiv an die Datenmenge an – von 6 bis zu 96 Kontext-Buckets.
 
 ### Hypothalamus – Die Homöostase
 
@@ -206,6 +206,8 @@ Optional: Bis zu 3 LLM-Agents (Ollama, OpenAI, Claude, Gemini, Grok) mit eigenen
 Die Agents diskutieren untereinander (Multi-Agent-Diskussion) und finden einen Konsens. KONTINUUM (Prefrontal) ist der Orchestrator und trifft die finale Entscheidung.
 
 **Cortex Bridge:** LLM-Ergebnisse fließen zurück ins Gehirn – Hippocampus speichert sie als Erfahrung, Basalganglien lernen daraus, Amygdala bewertet Risiken und das Cerebellum bildet neue Reflexe. KONTINUUM wird langfristig klüger, auch wenn der Cortex später deaktiviert wird.
+
+**Brain Review:** Monatlich (oder manuell per Service) analysieren alle Cortex-Agents gemeinsam den Brain-Zustand – Patterns, Accuracy, Regeln, Habits – und liefern einen Health-Score mit konkreten Verbesserungsvorschlägen als Notification.
 
 ---
 
@@ -422,6 +424,7 @@ Das Dashboard zeigt alle Gehirnmodule, Aktivitäten, Vorhersagen und den Systems
 | `kontinuum.configure_agent` | Cortex-Agent konfigurieren |
 | `kontinuum.cortex_consult` | Cortex-Beratung manuell auslösen |
 | `kontinuum.remove_agent` | Cortex-Agent entfernen |
+| `kontinuum.brain_review` | Brain-Analyse durch alle Cortex-Agents |
 
 ---
 
@@ -449,7 +452,7 @@ action:
 
 ## Technische Details
 
-- **Kein ML, kein Deep Learning** – reine Statistik (N-Gramm Markov-Ketten)
+- **Kein ML, kein Deep Learning** – reine Statistik (1- bis 4-Gramm Markov-Ketten)
 - **Komplett lokal** – keine Cloud, keine API-Calls (Cortex optional)
 - **~6.000 Zeilen Python** – läuft auf Raspberry Pi 4
 - **21-dimensionaler Kontextvektor** – Zeit, Sonnenstand, Energie, Trends, Modus

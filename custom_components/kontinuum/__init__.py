@@ -50,7 +50,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.15.0"
+VERSION = "0.16.0"
 BRAIN_FILE = "brain.json.gz"
 BRAIN_FILE_LEGACY = "brain.json"
 SAVE_INTERVAL = 600
@@ -165,7 +165,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
 
         # Optional: Context-Profile für erweiterte Semantik/Thresholds
         profile_path = hass.config.path("kontinuum_context_profile.json")
-        thalamus.load_custom_profiles(profile_path)
+        await hass.async_add_executor_job(thalamus.load_custom_profiles, profile_path)
 
         # ── Presets anwenden ──────────────────────────────────
         cerebellum.MIN_OBSERVATIONS = config_data.get("cerebellum_min_obs", 5)

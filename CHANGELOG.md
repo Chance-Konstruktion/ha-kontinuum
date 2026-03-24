@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.16.0 – 4-Gramme, Brain Review & Bugfixes
+
+### Hippocampus – Tiefere Muster
+- **4-Gramm-Sequenzen** – NGRAM_SIZES erweitert auf [1,2,3,4] für 4-Schritt-Muster
+- **Größerer Kontext-Buffer** – 20 → 30 Tokens für bessere Kontexterfassung
+- **Mehr Muster pro Bucket** – MAX_NGRAMS_PER_BUCKET 500 → 1000 (weniger Eviction)
+- **Schnelleres Lernen** – MIN_OBSERVATIONS 3 → 2
+- **4-Gram Gewichtung** – Höchste Gewichtung (0.95) für kontextreichste Muster
+
+### Cerebellum – 4-Gram Regeln
+- **4-Gram Regelextraktion** – Confidence-Schwelle ≥ 35%
+- **Größerer Recent-Buffer** – 10 → 15 für 4-Gram Matching
+- **Statistik erweitert** – `rules_4gram` im Sensor sichtbar
+
+### Brain Review (neu)
+- **Cortex.brain_review()** – Alle Agents analysieren gemeinsam den Brain-Zustand
+- **Vollständige Statistik** – Patterns, Accuracy, Regeln, Habits, Energie-Trends
+- **Agent-Feedback** – health_score, strengths, weaknesses, suggestions
+- **Service** – `kontinuum.brain_review` (manuell aufrufbar)
+- **Automatisch monatlich** – Alle 30 Tage ab 500 Events
+- **Ergebnis als persistent_notification** in Home Assistant
+
+### Bugfixes
+- **Dispatcher-Fix** – `async_dispatcher_send()` mit positional args statt kwargs (behebt TypeError)
+- **Blocking I/O behoben** – `load_custom_profiles()` läuft jetzt via `async_add_executor_job` statt synchron im Event Loop
+- **Profil-Warnung bereinigt** – Fehlende `kontinuum_context_profile.json` erzeugt nur noch debug-Log statt warning
+
+---
+
 ## v0.15.0 – Cortex (Multi-Agent LLM Layer)
 
 ### Cortex – Bewusstes Denken
