@@ -348,6 +348,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         # ── Entities entdecken ────────────────────────────────
         await _discover_entities(hass, thalamus)
 
+        # ── Home-Only Mode (v0.15.0) ──────────────────────────
+        home_only_mode = entry.data.get("home_only_mode", False)
+        brain["_home_only_mode"] = home_only_mode
+
         # ── In hass.data speichern (vor Platform-Setup!) ──────
         hass.data[DOMAIN] = brain
 
@@ -380,16 +384,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     return
 
                 # ignore_kontinuum Label → komplett ignorieren (v0.15.0)
+                # Dynamischer Check: auch Labels die nach Start gesetzt werden
                 if entity_id in thalamus._ignored_entities:
                     return
 
-                # Sonnenstand tracken (v0.12.0)
+                # Sonnenstand tracken (v0.12.0) – immer, auch im Home-Only
                 if entity_id == "sun.sun":
                     elevation = new_state_obj.attributes.get("elevation", 0)
                     is_daylight = new_state == "above_horizon"
                     thalamus.update_sun(elevation, is_daylight)
                     insula.update_sun(is_daylight)
                     return
+
+                # Home-Only Mode: Nur verarbeiten wenn jemand zuhause (v0.15.0)
+                if brain.get("_home_only_mode", False):
+                    if not brain.get("_persons_home"):
+                        return
 
                 now = datetime.now(timezone.utc)
                 semantic = thalamus.entity_semantic.get(entity_id)
@@ -508,6 +518,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     hass.async_add_executor_job(_save_brain, brain, brain_path)
                     brain["_last_save"] = now_ts
 
+                # ignore_kontinuum Labels periodisch refreshen (v0.15.0)
+                if now_ts - brain.get("_last_label_refresh", 0) > 300:
+                    brain["_last_label_refresh"] = now_ts
+                    _refresh_ignore_labels(hass, thalamus)
+
                 # ── Brain Review: Monatlich automatisch ──
                 BRAIN_REVIEW_INTERVAL = 30 * 86400  # 30 Tage
                 if (cortex.enabled
@@ -570,6 +585,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             f"Preset: {preset_key} · "
             f"Routinen: {len(cerebellum.rules)}",
         ]
+        if home_only_mode:
+            startup_parts.append("🏠 **Home-Only Modus** aktiv – pausiert wenn niemand zuhause")
         ignored_count = thalamus.stats.get("entities_ignored", 0)
         if ignored_count:
             startup_parts.append(
@@ -1475,6 +1492,64 @@ def _register_services(hass, brain):
                  "status, export_brain, activate, deactivate, set_mode, "
                  "confirm_action, reject_action, "
                  "configure_agent, cortex_consult, remove_agent, brain_review")
+
+
+# ══════════════════════════════════════════════════════════════════
+# LABEL HELPERS
+# ══════════════════════════════════════════════════════════════════
+
+def _get_ignore_label_ids(hass) -> set:
+    """Gibt die Label-IDs zurück die 'ignore_kontinuum' heißen."""
+    try:
+        from homeassistant.helpers.label_registry import async_get as get_lr
+        lr = get_lr(hass)
+        return {
+            l.label_id for l in lr.async_list_labels()
+            if l.name.lower().strip() in ("ignore_kontinuum", "ignore kontinuum")
+        }
+    except (ImportError, AttributeError):
+        return set()
+
+
+def _has_ignore_label(hass, entity_id: str) -> bool:
+    """Prüft live ob eine Entity das ignore_kontinuum Label hat."""
+    try:
+        from homeassistant.helpers.entity_registry import async_get as get_er
+        er = get_er(hass)
+        entity = er.async_get(entity_id)
+        if not entity or not hasattr(entity, "labels") or not entity.labels:
+            return False
+        ignore_ids = _get_ignore_label_ids(hass)
+        return bool(entity.labels & ignore_ids) if ignore_ids else False
+    except (ImportError, AttributeError, Exception):
+        pass
+    return False
+
+
+def _refresh_ignore_labels(hass, thalamus):
+    """Scannt alle Entities auf ignore_kontinuum Labels (periodisch)."""
+    try:
+        from homeassistant.helpers.entity_registry import async_get as get_er
+        er = get_er(hass)
+        ignore_ids = _get_ignore_label_ids(hass)
+        if not ignore_ids:
+            return
+        new_ignored = set()
+        for entity in er.entities.values():
+            if hasattr(entity, "labels") and entity.labels:
+                if entity.labels & ignore_ids:
+                    new_ignored.add(entity.entity_id)
+        if new_ignored != thalamus._ignored_entities:
+            added = new_ignored - thalamus._ignored_entities
+            removed = thalamus._ignored_entities - new_ignored
+            thalamus._ignored_entities = new_ignored
+            thalamus.stats["entities_ignored"] = len(new_ignored)
+            if added:
+                _LOGGER.info("ignore_kontinuum hinzugefügt: %s", added)
+            if removed:
+                _LOGGER.info("ignore_kontinuum entfernt: %s", removed)
+    except (ImportError, AttributeError, Exception):
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════

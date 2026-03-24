@@ -28,6 +28,7 @@
         "data": {
           "preset": "Pers\u00f6nlichkeit",
           "enable_dashboard": "Dashboard aktivieren",
+          "home_only_mode": "Home-Only Modus (pausiert wenn niemand zuhause)",
           "enable_cortex": "Cortex aktivieren (LLM-Agents)"
         }
       },

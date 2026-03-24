@@ -28,6 +28,7 @@
         "data": {
           "preset": "Personality",
           "enable_dashboard": "Enable Dashboard",
+          "home_only_mode": "Home-Only Mode (pause when nobody is home)",
           "enable_cortex": "Enable Cortex (LLM Agents)"
         }
       },
