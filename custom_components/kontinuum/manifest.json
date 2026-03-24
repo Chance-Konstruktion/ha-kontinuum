@@ -1,7 +1,7 @@
 {
   "domain": "kontinuum",
   "name": "KONTINUUM - Neuroinspired Home Intelligence",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "documentation": "https://github.com/Chance-Konstruktion/ha-kontinuum",
   "requirements": [],
   "dependencies": [],

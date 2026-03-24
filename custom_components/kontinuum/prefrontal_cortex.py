@@ -9,6 +9,11 @@
 ║  Er lernt auch aus implizitem Feedback: Wenn der User eine     ║
 ║  KONTINUUM-Aktion innerhalb von 60s rückgängig macht, ist      ║
 ║  das negatives Feedback.                                         ║
+║                                                                  ║
+║  v0.18.0 – Betriebsmodi:                                       ║
+║  • shadow  = Nur beobachten, nichts ausführen                   ║
+║  • confirm = Bestätigung anfordern vor Ausführung               ║
+║  • active  = Selbständig schalten (freigeschaltete Semantiken) ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -16,6 +21,12 @@ import logging
 import time
 
 _LOGGER = logging.getLogger(__name__)
+
+# ── Betriebsmodi ─────────────────────────────────────────────
+MODE_SHADOW = "shadow"    # Nur beobachten
+MODE_CONFIRM = "confirm"  # Bestätigung anfordern
+MODE_ACTIVE = "active"    # Selbständig schalten
+VALID_MODES = {MODE_SHADOW, MODE_CONFIRM, MODE_ACTIVE}
 
 ACTIONABLE_SEMANTICS = {
     "light", "switch", "fan", "cover", "climate",
@@ -39,6 +50,7 @@ class Decision:
     OBSERVE = "OBSERVE"
     PREPARE = "PREPARE"
     SUGGEST = "SUGGEST"
+    CONFIRM = "CONFIRM"   # v0.18.0: Bestätigung anfordern
     EXECUTE = "EXECUTE"
     
     def __init__(self):
@@ -81,14 +93,19 @@ class PrefrontalCortex:
     def __init__(self, amygdala):
         self.amygdala = amygdala
         self.shadow_mode = True
+        # v0.18.0: Betriebsmodus (shadow / confirm / active)
+        self.operation_mode = MODE_SHADOW
         self.total_decisions = 0
         self.total_executions = 0
+        self.total_confirms = 0
         self.overrides_detected = 0
         self.own_actions = {}
         self.utility_weights = {}
         self._feedback_log = []
         # v0.14.3: FAL – freigeschaltete Semantiken für autonome Ausführung
         self.activated_semantics = set()  # z.B. {"light", "switch"}
+        # v0.18.0: Warteschlange für Bestätigungs-Aktionen
+        self._pending_confirms = {}  # decision_id → Decision
 
     def evaluate(self, predictions: list, thalamus,
                  basal_ganglia=None, bucket: int = 0) -> Decision:
@@ -151,19 +168,23 @@ class PrefrontalCortex:
                 candidates = thalamus.resolve_entities(token)
                 d.entity_id = candidates[0] if candidates else ""
 
-                # Stage bestimmen – dreistufiges Gating:
-                # 1. Shadow-Mode + nicht aktiviert → OBSERVE
-                # 2. Zu wenig Beobachtungen → OBSERVE
-                # 3. Genug Beobachtungen → SUGGEST oder EXECUTE
-                if self.shadow_mode and semantic not in self.activated_semantics:
-                    d.stage = Decision.OBSERVE
-                elif n_obs < self.MIN_OBS_SUGGEST:
+                # Stage bestimmen – v0.18.0 Betriebsmodus-Gating:
+                # 1. Zu wenig Beobachtungen → OBSERVE (immer)
+                # 2. Shadow-Modus → OBSERVE (immer)
+                # 3. Confirm-Modus → CONFIRM statt EXECUTE
+                # 4. Active-Modus → EXECUTE wenn freigeschaltet
+                if n_obs < self.MIN_OBS_SUGGEST:
                     d.stage = Decision.OBSERVE
                     d.reasons = d.reasons + [f"n={n_obs} < {self.MIN_OBS_SUGGEST} (zu wenig Daten)"]
+                elif self.operation_mode == MODE_SHADOW:
+                    d.stage = Decision.OBSERVE
                 elif (semantic in self.activated_semantics
                       and utility >= self.UTILITY_THRESHOLD_EXECUTE
                       and n_obs >= self.MIN_OBS_EXECUTE):
-                    d.stage = Decision.EXECUTE
+                    if self.operation_mode == MODE_CONFIRM:
+                        d.stage = Decision.CONFIRM
+                    else:
+                        d.stage = Decision.EXECUTE
                 elif utility >= self.UTILITY_THRESHOLD_SUGGEST:
                     d.stage = Decision.SUGGEST
                 else:
@@ -175,25 +196,37 @@ class PrefrontalCortex:
             self.total_decisions += 1
             if best_decision.stage == Decision.EXECUTE:
                 self.total_executions += 1
+            elif best_decision.stage == Decision.CONFIRM:
+                self.total_confirms += 1
 
         return best_decision
     
     def get_service_call(self, decision: Decision) -> dict:
-        """Erzeugt einen HA Service-Call aus einer Entscheidung."""
+        """Erzeugt einen HA Service-Call aus einer Entscheidung.
+
+        v0.18.0: Liefert auch `data`-Parameter für climate/media.
+        """
         parts = decision.token.split(".")
         if len(parts) != 3:
             return None
         room, semantic, state = parts
-        
+
         services = STATE_TO_SERVICE.get(semantic, {})
         service = services.get(state)
         if not service:
             return None
-        
+
+        data = {"entity_id": decision.entity_id}
+
+        # Climate: hvac_mode mitliefern wenn nicht "off"
+        if semantic == "climate" and state != "off":
+            data["hvac_mode"] = state
+
         return {
             "domain": semantic,
             "service": service,
             "entity_id": decision.entity_id,
+            "data": data,
         }
     
     def is_own_action(self, entity_id: str) -> bool:
@@ -291,12 +324,62 @@ class PrefrontalCortex:
         else:
             current = self.utility_weights.get(semantic, 1.0)
             self.utility_weights[semantic] = max(0.1, current - 0.05)
-    
+
+    # ── v0.18.0: Betriebsmodus-Steuerung ─────────────────────
+
+    def set_operation_mode(self, mode: str):
+        """Setzt den Betriebsmodus (shadow / confirm / active)."""
+        if mode not in VALID_MODES:
+            _LOGGER.warning("Ungültiger Modus: '%s'. Erlaubt: %s", mode, VALID_MODES)
+            return False
+        old = self.operation_mode
+        self.operation_mode = mode
+        # shadow_mode Kompatibilität
+        self.shadow_mode = (mode == MODE_SHADOW)
+        _LOGGER.info("Betriebsmodus: %s → %s", old, mode)
+        return True
+
+    def queue_confirm(self, decision: Decision) -> str:
+        """Speichert eine Entscheidung zur Bestätigung. Returns: confirm_id."""
+        confirm_id = f"c_{int(time.time())}_{decision.token_id}"
+        self._pending_confirms[confirm_id] = {
+            "decision": decision,
+            "timestamp": time.time(),
+        }
+        self.total_confirms += 1
+        # Alte Confirms aufräumen (> 10 min)
+        cutoff = time.time() - 600
+        self._pending_confirms = {
+            k: v for k, v in self._pending_confirms.items()
+            if v["timestamp"] > cutoff
+        }
+        return confirm_id
+
+    def get_pending_confirm(self, confirm_id: str):
+        """Gibt eine wartende Bestätigungs-Entscheidung zurück."""
+        entry = self._pending_confirms.pop(confirm_id, None)
+        if entry:
+            return entry["decision"]
+        return None
+
+    def get_all_pending_confirms(self) -> list:
+        """Gibt alle wartenden Bestätigungen zurück."""
+        now = time.time()
+        return [
+            {"id": k, "token": v["decision"].token,
+             "entity_id": v["decision"].entity_id,
+             "confidence": v["decision"].confidence,
+             "age_s": int(now - v["timestamp"])}
+            for k, v in self._pending_confirms.items()
+        ]
+
     def to_dict(self) -> dict:
         return {
             "shadow_mode": self.shadow_mode,
+            "operation_mode": self.operation_mode,
             "total_decisions": self.total_decisions,
             "total_executions": self.total_executions,
+            "total_confirms": self.total_confirms,
             "overrides_detected": self.overrides_detected,
             "utility_weights": self.utility_weights,
             "activated_semantics": list(self.activated_semantics),
@@ -304,9 +387,11 @@ class PrefrontalCortex:
         }
 
     def from_dict(self, data: dict):
-        self.shadow_mode = data.get("shadow_mode", True)
+        self.operation_mode = data.get("operation_mode", MODE_SHADOW)
+        self.shadow_mode = data.get("shadow_mode", self.operation_mode == MODE_SHADOW)
         self.total_decisions = data.get("total_decisions", 0)
         self.total_executions = data.get("total_executions", 0)
+        self.total_confirms = data.get("total_confirms", 0)
         self.overrides_detected = data.get("overrides_detected", 0)
         self.utility_weights = data.get("utility_weights", {})
         self.activated_semantics = set(data.get("activated_semantics", []))
@@ -316,10 +401,13 @@ class PrefrontalCortex:
     def stats(self) -> dict:
         return {
             "shadow_mode": self.shadow_mode,
+            "operation_mode": self.operation_mode,
             "total_decisions": self.total_decisions,
             "total_executions": self.total_executions,
+            "total_confirms": self.total_confirms,
             "overrides_detected": self.overrides_detected,
             "activated_semantics": list(self.activated_semantics),
             "utility_weights": self.utility_weights,
             "override_rate": f"{self.overrides_detected / max(1, self.total_decisions):.1%}",
+            "pending_confirms": len(self._pending_confirms),
         }

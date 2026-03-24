@@ -18,6 +18,7 @@ import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
+from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .cortex import PROVIDERS, DEFAULT_PROMPTS
 
@@ -381,7 +382,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(
                 "api_key",
                 description={"suggested_value": existing.get("api_key", "")},
-            ): str,
+            ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
         }
 
         return self.async_show_form(
