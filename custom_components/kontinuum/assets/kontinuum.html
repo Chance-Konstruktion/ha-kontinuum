@@ -30,12 +30,11 @@
 
   .root{max-width:1440px;margin:0 auto;padding:16px}
 
-  /* Header */
-  .hdr{text-align:center;padding:18px 0 10px}
-  .hdr h1{font-family:'Orbitron',sans-serif;font-weight:900;font-size:1.6rem;letter-spacing:6px;
-    background:linear-gradient(135deg,var(--blue),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-  .hdr .sub{font-size:.58rem;color:var(--t2);letter-spacing:3px;margin-top:4px;text-transform:uppercase}
-  .hdr .ver{display:inline-block;margin-top:6px;padding:2px 10px;border:1px solid var(--border);border-radius:12px;font-size:.55rem;color:var(--t3);letter-spacing:1.5px}
+  /* Header – kompakt für iframe (HA Sidebar zeigt bereits "KONTINUUM") */
+  .hdr{text-align:center;padding:6px 0 4px}
+  .hdr h1{display:none}
+  .hdr .sub{display:none}
+  .hdr .ver{display:inline-block;padding:2px 10px;border:1px solid var(--border);border-radius:12px;font-size:.55rem;color:var(--t3);letter-spacing:1.5px}
   .conn{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle}
   .conn.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
   .conn.err{background:var(--red);box-shadow:0 0 6px var(--red)}
@@ -83,6 +82,14 @@
   .ml-n .dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
   .ml-d{font-size:.5rem;color:var(--t3);margin-top:2px}
   .ml.off{opacity:.35}
+
+  /* Collapsible panel toggle */
+  .pnl-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+  .pnl-toggle:hover{color:var(--t1)}
+  .pnl-toggle .arrow{font-size:.6rem;color:var(--t3);transition:transform .3s}
+  .pnl-toggle .arrow.open{transform:rotate(180deg)}
+  .pnl-body{overflow:hidden;transition:max-height .3s ease;max-height:800px}
+  .pnl-body.collapsed{max-height:0}
 
   /* Status bar */
   .sbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:14px}
@@ -363,21 +370,26 @@
       </div>
     </div>
 
-    <!-- RIGHT: Module Status -->
+    <!-- RIGHT: Module Status (einklappbar) -->
     <div>
       <div class="pnl">
-        <div class="pnl-t">Module</div>
-        <div class="ml" id="m-thalamus"><div class="ml-n"><span class="dot" style="background:var(--blue)"></span> Thalamus</div><div class="ml-d" id="md-thalamus">—</div></div>
-        <div class="ml" id="m-hippocampus"><div class="ml-n"><span class="dot" style="background:var(--purple)"></span> Hippocampus</div><div class="ml-d" id="md-hippocampus">—</div></div>
-        <div class="ml" id="m-hypothalamus"><div class="ml-n"><span class="dot" style="background:var(--amber)"></span> Hypothalamus</div><div class="ml-d" id="md-hypothalamus">—</div></div>
-        <div class="ml" id="m-spatial"><div class="ml-n"><span class="dot" style="background:var(--green)"></span> Spatial Cortex</div><div class="ml-d" id="md-spatial">—</div></div>
-        <div class="ml" id="m-insula"><div class="ml-n"><span class="dot" style="background:var(--pink)"></span> Insula</div><div class="ml-d" id="md-insula">—</div></div>
-        <div class="ml" id="m-amygdala"><div class="ml-n"><span class="dot" style="background:var(--red)"></span> Amygdala</div><div class="ml-d" id="md-amygdala">—</div></div>
-        <div class="ml" id="m-cerebellum"><div class="ml-n"><span class="dot" style="background:var(--teal)"></span> Cerebellum</div><div class="ml-d" id="md-cerebellum">—</div></div>
-        <div class="ml" id="m-prefrontal"><div class="ml-n"><span class="dot" style="background:var(--cyan)"></span> Präfrontaler Kortex</div><div class="ml-d" id="md-prefrontal">—</div></div>
-        <div class="ml" id="m-basalganglien"><div class="ml-n"><span class="dot" style="background:#f97316"></span> Basalganglien</div><div class="ml-d" id="md-basalganglien">—</div></div>
-        <div class="ml off"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Motorischer Kortex</div><div class="ml-d">Phase 4</div></div>
-        <div class="ml off"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Hirnstamm</div><div class="ml-d">Phase 4</div></div>
+        <div class="pnl-t pnl-toggle" onclick="toggleModules()">
+          <span>Module</span>
+          <span class="arrow open" id="mod-arrow">▼</span>
+        </div>
+        <div class="pnl-body" id="mod-body">
+          <div class="ml" id="m-thalamus"><div class="ml-n"><span class="dot" style="background:var(--blue)"></span> Thalamus</div><div class="ml-d" id="md-thalamus">—</div></div>
+          <div class="ml" id="m-hippocampus"><div class="ml-n"><span class="dot" style="background:var(--purple)"></span> Hippocampus</div><div class="ml-d" id="md-hippocampus">—</div></div>
+          <div class="ml" id="m-hypothalamus"><div class="ml-n"><span class="dot" style="background:var(--amber)"></span> Hypothalamus</div><div class="ml-d" id="md-hypothalamus">—</div></div>
+          <div class="ml" id="m-spatial"><div class="ml-n"><span class="dot" style="background:var(--green)"></span> Spatial Cortex</div><div class="ml-d" id="md-spatial">—</div></div>
+          <div class="ml" id="m-insula"><div class="ml-n"><span class="dot" style="background:var(--pink)"></span> Insula</div><div class="ml-d" id="md-insula">—</div></div>
+          <div class="ml" id="m-amygdala"><div class="ml-n"><span class="dot" style="background:var(--red)"></span> Amygdala</div><div class="ml-d" id="md-amygdala">—</div></div>
+          <div class="ml" id="m-cerebellum"><div class="ml-n"><span class="dot" style="background:var(--teal)"></span> Cerebellum</div><div class="ml-d" id="md-cerebellum">—</div></div>
+          <div class="ml" id="m-prefrontal"><div class="ml-n"><span class="dot" style="background:var(--cyan)"></span> Prefrontal</div><div class="ml-d" id="md-prefrontal">—</div></div>
+          <div class="ml" id="m-basalganglien"><div class="ml-n"><span class="dot" style="background:#f97316"></span> Basalganglien</div><div class="ml-d" id="md-basalganglien">—</div></div>
+          <div class="ml off"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Motorischer Kortex</div><div class="ml-d">Phase 4</div></div>
+          <div class="ml off"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Hirnstamm</div><div class="ml-d">Phase 4</div></div>
+        </div>
       </div>
     </div>
   </div>
@@ -539,16 +551,55 @@ function _refreshToken() {
   return !!fresh;
 }
 
-const SENSORS = [
-  'sensor.kontinuum_status',
-  'sensor.kontinuum_last_event',
-  'sensor.kontinuum_prediction',
-  'sensor.kontinuum_accuracy',
-  'sensor.kontinuum_energy',
-  'sensor.kontinuum_location',
-  'sensor.kontinuum_mode',
-  'sensor.kontinuum_cerebellum'
-];
+// Sensor-Discovery: Findet KONTINUUM-Sensoren unabhängig von der entity_id
+// Unterstützt sowohl neue (sensor.kontinuum_*) als auch alte (sensor.vorhersage etc.) IDs
+const SENSOR_ALIASES = {
+  status:      ['sensor.kontinuum_status'],
+  last_event:  ['sensor.kontinuum_last_event', 'sensor.letztes_event'],
+  prediction:  ['sensor.kontinuum_prediction', 'sensor.vorhersage'],
+  accuracy:    ['sensor.kontinuum_accuracy'],
+  energy:      ['sensor.kontinuum_energy', 'sensor.energie'],
+  location:    ['sensor.kontinuum_location', 'sensor.standort'],
+  mode:        ['sensor.kontinuum_mode', 'sensor.kontinuum_modus'],
+  cerebellum:  ['sensor.kontinuum_cerebellum', 'sensor.cerebellum'],
+};
+
+// Name-Patterns als Fallback (friendly_name enthält diese Texte)
+const SENSOR_NAME_PATTERNS = {
+  status:      ['kontinuum status'],
+  last_event:  ['last event', 'letztes event'],
+  prediction:  ['prediction', 'vorhersage'],
+  accuracy:    ['accuracy'],
+  energy:      ['energy', 'energie'],
+  location:    ['location', 'standort'],
+  mode:        ['mode', 'modus'],
+  cerebellum:  ['cerebellum'],
+};
+
+function discoverSensors(states) {
+  const found = {};
+  const byId = {};
+  for (const s of states) byId[s.entity_id] = s;
+
+  for (const [key, aliases] of Object.entries(SENSOR_ALIASES)) {
+    // 1. Exakte entity_id Matches
+    for (const alias of aliases) {
+      if (byId[alias]) { found[key] = { state: byId[alias].state, attr: byId[alias].attributes || {} }; break; }
+    }
+    if (found[key]) continue;
+
+    // 2. Name-Pattern Fallback
+    const patterns = SENSOR_NAME_PATTERNS[key] || [];
+    for (const s of states) {
+      const name = (s.attributes && s.attributes.friendly_name || '').toLowerCase();
+      if (patterns.some(p => name.includes(p))) {
+        found[key] = { state: s.state, attr: s.attributes || {} };
+        break;
+      }
+    }
+  }
+  return found;
+}
 
 const POLL_INTERVAL = 3000; // ms
 
@@ -632,15 +683,21 @@ async function fetchSensors() {
     }
 
     const states = await resp.json();
-    if (!connected) { connected = true; setConn('ok'); log('Verbunden mit Home Assistant', 'var(--green)'); }
-
-    const data = {};
-    for (const s of states) {
-      if (SENSORS.includes(s.entity_id)) {
-        data[s.entity_id] = { state: s.state, attr: s.attributes || {} };
+    if (!connected) {
+      connected = true; setConn('ok');
+      log('Verbunden mit Home Assistant', 'var(--green)');
+      // Beim ersten Connect: Sensor-Discovery loggen
+      const discovered = discoverSensors(states);
+      const keys = Object.keys(discovered);
+      if (keys.length > 0) {
+        log(keys.length + ' KONTINUUM Sensoren gefunden', 'var(--cyan)');
+      } else {
+        log('Keine KONTINUUM Sensoren gefunden – Integration geladen?', 'var(--amber)');
       }
     }
 
+    // Dynamische Sensor-Erkennung statt hardcoded entity_ids
+    const data = discoverSensors(states);
     updateDashboard(data);
   } catch (e) {
     if (connected) { connected = false; setConn('err'); log('Verbindung verloren: ' + e.message, 'var(--red)'); }
@@ -654,7 +711,7 @@ function _valid(s) {
 
 function updateDashboard(d) {
   // ── Last Event ──
-  const ev = d['sensor.kontinuum_last_event'];
+  const ev = d.last_event;
   if (_valid(ev)) {
     const val = ev.state;
     const room = ev.attr.room || '?';
@@ -673,8 +730,7 @@ function updateDashboard(d) {
       else if (val.includes('house.mode')) fire('insula');
       else fire('hippocampus');
 
-      const pred = d['sensor.kontinuum_prediction'];
-      if (pred && pred.attr && pred.attr.decision) fire('prefrontal');
+      if (d.prediction && d.prediction.attr && d.prediction.attr.decision) fire('prefrontal');
 
       // Activity Log: Event-Typ + Raum anzeigen
       const logText = sem ? (room + ' · ' + sem + ' → ' + val) : val;
@@ -690,7 +746,7 @@ function updateDashboard(d) {
   }
 
   // ── Prediction ──
-  const pr = d['sensor.kontinuum_prediction'];
+  const pr = d.prediction;
   if (_valid(pr)) {
     document.getElementById('v-pred').textContent = pr.state;
     const conf = pr.attr.confidence;
@@ -703,7 +759,7 @@ function updateDashboard(d) {
   }
 
   // ── Accuracy ──
-  const ac = d['sensor.kontinuum_accuracy'];
+  const ac = d.accuracy;
   if (_valid(ac)) {
     document.getElementById('v-acc').textContent = ac.state;
     document.getElementById('d-acc').textContent =
@@ -712,7 +768,7 @@ function updateDashboard(d) {
   }
 
   // ── Energy ──
-  const nrg = d['sensor.kontinuum_energy'];
+  const nrg = d.energy;
   if (_valid(nrg)) {
     document.getElementById('v-nrg').textContent = nrg.state;
     document.getElementById('d-nrg').textContent =
@@ -724,7 +780,7 @@ function updateDashboard(d) {
   }
 
   // ── Location ──
-  const loc = d['sensor.kontinuum_location'];
+  const loc = d.location;
   if (_valid(loc)) {
     document.getElementById('v-loc').textContent = loc.state;
     const sp = loc.attr;
@@ -743,7 +799,7 @@ function updateDashboard(d) {
   }
 
   // ── Mode ──
-  const mo = d['sensor.kontinuum_mode'];
+  const mo = d.mode;
   if (_valid(mo)) {
     document.getElementById('v-mode').textContent = mo.state;
     const conf = mo.attr.confidence;
@@ -756,7 +812,7 @@ function updateDashboard(d) {
   }
 
   // ── Cerebellum ──
-  const cb = d['sensor.kontinuum_cerebellum'];
+  const cb = d.cerebellum;
   if (_valid(cb)) {
     document.getElementById('v-cereb').textContent = cb.state;
     document.getElementById('d-cereb').textContent =
@@ -767,7 +823,7 @@ function updateDashboard(d) {
   }
 
   // ── Status (contains all module stats) ──
-  const st = d['sensor.kontinuum_status'];
+  const st = d.status;
   lastStatusData = st || null;
   if (st) {
     document.getElementById('s-status').textContent = (st.state || '').toUpperCase();
@@ -823,6 +879,23 @@ function updateDashboard(d) {
 
   // Debug-Panel aktualisieren (wenn aktiv)
   if (debugMode) updateCortexStatus();
+}
+
+// ══════════════════════════════════════════════════════════════
+// COLLAPSIBLE MODULES
+// ══════════════════════════════════════════════════════════════
+
+// Auf Smartphone: Module standardmäßig eingeklappt
+let modulesOpen = window.innerWidth > 900;
+function toggleModules() {
+  modulesOpen = !modulesOpen;
+  document.getElementById('mod-body').classList.toggle('collapsed', !modulesOpen);
+  document.getElementById('mod-arrow').classList.toggle('open', modulesOpen);
+}
+// Initial: auf Mobile eingeklappt
+if (!modulesOpen) {
+  document.getElementById('mod-body').classList.add('collapsed');
+  document.getElementById('mod-arrow').classList.remove('open');
 }
 
 // ══════════════════════════════════════════════════════════════
