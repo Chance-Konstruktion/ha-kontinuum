@@ -51,6 +51,8 @@ from .config_flow import PRESETS
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
 VERSION = "0.16.0"
+DATA_DIR = "kontinuum"
+HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
 BRAIN_FILE_LEGACY = "brain.json"
 SAVE_INTERVAL = 600
@@ -123,6 +125,62 @@ def _async_service_call(hass, domain, service, data):
     hass.async_create_task(
         hass.services.async_call(domain, service, data)
     )
+
+
+def _ensure_data_dir(hass) -> str:
+    """Erstellt /config/kontinuum/ und /config/kontinuum/history/ falls nötig.
+    Migriert brain.json.gz vom alten Pfad (/config/) in den neuen Ordner.
+    Gibt den Pfad zum Data-Dir zurück."""
+    data_dir = hass.config.path(DATA_DIR)
+    history_dir = os.path.join(data_dir, HISTORY_DIR)
+    os.makedirs(history_dir, exist_ok=True)
+
+    # Migration: brain.json.gz von /config/ nach /config/kontinuum/
+    old_brain = hass.config.path(BRAIN_FILE)
+    new_brain = os.path.join(data_dir, BRAIN_FILE)
+    if os.path.isfile(old_brain) and not os.path.isfile(new_brain):
+        os.rename(old_brain, new_brain)
+        _LOGGER.info("Brain migriert: %s → %s", old_brain, new_brain)
+
+    # Migration: altes brain.json (unkomprimiert)
+    old_legacy = hass.config.path(BRAIN_FILE_LEGACY)
+    new_legacy = os.path.join(data_dir, BRAIN_FILE_LEGACY)
+    if os.path.isfile(old_legacy) and not os.path.isfile(new_legacy):
+        os.rename(old_legacy, new_legacy)
+        _LOGGER.info("Legacy-Brain migriert: %s → %s", old_legacy, new_legacy)
+
+    return data_dir
+
+
+def _write_history_entry(data_dir: str, entry_type: str, data: dict):
+    """Schreibt einen History-Eintrag als JSON in /config/kontinuum/history/.
+
+    Dateiformat: {entry_type}_{timestamp}.json
+    Alte Einträge werden automatisch bereinigt (max 100 pro Typ).
+    """
+    history_dir = os.path.join(data_dir, HISTORY_DIR)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"{entry_type}_{ts}.json"
+    filepath = os.path.join(history_dir, filename)
+
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+    except Exception as e:
+        _LOGGER.warning("History konnte nicht geschrieben werden: %s", e)
+        return
+
+    # Aufräumen: max 100 Dateien pro Typ behalten
+    try:
+        all_files = sorted([
+            f for f in os.listdir(history_dir)
+            if f.startswith(entry_type + "_") and f.endswith(".json")
+        ])
+        if len(all_files) > 100:
+            for old_file in all_files[:-100]:
+                os.remove(os.path.join(history_dir, old_file))
+    except Exception:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -206,8 +264,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "_last_persons_update": 0,
         }
 
+        # ── Datenverzeichnis erstellen + Migration ───────────
+        data_dir = await hass.async_add_executor_job(_ensure_data_dir, hass)
+        brain["_data_dir"] = data_dir
+
         # ── Gehirn laden ──────────────────────────────────────
-        brain_path = hass.config.path(BRAIN_FILE)
+        brain_path = os.path.join(data_dir, BRAIN_FILE)
         await hass.async_add_executor_job(_load_brain, brain, brain_path)
 
         # ── Cortex aus Config Entry konfigurieren ────────────────
@@ -457,7 +519,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 
     brain = hass.data.get(DOMAIN)
     if brain:
-        brain_path = hass.config.path(BRAIN_FILE)
+        data_dir = brain.get("_data_dir", hass.config.path(DATA_DIR))
+        brain_path = os.path.join(data_dir, BRAIN_FILE)
         await hass.async_add_executor_job(_save_brain, brain, brain_path)
 
     # Dashboard-Panel entfernen
@@ -472,8 +535,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: config_entries.ConfigEntry):
-    """Deinstallation: Entfernt brain.json.gz und input_number-Helfer."""
-    # Brain-Datei löschen
+    """Deinstallation: Entfernt /config/kontinuum/ und input_number-Helfer."""
+    # Kompletten kontinuum-Ordner löschen
+    data_dir = hass.config.path(DATA_DIR)
+    if os.path.isdir(data_dir):
+        shutil.rmtree(data_dir)
+        _LOGGER.info("Entfernt: %s", data_dir)
+
+    # Alte Dateien im Hauptverzeichnis (falls noch vorhanden)
     for fname in (BRAIN_FILE, BRAIN_FILE_LEGACY, BRAIN_FILE_LEGACY + ".migrated"):
         path = hass.config.path(fname)
         if os.path.exists(path):
@@ -577,6 +646,21 @@ def _process_decision(hass, brain, decision):
 
             _async_service_call(hass, domain, service, {"entity_id": entity_id})
             prefrontal.mark_own_action(entity_id, token=decision.token, semantic=semantic)
+
+            # History: Autonome Entscheidung loggen
+            data_dir = brain.get("_data_dir", "")
+            if data_dir:
+                _write_history_entry(data_dir, "decision", {
+                    "type": "autonomous_execute",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "action": f"{domain}.{service}",
+                    "entity_id": entity_id,
+                    "token": decision.token,
+                    "confidence": round(decision.confidence, 3),
+                    "utility": round(decision.utility, 3),
+                    "risk": round(decision.risk, 3),
+                    "source": decision.source if hasattr(decision, "source") else "prefrontal",
+                })
         else:
             _LOGGER.warning(
                 "KONTINUUM EXECUTE abgebrochen: kein Service/Entity für %s", decision.token)
@@ -854,8 +938,9 @@ def _register_services(hass, brain):
 
     async def handle_export_brain(call):
         """Exportiert brain.json.gz als lesbare brain_export.json (für externe Analyse)."""
-        brain_path = hass.config.path(BRAIN_FILE)
-        export_path = hass.config.path("brain_export.json")
+        data_dir = brain.get("_data_dir", hass.config.path(DATA_DIR))
+        brain_path = os.path.join(data_dir, BRAIN_FILE)
+        export_path = os.path.join(data_dir, "brain_export.json")
         try:
             with gzip.open(brain_path, "rb") as f:
                 raw = f.read()
@@ -866,7 +951,7 @@ def _register_services(hass, brain):
             export_kb = os.path.getsize(export_path) // 1024
             await hass.services.async_call("persistent_notification", "create", {
                 "title": "🧠 KONTINUUM – Brain Export",
-                "message": f"Exportiert nach `/config/brain_export.json`\n\n"
+                "message": f"Exportiert nach `/config/kontinuum/brain_export.json`\n\n"
                            f"Komprimiert: {size_kb} KB → Lesbar: {export_kb} KB\n\n"
                            f"Für DeepSeek-Analyse im Datei-Browser öffnen.",
                 "notification_id": "kontinuum_export",
@@ -1000,19 +1085,55 @@ def _register_services(hass, brain):
         if not result:
             return
 
+        # ── History: Vollständige Diskussion loggen ────────
+        data_dir = brain.get("_data_dir", hass.config.path(DATA_DIR))
+        history_entry = {
+            "type": "cortex_consult",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "context": cortex._build_context(brain),
+            "discussion_rounds": result.get("discussion_rounds", 1),
+            "proposals": result.get("proposals", []),
+            "revisions": result.get("revisions", []),
+            "consensus": {
+                "action": result.get("consensus_action"),
+                "entity": result.get("consensus_entity"),
+                "reason": result.get("consensus_reason"),
+                "vetoed": result.get("vetoed", False),
+            },
+            "agents": [
+                {"name": a.name, "role": a.role, "provider": a.provider,
+                 "model": a.model}
+                for a in cortex.agents
+            ],
+        }
+        await hass.async_add_executor_job(
+            _write_history_entry, data_dir, "cortex_consult", history_entry
+        )
+
         proposals_text = "\n".join(
             f"- **{p.get('agent', '?')}**: {p.get('reason', '?')} "
             f"(Priorität: {p.get('priority', 0)})"
             for p in result.get("proposals", [])
         )
 
+        revisions_text = ""
+        if result.get("revisions"):
+            revisions_text = "\n\n**Revisionen (Runde 2):**\n" + "\n".join(
+                f"- **{r.get('agent', '?')}**: {r.get('reason', '?')} "
+                f"(Priorität: {r.get('priority', 0)})"
+                for r in result.get("revisions", [])
+            )
+
         await hass.services.async_call("persistent_notification", "create", {
-            "title": "KONTINUUM Cortex – Beratung",
+            "title": f"KONTINUUM Cortex – Beratung ({result.get('discussion_rounds', 1)} Runden)",
             "message": (
                 f"**Konsens:** {result.get('consensus_action') or 'Keine Aktion'}\n"
+                f"**Entity:** {result.get('consensus_entity') or '–'}\n"
                 f"**Grund:** {result.get('consensus_reason', '?')}\n"
                 f"**Veto:** {'JA' if result.get('vetoed') else 'Nein'}\n\n"
-                f"**Vorschläge:**\n{proposals_text}"
+                f"**Vorschläge (Runde 1):**\n{proposals_text}"
+                f"{revisions_text}\n\n"
+                f"*Vollständiges Protokoll: /config/kontinuum/history/*"
             ),
             "notification_id": "kontinuum_cortex_result",
         })
@@ -1088,8 +1209,19 @@ def _register_services(hass, brain):
              "notification_id": "kontinuum_brain_review"},
         )
 
-        # Review im Brain speichern
+        # Review im Brain speichern + History
         brain["_last_brain_review"] = review
+        data_dir = brain.get("_data_dir", hass.config.path(DATA_DIR))
+        history_entry = {
+            "type": "brain_review",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "health_score": score,
+            "agents_consulted": review.get("agents_consulted", 0),
+            "analyses": analyses,
+        }
+        await hass.async_add_executor_job(
+            _write_history_entry, data_dir, "brain_review", history_entry
+        )
         _LOGGER.info("Brain Review abgeschlossen: Score %d/100", score)
 
     hass.services.async_register(DOMAIN, "enable_scenes", handle_enable_scenes)
