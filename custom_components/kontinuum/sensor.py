@@ -277,6 +277,7 @@ class KontinuumLastEventSensor(KontinuumSensorBase):
             "room": s.get("room", ""),
             "semantic": s.get("semantic", ""),
             "entity_id": s.get("entity_id", ""),
+            "events_total": self._brain["hippocampus"].total_events,
         }
 
 

@@ -477,6 +477,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                             bucket, decision.token)
                     _process_decision(hass, brain, decision)
 
+                # Letztes Signal + Vorhersage im Brain speichern (für Cortex-Kontext)
+                brain["_last_signal"] = signal
+                brain["_last_predictions"] = predictions
+
                 # Sensoren updaten (native Entitäten via Dispatcher)
                 async_dispatcher_send(
                     hass, SIGNAL_SENSORS_UPDATE,
@@ -1556,6 +1560,11 @@ def _update_persons_sensor(hass):
             home_list.append(name)
         else:
             away_list.append(name)
+
+    # Im Brain speichern für Cortex-Kontext
+    brain = hass.data.get(DOMAIN)
+    if brain:
+        brain["_persons_home"] = home_list
 
     async_dispatcher_send(hass, SIGNAL_PERSONS_UPDATE,
                           {"home": home_list, "away": away_list})
