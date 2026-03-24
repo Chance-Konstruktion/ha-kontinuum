@@ -165,7 +165,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
 
         # Optional: Context-Profile für erweiterte Semantik/Thresholds
         profile_path = hass.config.path("kontinuum_context_profile.json")
-        thalamus.load_custom_profiles(profile_path)
+        await hass.async_add_executor_job(thalamus.load_custom_profiles, profile_path)
 
         # ── Presets anwenden ──────────────────────────────────
         cerebellum.MIN_OBSERVATIONS = config_data.get("cerebellum_min_obs", 5)

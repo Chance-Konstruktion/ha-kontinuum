@@ -747,8 +747,12 @@ class Thalamus:
         Format:
           {"semantic_rules": [...], "thresholds": {...}}
         """
+        p = Path(path)
+        if not p.exists():
+            _LOGGER.debug("Thalamus: Kein Custom-Profil (%s) – übersprungen", path)
+            return
         try:
-            content = Path(path).read_text(encoding="utf-8")
+            content = p.read_text(encoding="utf-8")
             import json
             data = json.loads(content)
         except (OSError, ValueError) as err:
