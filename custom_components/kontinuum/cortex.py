@@ -526,18 +526,41 @@ class Cortex:
         hypothalamus = brain["hypothalamus"]
         amygdala = brain["amygdala"]
         basal_ganglia = brain["basal_ganglia"]
+        thalamus = brain["thalamus"]
+
+        # Vorhersage aus gespeicherter Prediction oder Hippocampus
+        pred_token = "?"
+        pred_conf = 0
+        predictions = brain.get("_last_predictions")
+        if not predictions:
+            predictions = hippocampus.predict()
+        if predictions:
+            pred_token = thalamus.decode_token(predictions[0][0])
+            pred_conf = predictions[0][2] if len(predictions[0]) > 2 else 0
+
+        # Letztes Event aus gespeichertem Signal
+        last_ev = "?"
+        last_signal = brain.get("_last_signal")
+        if last_signal:
+            last_ev = last_signal.get("token", "?")
+
+        # Personen aus HA-States (falls verfügbar)
+        persons = "?"
+        persons_list = brain.get("_persons_home")
+        if persons_list is not None:
+            persons = ", ".join(persons_list) if persons_list else "niemand"
 
         return {
             "mode": insula.current_mode,
             "room": spatial.get_current_location(),
-            "prediction": "?",
-            "confidence": 0,
+            "prediction": pred_token,
+            "confidence": pred_conf,
             "energy": hypothalamus.get_energy_summary().get("battery", "?"),
             "risk": amygdala.stats.get("last_risk", 0),
-            "persons_home": "?",
+            "persons_home": persons,
             "events": hippocampus.total_events,
             "accuracy": f"{hippocampus.accuracy:.1%}",
-            "last_event": "?",
+            "last_event": last_ev,
             "habits": basal_ganglia.total_habits,
             "dopamine": basal_ganglia.dopamine_signal,
         }

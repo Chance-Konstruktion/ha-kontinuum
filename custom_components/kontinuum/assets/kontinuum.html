@@ -482,28 +482,62 @@
 // ── KONFIGURATION ──
 const HA_BASE = window.location.origin;
 
-// Auth-Token automatisch aus HA-Session lesen (same-origin iframe)
+// Auth-Token automatisch aus HA-Session lesen (Desktop + Mobile App)
 function _getHAToken() {
-  // 1. HA speichert Tokens in localStorage
+  // 1. Parent-Frame: home-assistant Element (Desktop + Mobile App)
+  try {
+    const ha = window.parent.document.querySelector('home-assistant');
+    if (ha && ha.hass && ha.hass.auth && ha.hass.auth.data) {
+      return ha.hass.auth.data.access_token;
+    }
+  } catch(e) { /* cross-origin */ }
+
+  // 2. Parent hassConnection (ältere HA-Versionen)
+  try {
+    if (window.parent && window.parent.hassConnection) {
+      const conn = window.parent.hassConnection;
+      if (conn.options && conn.options.auth) {
+        const auth = conn.options.auth;
+        if (auth.data && auth.data.access_token) return auth.data.access_token;
+        if (auth.accessToken) return auth.accessToken;
+      }
+    }
+  } catch(e) { /* cross-origin */ }
+
+  // 3. localStorage hassTokens (Desktop-Browser Fallback)
   try {
     const stored = localStorage.getItem('hassTokens');
     if (stored) {
       const tokens = JSON.parse(stored);
       if (tokens && tokens.access_token) return tokens.access_token;
     }
-  } catch(e) { /* ignore */ }
-  // 2. Fallback: aus Parent-Frame (HA Frontend)
+  } catch(e) { /* storage blocked */ }
+
+  // 4. External Auth (HA Companion App Bridge)
   try {
-    if (window.parent && window.parent.hassConnection) {
-      const conn = window.parent.hassConnection;
-      if (conn.options && conn.options.auth && conn.options.auth.accessToken) {
-        return conn.options.auth.accessToken;
-      }
+    if (window.parent.externalAuth) {
+      const ext = window.parent.externalAuth;
+      if (ext.data && ext.data.access_token) return ext.data.access_token;
     }
-  } catch(e) { /* cross-origin blocked – ignore */ }
+  } catch(e) { /* unavailable */ }
+
   return null;
 }
 let HA_TOKEN = _getHAToken();
+
+// Token-Refresh: Periodisch neu versuchen falls Token abgelaufen oder nicht gefunden
+let _tokenRetries = 0;
+function _refreshToken() {
+  const fresh = _getHAToken();
+  if (fresh && fresh !== HA_TOKEN) {
+    HA_TOKEN = fresh;
+    _tokenRetries = 0;
+    log('Auth-Token aktualisiert', 'var(--green)');
+    return true;
+  }
+  if (fresh) _tokenRetries = 0;
+  return !!fresh;
+}
 
 const SENSORS = [
   'sensor.kontinuum_status',
@@ -520,6 +554,7 @@ const POLL_INTERVAL = 3000; // ms
 
 // ── State ──
 let prevEvent = '';
+let prevEventCount = 0;
 let connected = false;
 
 // ── Tooltip ──
@@ -570,8 +605,16 @@ function setConn(state) {
 
 async function fetchSensors() {
   if (!HA_TOKEN) {
-    setConn('err');
-    log('Kein Auth-Token gefunden – bitte HA-Seite neu laden', 'var(--red)');
+    // Token noch nicht gefunden – erneut versuchen (Mobile App braucht manchmal etwas)
+    if (_tokenRetries < 10) {
+      _tokenRetries++;
+      if (_refreshToken()) return fetchSensors();
+      if (_tokenRetries <= 1) setConn('wait');
+      if (_tokenRetries >= 5) {
+        setConn('err');
+        log('Auth-Token nicht gefunden – HA-Seite neu laden oder App neu starten', 'var(--red)');
+      }
+    }
     return;
   }
   try {
@@ -582,8 +625,7 @@ async function fetchSensors() {
     if (!resp.ok) {
       if (resp.status === 401) {
         // Token abgelaufen – neu lesen
-        const fresh = _getHAToken();
-        if (fresh && fresh !== HA_TOKEN) { HA_TOKEN = fresh; return fetchSensors(); }
+        if (_refreshToken()) return fetchSensors();
       }
       if (!connected) setConn('err');
       return;
@@ -615,13 +657,16 @@ function updateDashboard(d) {
   const ev = d['sensor.kontinuum_last_event'];
   if (_valid(ev)) {
     const val = ev.state;
-    document.getElementById('v-event').textContent = val;
     const room = ev.attr.room || '?';
     const sem = ev.attr.semantic || '';
     const evTotal = ev.attr.events_total || 0;
+
+    document.getElementById('v-event').textContent = val;
     document.getElementById('d-event').textContent = room + ' · ' + sem + ' · events: ' + evTotal;
 
-    if (val !== prevEvent && prevEvent !== '') {
+    // Neues Event erkannt: entweder Token geändert oder Event-Zähler gestiegen
+    const isNewEvent = (val !== prevEvent || (evTotal > 0 && evTotal !== prevEventCount));
+    if (isNewEvent && connected) {
       fire('thalamus');
       if (val.includes('house.energy') || val.includes('house.climate')) fire('hypothalamus');
       else if (val.includes('person.')) fire('spatial');
@@ -631,11 +676,14 @@ function updateDashboard(d) {
       const pred = d['sensor.kontinuum_prediction'];
       if (pred && pred.attr && pred.attr.decision) fire('prefrontal');
 
-      log(val, val.includes('energy') ? 'var(--amber)' :
-               val.includes('person.') ? 'var(--green)' :
-               val.includes('mode.') ? 'var(--pink)' : 'var(--blue)');
+      // Activity Log: Event-Typ + Raum anzeigen
+      const logText = sem ? (room + ' · ' + sem + ' → ' + val) : val;
+      log(logText, val.includes('energy') ? 'var(--amber)' :
+                    val.includes('person.') ? 'var(--green)' :
+                    val.includes('mode.') ? 'var(--pink)' : 'var(--blue)');
     }
     prevEvent = val;
+    if (evTotal > 0) prevEventCount = evTotal;
   } else if (ev) {
     document.getElementById('v-event').textContent = 'warte…';
     document.getElementById('d-event').textContent = 'Noch keine Events verarbeitet';
@@ -823,13 +871,24 @@ async function callService(service, data) {
     });
 
     if (resp.ok) {
-      dbgLog(`<span class="hi">kontinuum.${service}</span> <span class="ok">erfolgreich</span>`, '');
-      // Nach kurzer Pause Sensor-Update holen (Ergebnis braucht ~1-5s)
+      const svcLabels = {
+        'cortex_consult': 'Cortex-Beratung gestartet (Agents diskutieren…)',
+        'brain_review': 'Brain-Analyse gestartet (Agents prüfen Gehirn-Gesundheit…)',
+        'status': 'Status abgerufen',
+        'export_brain': 'Gehirn-Export gespeichert',
+        'set_mode': 'Betriebsmodus geändert',
+        'cortex_sequential': 'Sequential Mode umgeschaltet',
+      };
+      const label = svcLabels[service] || `${service} erfolgreich`;
+      dbgLog(`<span class="ok">${label}</span>`, '');
+      // Nach kurzer Pause Sensor-Update holen
       if (service === 'cortex_consult' || service === 'brain_review') {
-        dbgLog('Warte auf Cortex-Antwort…');
+        dbgLog('Ergebnis wird als History-Datei gespeichert – Warte auf Antwort…');
         setTimeout(async () => {
           await fetchSensors();
           updateCortexStatus();
+          const svc = service === 'cortex_consult' ? 'Beratung' : 'Analyse';
+          dbgLog(`<span class="ok">${svc} abgeschlossen</span> → Ergebnis in Cortex Status sichtbar`);
         }, 5000);
       }
     } else {
