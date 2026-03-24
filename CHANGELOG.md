@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.18.0 – Betriebsmodi, Confirm-Modus, LLM-Retry & Sequential Agents
+
+### Betriebsmodi (Shadow / Confirm / Active)
+- **3 Betriebsmodi** – Shadow (nur beobachten), Confirm (Bestätigung anfordern), Active (selbständig schalten)
+- **`kontinuum.set_mode`** – Service zum Umschalten: `{mode: "shadow/confirm/active"}`
+- **Confirm-Modus** – KONTINUUM fragt per Notification vor dem Schalten. Bestätigung mit `kontinuum.confirm_action`
+- **`kontinuum.reject_action`** – Aktionen im Confirm-Modus ablehnen (negatives Feedback)
+- **Shadow-Modus jetzt deaktivierbar** – Über `set_mode` auf "active" oder "confirm" wechseln
+
+### Cerebellum Outcome-Tracking
+- **Automatische Erfolgskontrolle** – Nach EXECUTE wird nach 3s der State geprüft und `record_outcome` aufgerufen
+- **Erfolg** = neuer State entspricht dem gewünschten State
+
+### Cortex – LLM-Retry & Sequential Mode
+- **Retry-Mechanismus** – Max 3 Versuche mit exponentiellem Backoff (1s → 2s → 4s) bei transienten Fehlern
+- **Nur transiente Fehler** – Timeout, 5xx, ConnectionError (4xx-Fehler werden sofort weitergereicht)
+- **Sequentieller Modus** – `kontinuum.cortex_sequential` für Systeme mit nur einer GPU/Ollama-Instanz
+- **Agents nacheinander** statt parallel befragen (kein GPU-Memory-Overflow)
+
+### Service-Calls mit korrekten Parametern
+- **Climate** – `hvac_mode` wird automatisch als data-Parameter mitgeliefert
+- **Media** – entity_id wird korrekt in data-Dict übergeben
+
+### Dashboard-Fixes
+- **Basalganglien** – Als aktives Modul angezeigt (nicht mehr "Phase 4")
+- **Brain-Animation** – Module feuern zeitversetzt basierend auf tatsächlicher Aktivität
+- **Betriebsmodus-Buttons** – Shadow/Confirm/Active direkt im Debug-Panel umschaltbar
+- **Basalganglien-Stats** – habits, Q-Entries und Dopamin-Signal sichtbar
+
+### API-Keys
+- **Password-Feld** – API-Keys werden im Config-Flow als Password-Eingabe angezeigt
+
+---
+
 ## v0.17.0 – Coordinator-Agent, Dashboard-Auth & Auto-Reload
 
 ### Cortex – 4. Agent-Slot mit Coordinator-Rolle

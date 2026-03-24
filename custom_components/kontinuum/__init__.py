@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║  KONTINUUM v0.15.0 – Neuroinspired Home Intelligence           ║
+║  KONTINUUM v0.18.0 – Neuroinspired Home Intelligence           ║
 ║  Home Assistant Custom Component                                 ║
 ║                                                                  ║
 ║  Architektur:                                                    ║
@@ -42,7 +42,7 @@ from .spatial_cortex import SpatialCortex
 from .insula import Insula
 from .amygdala import Amygdala
 from .cerebellum import Cerebellum
-from .prefrontal_cortex import PrefrontalCortex
+from .prefrontal_cortex import PrefrontalCortex, MODE_SHADOW, MODE_CONFIRM, MODE_ACTIVE, VALID_MODES
 from .basal_ganglia import BasalGanglia
 from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
 
@@ -50,7 +50,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.17.0"
+VERSION = "0.18.0"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
@@ -289,6 +289,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         hippocampus.DECAY_RATE = config_data.get("hippocampus_decay", 0.993)
         hippocampus.MIN_OBSERVATIONS = config_data.get("hippocampus_min_obs", 3)
         prefrontal.shadow_mode = config_data.get("shadow_mode", True)
+        prefrontal.operation_mode = config_data.get("operation_mode", MODE_SHADOW if prefrontal.shadow_mode else MODE_ACTIVE)
 
         _LOGGER.info(
             "Preset '%s': Cerebellum(obs=%d, conf=%.0f%%), "
@@ -687,43 +688,32 @@ def _inject_token(hass, brain, token_info, timestamp):
 def _process_decision(hass, brain, decision):
     """Verarbeitet eine PFC-Entscheidung."""
     prefrontal = brain["prefrontal"]
+    cerebellum = brain["cerebellum"]
 
     if decision.stage == "EXECUTE":
-        # Tatsächlich ausführen
+        _execute_decision(hass, brain, decision)
+
+    elif decision.stage == "CONFIRM":
+        # v0.18.0: Bestätigung anfordern statt direkt ausführen
         service_call = prefrontal.get_service_call(decision)
         if service_call and decision.entity_id:
-            domain = service_call["domain"]
-            service = service_call["service"]
-            entity_id = decision.entity_id
-            parts = decision.token.split(".")
-            semantic = parts[1] if len(parts) == 3 else ""
-
+            confirm_id = prefrontal.queue_confirm(decision)
             _LOGGER.info(
-                "KONTINUUM EXECUTE: %s.%s → %s (conf=%.0f%%, util=%.2f, risk=%.2f)",
-                domain, service, entity_id,
-                decision.confidence * 100, decision.utility, decision.risk,
+                "KONTINUUM CONFIRM: %s → %s (ID: %s, conf=%.0f%%)",
+                decision.token, decision.entity_id, confirm_id,
+                decision.confidence * 100,
             )
-
-            _async_service_call(hass, domain, service, {"entity_id": entity_id})
-            prefrontal.mark_own_action(entity_id, token=decision.token, semantic=semantic)
-
-            # History: Autonome Entscheidung loggen
-            data_dir = brain.get("_data_dir", "")
-            if data_dir:
-                _write_history_entry(data_dir, "decision", {
-                    "type": "autonomous_execute",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "action": f"{domain}.{service}",
-                    "entity_id": entity_id,
-                    "token": decision.token,
-                    "confidence": round(decision.confidence, 3),
-                    "utility": round(decision.utility, 3),
-                    "risk": round(decision.risk, 3),
-                    "source": decision.source if hasattr(decision, "source") else "prefrontal",
-                })
-        else:
-            _LOGGER.warning(
-                "KONTINUUM EXECUTE abgebrochen: kein Service/Entity für %s", decision.token)
+            _notify(hass,
+                "KONTINUUM – Bestätigung erforderlich",
+                f"KONTINUUM möchte **{decision.token}** ausführen.\n"
+                f"Entity: {decision.entity_id}\n"
+                f"Confidence: {decision.confidence:.0%} | "
+                f"Risiko: {decision.risk:.2f}\n\n"
+                f"**Bestätigen:** `kontinuum.confirm_action` mit "
+                f"`confirm_id: {confirm_id}`\n"
+                f"**Ablehnen:** Ignorieren (verfällt nach 10 Min)",
+                "kontinuum_confirm",
+            )
 
     elif decision.stage == "SUGGEST":
         _notify(hass,
@@ -735,6 +725,67 @@ def _process_decision(hass, brain, decision):
             f"Quelle: {decision.source}",
             "kontinuum_suggest",
         )
+
+
+def _execute_decision(hass, brain, decision):
+    """Führt eine bestätigte Entscheidung tatsächlich aus (+ Outcome-Tracking)."""
+    prefrontal = brain["prefrontal"]
+    cerebellum = brain["cerebellum"]
+    service_call = prefrontal.get_service_call(decision)
+
+    if not service_call or not decision.entity_id:
+        _LOGGER.warning(
+            "KONTINUUM EXECUTE abgebrochen: kein Service/Entity für %s", decision.token)
+        return
+
+    domain = service_call["domain"]
+    service = service_call["service"]
+    entity_id = decision.entity_id
+    svc_data = service_call.get("data", {"entity_id": entity_id})
+    parts = decision.token.split(".")
+    semantic = parts[1] if len(parts) == 3 else ""
+    desired_state = parts[2] if len(parts) == 3 else ""
+
+    _LOGGER.info(
+        "KONTINUUM EXECUTE: %s.%s → %s (conf=%.0f%%, util=%.2f, risk=%.2f)",
+        domain, service, entity_id,
+        decision.confidence * 100, decision.utility, decision.risk,
+    )
+
+    _async_service_call(hass, domain, service, svc_data)
+    prefrontal.mark_own_action(entity_id, token=decision.token, semantic=semantic)
+
+    # Cerebellum Outcome-Tracking: Nach 3s prüfen ob State dem gewünschten entspricht
+    async def _check_outcome():
+        import asyncio
+        await asyncio.sleep(3)
+        new_state_obj = hass.states.get(entity_id)
+        if new_state_obj:
+            actual_state = new_state_obj.state
+            success = (actual_state == desired_state) if desired_state else True
+            cerebellum.record_outcome(
+                f"{decision.token_id}_{decision.token_id}", success)
+            _LOGGER.debug(
+                "Outcome-Check: %s → gewünscht=%s, ist=%s, Erfolg=%s",
+                entity_id, desired_state, actual_state, success,
+            )
+
+    hass.async_create_task(_check_outcome())
+
+    # History: Autonome Entscheidung loggen
+    data_dir = brain.get("_data_dir", "")
+    if data_dir:
+        _write_history_entry(data_dir, "decision", {
+            "type": "autonomous_execute",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action": f"{domain}.{service}",
+            "entity_id": entity_id,
+            "token": decision.token,
+            "confidence": round(decision.confidence, 3),
+            "utility": round(decision.utility, 3),
+            "risk": round(decision.risk, 3),
+            "source": decision.source if hasattr(decision, "source") else "prefrontal",
+        })
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1161,7 +1212,7 @@ def _register_services(hass, brain):
                 "vetoed": result.get("vetoed", False),
             },
             "agents": [
-                {"name": a.name, "role": a.role, "provider": a.provider,
+                {"name": a.name, "provider": a.provider,
                  "model": a.model}
                 for a in cortex.agents
             ],
@@ -1220,6 +1271,79 @@ def _register_services(hass, brain):
                     entity, token=f"cortex.{action}", semantic=semantic,
                 )
 
+    async def handle_set_mode(call):
+        """
+        Setzt den Betriebsmodus von KONTINUUM.
+        Service: kontinuum.set_mode mit data: {mode: "shadow/confirm/active"}
+        """
+        mode = call.data.get("mode", "").strip().lower()
+        prefrontal = brain["prefrontal"]
+
+        if prefrontal.set_operation_mode(mode):
+            mode_labels = {
+                "shadow": "Shadow – Nur beobachten",
+                "confirm": "Confirm – Bestätigung vor Ausführung",
+                "active": "Active – Selbständig schalten",
+            }
+            await hass.services.async_call("persistent_notification", "create", {
+                "title": f"KONTINUUM – Modus: {mode.upper()}",
+                "message": (
+                    f"Betriebsmodus auf **{mode_labels.get(mode, mode)}** gesetzt.\n\n"
+                    f"Aktive Semantiken: {', '.join(sorted(prefrontal.activated_semantics)) or 'keine'}\n"
+                    f"Wartende Bestätigungen: {len(prefrontal._pending_confirms)}"
+                ),
+                "notification_id": "kontinuum_mode",
+            })
+        else:
+            _LOGGER.warning("Ungültiger Modus: '%s'. Erlaubt: shadow, confirm, active", mode)
+
+    async def handle_confirm_action(call):
+        """
+        Bestätigt eine wartende Aktion im Confirm-Modus.
+        Service: kontinuum.confirm_action mit data: {confirm_id: "c_..."}
+        Oder: {confirm_all: true} um alle wartenden zu bestätigen.
+        """
+        prefrontal = brain["prefrontal"]
+
+        if call.data.get("confirm_all", False):
+            # Alle wartenden bestätigen
+            pending = list(prefrontal._pending_confirms.keys())
+            for cid in pending:
+                decision = prefrontal.get_pending_confirm(cid)
+                if decision:
+                    _execute_decision(hass, brain, decision)
+            if pending:
+                _LOGGER.info("KONTINUUM: %d Aktionen bestätigt", len(pending))
+            return
+
+        confirm_id = call.data.get("confirm_id", "")
+        decision = prefrontal.get_pending_confirm(confirm_id)
+        if decision:
+            _execute_decision(hass, brain, decision)
+            _LOGGER.info("KONTINUUM: Aktion bestätigt: %s → %s",
+                         decision.token, decision.entity_id)
+        else:
+            _LOGGER.warning("KONTINUUM: confirm_id '%s' nicht gefunden oder abgelaufen",
+                            confirm_id)
+
+    async def handle_reject_action(call):
+        """
+        Lehnt eine wartende Aktion ab.
+        Service: kontinuum.reject_action mit data: {confirm_id: "c_..."}
+        """
+        prefrontal = brain["prefrontal"]
+        confirm_id = call.data.get("confirm_id", "")
+        decision = prefrontal.get_pending_confirm(confirm_id)
+        if decision:
+            # Negatives Feedback lernen
+            parts = decision.token.split(".")
+            semantic = parts[1] if len(parts) == 3 else ""
+            if semantic:
+                prefrontal.learn_from_feedback(semantic, positive=False)
+            _LOGGER.info("KONTINUUM: Aktion abgelehnt: %s", decision.token)
+        else:
+            _LOGGER.warning("KONTINUUM: confirm_id '%s' nicht gefunden", confirm_id)
+
     async def handle_cortex_remove_agent(call):
         """Entfernt einen Cortex-Agent. Data: {slot: 1-4}"""
         slot = str(call.data.get("slot", ""))
@@ -1229,6 +1353,26 @@ def _register_services(hass, brain):
             brain["_cortex_agents"] = agents
             brain["cortex"].configure(list(agents.values()))
             _LOGGER.info("Cortex Agent %s entfernt", slot)
+
+    async def handle_cortex_sequential(call):
+        """
+        Schaltet den sequentiellen Modus für Cortex-Agents ein/aus.
+        Service: kontinuum.cortex_sequential mit data: {enabled: true/false}
+        Für Systeme mit nur einer GPU/Ollama-Instanz.
+        """
+        cortex = brain["cortex"]
+        enabled = call.data.get("enabled", not cortex.sequential_mode)
+        cortex.sequential_mode = bool(enabled)
+        _LOGGER.info("Cortex sequentieller Modus: %s",
+                     "AN" if cortex.sequential_mode else "AUS")
+        await hass.services.async_call("persistent_notification", "create", {
+            "title": "KONTINUUM Cortex – Sequentieller Modus",
+            "message": (
+                f"Sequentieller Modus: **{'AN' if cortex.sequential_mode else 'AUS'}**\n\n"
+                f"{'Agents werden nacheinander befragt (für Single-GPU).' if cortex.sequential_mode else 'Agents werden parallel befragt.'}"
+            ),
+            "notification_id": "kontinuum_cortex_sequential",
+        })
 
     async def handle_brain_review(call):
         """
@@ -1291,13 +1435,18 @@ def _register_services(hass, brain):
     hass.services.async_register(DOMAIN, "export_brain", handle_export_brain)
     hass.services.async_register(DOMAIN, "activate", handle_activate)
     hass.services.async_register(DOMAIN, "deactivate", handle_deactivate)
+    hass.services.async_register(DOMAIN, "set_mode", handle_set_mode)
+    hass.services.async_register(DOMAIN, "confirm_action", handle_confirm_action)
+    hass.services.async_register(DOMAIN, "reject_action", handle_reject_action)
     hass.services.async_register(DOMAIN, "configure_agent", handle_configure_agent)
     hass.services.async_register(DOMAIN, "cortex_consult", handle_cortex_consult)
     hass.services.async_register(DOMAIN, "remove_agent", handle_cortex_remove_agent)
+    hass.services.async_register(DOMAIN, "cortex_sequential", handle_cortex_sequential)
     hass.services.async_register(DOMAIN, "brain_review", handle_brain_review)
 
     _LOGGER.info("Services registriert: enable_scenes, disable_scenes, set_scene, "
-                 "status, export_brain, activate, deactivate, "
+                 "status, export_brain, activate, deactivate, set_mode, "
+                 "confirm_action, reject_action, "
                  "configure_agent, cortex_consult, remove_agent, brain_review")
 
 

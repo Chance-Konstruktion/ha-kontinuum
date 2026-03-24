@@ -161,8 +161,14 @@ class KontinuumStatusSensor(KontinuumSensorBase):
             },
             "prefrontal": {
                 "total_decisions": prefrontal.total_decisions,
+                "total_confirms": getattr(prefrontal, "total_confirms", 0),
                 "overrides_detected": prefrontal.overrides_detected,
+                "operation_mode": getattr(prefrontal, "operation_mode", "shadow"),
+                "shadow_mode": prefrontal.shadow_mode,
+                "activated_semantics": list(prefrontal.activated_semantics),
+                "pending_confirms": len(getattr(prefrontal, "_pending_confirms", {})),
             },
+            "basal_ganglia": self._brain["basal_ganglia"].stats,
         }
         # Cortex-Info (wenn aktiv)
         if cortex.enabled:

@@ -29,6 +29,50 @@ import time
 
 import aiohttp
 
+# ── Transiente Fehler für Retry ──────────────────────────────
+_TRANSIENT_ERRORS = (
+    aiohttp.ClientError,
+    asyncio.TimeoutError,
+    ConnectionError,
+    TimeoutError,
+)
+
+
+async def _retry_llm_call(coro_fn, max_retries=3):
+    """
+    Retry-Wrapper für LLM-Calls mit exponentiellem Backoff.
+
+    Nur bei transienten Fehlern (Timeout, Netzwerk, 5xx) retryen.
+    Bei permanenten Fehlern (4xx, JSON-Fehler) sofort abbrechen.
+    """
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return await coro_fn()
+        except RuntimeError as e:
+            error_str = str(e)
+            # 5xx → transient, retry
+            if any(f" {code}" in error_str for code in ("500", "502", "503", "504", "529")):
+                last_error = e
+                if attempt < max_retries - 1:
+                    delay = (2 ** attempt)  # 1s, 2s, 4s
+                    _LOGGER.warning("LLM Retry %d/%d nach %ds: %s",
+                                    attempt + 1, max_retries, delay, error_str[:100])
+                    await asyncio.sleep(delay)
+                    continue
+            # 4xx oder andere → permanent, abbrechen
+            raise
+        except _TRANSIENT_ERRORS as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                delay = (2 ** attempt)
+                _LOGGER.warning("LLM Retry %d/%d nach %ds: %s",
+                                attempt + 1, max_retries, delay, str(e)[:100])
+                await asyncio.sleep(delay)
+                continue
+            raise
+    raise last_error
+
 _LOGGER = logging.getLogger(__name__)
 
 # ── Provider Konfiguration ──────────────────────────────────────
@@ -206,19 +250,22 @@ async def _call_gemini(session, url, api_key, model, system_prompt, user_msg):
 
 async def _call_llm(session, provider, url, api_key, model,
                     system_prompt, user_msg):
-    """Dispatcht den LLM-Call an den richtigen Provider."""
-    if provider == "ollama":
-        return await _call_ollama(session, url, model, system_prompt, user_msg)
-    elif provider in ("openai", "grok"):
-        return await _call_openai(session, url, api_key, model,
-                                  system_prompt, user_msg)
-    elif provider == "claude":
-        return await _call_claude(session, url, api_key, model,
-                                  system_prompt, user_msg)
-    elif provider == "gemini":
-        return await _call_gemini(session, url, api_key, model,
-                                  system_prompt, user_msg)
-    raise RuntimeError(f"Unbekannter Provider: {provider}")
+    """Dispatcht den LLM-Call an den richtigen Provider (mit Retry)."""
+    async def _do_call():
+        if provider == "ollama":
+            return await _call_ollama(session, url, model, system_prompt, user_msg)
+        elif provider in ("openai", "grok"):
+            return await _call_openai(session, url, api_key, model,
+                                      system_prompt, user_msg)
+        elif provider == "claude":
+            return await _call_claude(session, url, api_key, model,
+                                      system_prompt, user_msg)
+        elif provider == "gemini":
+            return await _call_gemini(session, url, api_key, model,
+                                      system_prompt, user_msg)
+        raise RuntimeError(f"Unbekannter Provider: {provider}")
+
+    return await _retry_llm_call(_do_call)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -312,6 +359,7 @@ class Cortex:
     def __init__(self):
         self.agents: list[CortexAgent] = []
         self.enabled = False
+        self.sequential_mode = False  # v0.18.0: Sequentiell statt parallel (für 1 GPU)
         self.last_run = 0
         self.total_consultations = 0
         self.total_discussions = 0
@@ -390,11 +438,20 @@ class Cortex:
 
         # ── Runde 1: Initiale Vorschläge (nur Worker-Agents) ───
         context_msg = self._format_context(context)
-        tasks = [
-            agent.think(context_msg, self._session)
-            for agent in (worker_agents or self.agents)
-        ]
-        proposals = await asyncio.gather(*tasks)
+        active_agents = worker_agents or self.agents
+
+        if self.sequential_mode:
+            # v0.18.0: Sequentiell – für Single-GPU/Ollama-Instanzen
+            proposals = []
+            for agent in active_agents:
+                result = await agent.think(context_msg, self._session)
+                proposals.append(result)
+        else:
+            tasks = [
+                agent.think(context_msg, self._session)
+                for agent in active_agents
+            ]
+            proposals = await asyncio.gather(*tasks)
 
         _LOGGER.info(
             "Cortex Runde 1: %d Vorschläge erhalten",
@@ -412,11 +469,18 @@ class Cortex:
         if needs_discussion:
             self.total_discussions += 1
             discussion_msg = self._format_discussion(context, proposals)
-            tasks = [
-                agent.think(discussion_msg, self._session)
-                for agent in active_agents
-            ]
-            revisions = await asyncio.gather(*tasks)
+
+            if self.sequential_mode:
+                revisions = []
+                for agent in active_agents:
+                    result = await agent.think(discussion_msg, self._session)
+                    revisions.append(result)
+            else:
+                tasks = [
+                    agent.think(discussion_msg, self._session)
+                    for agent in active_agents
+                ]
+                revisions = await asyncio.gather(*tasks)
 
             _LOGGER.info(
                 "Cortex Runde 2 (Diskussion): %d Revisionen",
@@ -756,6 +820,7 @@ class Cortex:
         return {
             "total_consultations": self.total_consultations,
             "total_discussions": self.total_discussions,
+            "sequential_mode": self.sequential_mode,
             "agent_stats": [a.stats for a in self.agents],
         }
 
@@ -905,6 +970,7 @@ class Cortex:
     def from_dict(self, data: dict):
         self.total_consultations = data.get("total_consultations", 0)
         self.total_discussions = data.get("total_discussions", 0)
+        self.sequential_mode = data.get("sequential_mode", False)
 
     # ── Brain Review: Periodische Gehirn-Analyse durch LLM ────
 

@@ -296,12 +296,12 @@
                    data-d="Modus-Erkennung: sleeping / active / relaxing / away – kontextbasiert, nicht zeitbasiert."/>
           <text class="bl on" x="195" y="198">Insula</text>
 
-          <!-- BASALGANGLIEN – lateral to thalamus (placeholder) -->
-          <ellipse id="r-basalganglien" class="br" cx="298" cy="195" rx="22" ry="14"
+          <!-- BASALGANGLIEN – lateral to thalamus -->
+          <ellipse id="r-basalganglien" class="br on" cx="298" cy="195" rx="22" ry="14"
                    fill="#f97316" stroke="#f97316" filter="url(#gs)"
                    data-m="basalganglien" data-t="Basalganglien"
-                   data-d="PLATZHALTER – Phase 4: Gewohnheits-Prior. Erfolgsquote pro Aktion."/>
-          <text class="bl" x="298" y="198">Basal</text>
+                   data-d="Belohnungslernen: Q-Value-Tabelle, Go/NoGo-Pfade, Gewohnheitsbildung, Dopamin-Signal."/>
+          <text class="bl on" x="298" y="198">Basal</text>
 
           <!-- HYPOTHALAMUS – inferior to thalamus -->
           <ellipse id="r-hypothalamus" class="br on" cx="238" cy="258" rx="28" ry="16"
@@ -367,8 +367,8 @@
         <div class="ml" id="m-amygdala"><div class="ml-n"><span class="dot" style="background:var(--red)"></span> Amygdala</div><div class="ml-d" id="md-amygdala">—</div></div>
         <div class="ml" id="m-cerebellum"><div class="ml-n"><span class="dot" style="background:var(--teal)"></span> Cerebellum</div><div class="ml-d" id="md-cerebellum">—</div></div>
         <div class="ml" id="m-prefrontal"><div class="ml-n"><span class="dot" style="background:var(--cyan)"></span> Präfrontaler Kortex</div><div class="ml-d" id="md-prefrontal">—</div></div>
+        <div class="ml" id="m-basalganglien"><div class="ml-n"><span class="dot" style="background:#f97316"></span> Basalganglien</div><div class="ml-d" id="md-basalganglien">—</div></div>
         <div class="ml off"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Motorischer Kortex</div><div class="ml-d">Phase 4</div></div>
-        <div class="ml off"><div class="ml-n"><span class="dot" style="background:#f97316"></span> Basalganglien</div><div class="ml-d">Phase 4</div></div>
         <div class="ml off"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Hirnstamm</div><div class="ml-d">Phase 4</div></div>
       </div>
     </div>
@@ -411,6 +411,24 @@
         </button>
         <button class="dbg-btn" onclick="callService('deactivate',{semantic:'all'})" id="btn-deact">
           <span class="ico">🚫</span> Deactivate All
+        </button>
+        <button class="dbg-btn" onclick="callService('cortex_sequential',{enabled:true})" id="btn-seq">
+          <span class="ico">🔗</span> Sequential Mode
+        </button>
+      </div>
+      <div class="pnl-t" style="margin-top:14px">Betriebsmodus</div>
+      <div class="dbg-btns">
+        <button class="dbg-btn" onclick="callService('set_mode',{mode:'shadow'})" id="btn-mode-shadow">
+          <span class="ico">👁️</span> Shadow
+        </button>
+        <button class="dbg-btn" onclick="callService('set_mode',{mode:'confirm'})" id="btn-mode-confirm">
+          <span class="ico">✋</span> Confirm
+        </button>
+        <button class="dbg-btn" onclick="callService('set_mode',{mode:'active'})" id="btn-mode-active">
+          <span class="ico">⚡</span> Active
+        </button>
+        <button class="dbg-btn" onclick="callService('confirm_action',{confirm_all:true})" id="btn-confirm-all">
+          <span class="ico">✅</span> Alle bestätigen
         </button>
       </div>
     </div>
@@ -691,8 +709,20 @@ function updateDashboard(d) {
         'rules: ' + (a.cerebellum.rules_count || 0) + ' · fired: ' + (a.cerebellum.total_fired || 0);
     }
     if (a.prefrontal) {
+      const pf = a.prefrontal;
+      const mode = pf.operation_mode || (pf.shadow_mode ? 'shadow' : 'active');
       document.getElementById('md-prefrontal').textContent =
-        'decisions: ' + (a.prefrontal.total_decisions || 0) + ' · overrides: ' + (a.prefrontal.overrides_detected || 0);
+        mode.toUpperCase() + ' · decisions: ' + (pf.total_decisions || 0) + ' · overrides: ' + (pf.overrides_detected || 0);
+      // Mode-Buttons aktualisieren
+      updateModeButtons(mode);
+    }
+    if (a.basal_ganglia) {
+      document.getElementById('md-basalganglien').textContent =
+        'habits: ' + (a.basal_ganglia.total_habits || 0) + ' · q-entries: ' + (a.basal_ganglia.q_entries || 0) + ' · dopamin: ' + (a.basal_ganglia.dopamine_signal || 0);
+      // Basalganglien-Region aktivieren bei Aktivität
+      if ((a.basal_ganglia.total_updates || 0) > 0) {
+        fire('basalganglien');
+      }
     }
   }
 
@@ -843,10 +873,53 @@ function updateCortexStatus() {
 // Speichere Status-Daten global für Debug-Panel
 let lastStatusData = null;
 
+// ── Mode Buttons ──
+function updateModeButtons(currentMode) {
+  ['shadow','confirm','active'].forEach(m => {
+    const btn = document.getElementById('btn-mode-' + m);
+    if (btn) {
+      if (m === currentMode) {
+        btn.style.borderColor = 'var(--cyan)';
+        btn.style.color = 'var(--cyan)';
+        btn.style.background = 'rgba(74,158,255,.12)';
+      } else {
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        btn.style.background = '';
+      }
+    }
+  });
+}
+
+// ── Periodisches Firing basierend auf Modulaktivität ──
+let lastEventCount = 0;
+function animateBrainRegions() {
+  const st = lastStatusData;
+  if (!st || !st.attr) return;
+  const a = st.attr;
+  const currentEvents = (a.hippocampus && a.hippocampus.total_events) || 0;
+  if (currentEvents > lastEventCount) {
+    // Neue Events → relevante Module feuern
+    fire('thalamus');
+    setTimeout(() => fire('hippocampus'), 200);
+    if (a.cerebellum && (a.cerebellum.total_fired || 0) > 0) {
+      setTimeout(() => fire('cerebellum'), 400);
+    }
+    if (a.prefrontal && (a.prefrontal.total_decisions || 0) > 0) {
+      setTimeout(() => fire('prefrontal'), 600);
+    }
+    if (a.basal_ganglia && (a.basal_ganglia.total_updates || 0) > 0) {
+      setTimeout(() => fire('basalganglien'), 500);
+    }
+    lastEventCount = currentEvents;
+  }
+}
+
 // ── Start Polling ──
 setConn('wait');
 fetchSensors();
 setInterval(fetchSensors, POLL_INTERVAL);
+setInterval(animateBrainRegions, 5000);
 
 </script>
 </body>
