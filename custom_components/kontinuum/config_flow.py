@@ -245,6 +245,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         current = self.config_entry.data.get("preset", "ausgeglichen")
         current_dashboard = self.config_entry.data.get("enable_dashboard", True)
         current_cortex = self.config_entry.data.get("enable_cortex", False)
+        current_home_only = self.config_entry.data.get("home_only_mode", False)
         preset_options = {k: v["label"] for k, v in PRESETS.items()}
 
         return self.async_show_form(
@@ -254,6 +255,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
                     preset_options
                 ),
                 vol.Required("enable_dashboard", default=current_dashboard): bool,
+                vol.Required("home_only_mode", default=current_home_only): bool,
                 vol.Required("enable_cortex", default=current_cortex): bool,
             }),
         )
@@ -530,6 +532,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             **self.config_entry.data,
             "preset": preset_key,
             "enable_dashboard": self._data.get("enable_dashboard", True),
+            "home_only_mode": self._data.get("home_only_mode", False),
             "enable_cortex": self._data.get("enable_cortex", False),
             "sequential_mode": self._data.get("sequential_mode", False),
             "discussion_rounds": self._data.get("discussion_rounds", 2),
