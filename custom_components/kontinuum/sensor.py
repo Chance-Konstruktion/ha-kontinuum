@@ -177,6 +177,8 @@ class KontinuumStatusSensor(KontinuumSensorBase):
             attrs["cortex"] = {
                 "enabled": True,
                 "agents": len(cortex.agents),
+                "sequential_mode": cortex.sequential_mode,
+                "discussion_rounds": cortex.discussion_rounds,
                 "total_consultations": cortex.total_consultations,
                 "total_discussions": cortex.total_discussions,
                 "last_consensus": cortex.last_consensus or {},

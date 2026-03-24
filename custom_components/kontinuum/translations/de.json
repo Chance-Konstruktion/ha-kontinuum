@@ -31,6 +31,14 @@
           "enable_cortex": "Cortex aktivieren (LLM-Agents)"
         }
       },
+      "cortex_options": {
+        "title": "Cortex Optionen",
+        "description": "Sequential Mode fragt die Agents nacheinander statt parallel \u2013 empfohlen bei einer GPU/Ollama-Instanz. Diskussionsrunden bestimmen, wie oft die Agents debattieren bevor ein Konsens entsteht.",
+        "data": {
+          "sequential_mode": "Sequential Mode (empfohlen bei 1 GPU)",
+          "discussion_rounds": "Diskussionsrunden"
+        }
+      },
       "agent_1_setup": {
         "title": "Cortex \u2013 Agent 1 (Verbindung)",
         "description": "W\u00e4hle Rolle und Provider. F\u00fcr Ollama einfach den Host eingeben (z.B. 'localhost' oder '192.168.1.100').",

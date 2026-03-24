@@ -31,6 +31,14 @@
           "enable_cortex": "Enable Cortex (LLM Agents)"
         }
       },
+      "cortex_options": {
+        "title": "Cortex Options",
+        "description": "Sequential mode queries agents one-by-one instead of in parallel – recommended for single GPU/Ollama setups. Discussion rounds control how many times agents debate before reaching consensus.",
+        "data": {
+          "sequential_mode": "Sequential Mode (recommended for 1 GPU)",
+          "discussion_rounds": "Discussion Rounds"
+        }
+      },
       "agent_1_setup": {
         "title": "Cortex – Agent 1 (Connection)",
         "description": "Choose a role and provider. For Ollama just enter the host (e.g. 'localhost' or '192.168.1.100') – http:// and port 11434 are added automatically.",

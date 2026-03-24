@@ -360,6 +360,7 @@ class Cortex:
         self.agents: list[CortexAgent] = []
         self.enabled = False
         self.sequential_mode = False  # v0.18.0: Sequentiell statt parallel (für 1 GPU)
+        self.discussion_rounds = self.MAX_DISCUSSION_ROUNDS  # Aus Config überschreibbar
         self.last_run = 0
         self.total_consultations = 0
         self.total_discussions = 0
@@ -462,7 +463,8 @@ class Cortex:
         revisions = []
         active_agents = worker_agents or self.agents
         needs_discussion = (
-            len(active_agents) > 1
+            self.discussion_rounds >= 2
+            and len(active_agents) > 1
             and self._has_disagreement(proposals)
         )
 
@@ -821,6 +823,7 @@ class Cortex:
             "total_consultations": self.total_consultations,
             "total_discussions": self.total_discussions,
             "sequential_mode": self.sequential_mode,
+            "discussion_rounds": self.discussion_rounds,
             "agent_stats": [a.stats for a in self.agents],
         }
 
@@ -971,6 +974,7 @@ class Cortex:
         self.total_consultations = data.get("total_consultations", 0)
         self.total_discussions = data.get("total_discussions", 0)
         self.sequential_mode = data.get("sequential_mode", False)
+        self.discussion_rounds = data.get("discussion_rounds", self.MAX_DISCUSSION_ROUNDS)
 
     # ── Brain Review: Periodische Gehirn-Analyse durch LLM ────
 
