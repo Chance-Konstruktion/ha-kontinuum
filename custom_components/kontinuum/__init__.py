@@ -543,26 +543,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             insula.update_sun(is_daylight)
             _LOGGER.info("Sonnenstand geladen: elevation=%.1f°, daylight=%s", elevation, is_daylight)
 
-        # Startup-Notification
+        # Startup-Notification (v0.18.0: kompakt, eine Notification statt 5)
         filtered = thalamus.stats.get("entities_filtered", 0)
-        movement_count = len(spatial.movement_memory)
+        op_mode = prefrontal.operation_mode
+        mode_label = {"shadow": "Shadow", "confirm": "Confirm", "active": "Active"}.get(op_mode, op_mode)
+        startup_parts = [
+            f"**{len(thalamus.entity_semantic)}** Entities · "
+            f"**{len(thalamus._known_rooms)}** Räume · "
+            f"**{hippocampus.total_events}** Events · "
+            f"Accuracy **{hippocampus.accuracy:.0%}**",
+            f"Modus: **{mode_label}** · "
+            f"Preset: {preset_key} · "
+            f"Routinen: {len(cerebellum.rules)}",
+        ]
+        if filtered:
+            startup_parts.append(
+                f"*{filtered} Entities ohne Raum – "
+                f"[Zuordnen](/config/entities)*")
+        activated = prefrontal.activated_semantics
+        if activated:
+            startup_parts.append(
+                f"Freigeschaltet: {', '.join(sorted(activated))}")
+        if cortex.enabled:
+            startup_parts.append(
+                f"Cortex: {len(cortex.agents)} Agents aktiv")
         _notify(hass,
-            f"🧠 KONTINUUM v{VERSION} gestartet",
-            f"Preset: **{preset_key}**\n"
-            f"Entities: {len(thalamus.entity_semantic)}"
-            f"{f' (+ {filtered} ohne Raum gefiltert)' if filtered else ''}\n"
-            f"Tokens: {thalamus._next_id - 1}\n"
-            f"Räume: {len(thalamus._known_rooms)}\n"
-            f"Events bisher: {hippocampus.total_events}\n"
-            f"Accuracy: {hippocampus.accuracy:.1%}\n"
-            f"Accuracy (60s/5min/30min): {hippocampus.stats.get('accuracy_by_window', {})}\n"
-            f"Bewegungsmuster: {movement_count}\n"
-            f"Kontextvektor: 21 Dimensionen (Sonne + Trends)",
+            f"KONTINUUM v{VERSION}",
+            "\n".join(startup_parts),
             "kontinuum_startup",
         )
-
-        # v0.12.1: Unassigned Entities Notification
-        _notify_unassigned_entities(hass, thalamus)
 
         return True
 
@@ -1574,6 +1583,10 @@ def _save_brain(brain, path=None):
             "cortex_patterns": brain.get("_cortex_patterns", {}),
             "scenes_enabled": brain.get("_scenes_enabled", False),
             "scene_config": brain.get("_scene_config", {}),
+            # v0.18.0: Notifikations-State persistieren (kein Spam bei Neustart)
+            "notified_milestones": list(brain.get("_notified_milestones", set())),
+            "notified_modes": list(brain.get("_notified_modes", set())),
+            "notified_rules": list(brain.get("_notified_rules", set())),
         }
 
         tmp_path = path + ".tmp"
@@ -1631,6 +1644,10 @@ def _load_brain(brain, path):
         brain["_cortex_patterns"] = data.get("cortex_patterns", {})
         brain["_scenes_enabled"] = data.get("scenes_enabled", False)
         brain["_scene_config"] = data.get("scene_config", _default_scene_config())
+        # v0.18.0: Notifikations-State wiederherstellen (kein Spam bei Neustart)
+        brain["_notified_milestones"] = set(data.get("notified_milestones", []))
+        brain["_notified_modes"] = set(data.get("notified_modes", []))
+        brain["_notified_rules"] = set(data.get("notified_rules", []))
 
         # v0.11.0 Migration: Unknown-Tokens bereinigen
         _migrate_purge_unknown(brain)
