@@ -97,7 +97,7 @@ class KontinuumSensorBase(SensorEntity):
         )
 
     @callback
-    def _handle_update(self, **kwargs) -> None:
+    def _handle_update(self, data=None) -> None:
         """Sensor-Update bei Signal."""
         self.async_write_ha_state()
 
@@ -190,9 +190,9 @@ class KontinuumLastEventSensor(KontinuumSensorBase):
         self._last_signal = None
 
     @callback
-    def _handle_update(self, **kwargs):
-        if "last_signal" in kwargs:
-            self._last_signal = kwargs["last_signal"]
+    def _handle_update(self, data=None):
+        if isinstance(data, dict) and "last_signal" in data:
+            self._last_signal = data["last_signal"]
         self.async_write_ha_state()
 
     @property
@@ -219,9 +219,9 @@ class KontinuumPredictionSensor(KontinuumSensorBase):
         self._predictions = None
 
     @callback
-    def _handle_update(self, **kwargs):
-        if "predictions" in kwargs:
-            self._predictions = kwargs["predictions"]
+    def _handle_update(self, data=None):
+        if isinstance(data, dict) and "predictions" in data:
+            self._predictions = data["predictions"]
         self.async_write_ha_state()
 
     @property
@@ -345,11 +345,12 @@ class KontinuumPersonsSensor(KontinuumSensorBase):
         self._signal = SIGNAL_PERSONS_UPDATE
 
     @callback
-    def _handle_update(self, **kwargs):
-        if "home" in kwargs:
-            self._home = kwargs["home"]
-        if "away" in kwargs:
-            self._away = kwargs["away"]
+    def _handle_update(self, data=None):
+        if isinstance(data, dict):
+            if "home" in data:
+                self._home = data["home"]
+            if "away" in data:
+                self._away = data["away"]
         self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:

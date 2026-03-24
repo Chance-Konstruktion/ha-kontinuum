@@ -353,7 +353,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 # Sensoren updaten (native Entitäten via Dispatcher)
                 async_dispatcher_send(
                     hass, SIGNAL_SENSORS_UPDATE,
-                    last_signal=signal, predictions=predictions,
+                    {"last_signal": signal, "predictions": predictions},
                 )
 
                 # Periodisch: Cerebellum kompilieren + speichern
@@ -1202,7 +1202,7 @@ def _update_persons_sensor(hass):
             away_list.append(name)
 
     async_dispatcher_send(hass, SIGNAL_PERSONS_UPDATE,
-                          home=home_list, away=away_list)
+                          {"home": home_list, "away": away_list})
 
 
 # ══════════════════════════════════════════════════════════════════
