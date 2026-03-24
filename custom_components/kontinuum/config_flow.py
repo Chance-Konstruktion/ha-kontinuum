@@ -233,12 +233,12 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         self._discovered_models = []
 
     async def async_step_init(self, user_input=None):
-        """Schritt 1: Persönlichkeit + Cortex-Toggle."""
+        """Schritt 1: Grundeinstellungen."""
         if user_input is not None:
             self._data = user_input
-            # Wenn Cortex aktiviert → Agent-Konfiguration
+            # Wenn Cortex aktiviert → Cortex-Optionen
             if user_input.get("enable_cortex", False):
-                return await self.async_step_agent_1_setup()
+                return await self.async_step_cortex_options()
             # Sonst direkt speichern
             return await self._save_and_finish()
 
@@ -255,6 +255,28 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Required("enable_dashboard", default=current_dashboard): bool,
                 vol.Required("enable_cortex", default=current_cortex): bool,
+            }),
+        )
+
+    # ── Cortex Optionen (Sequential, Runden) ─────────────────────
+
+    async def async_step_cortex_options(self, user_input=None):
+        """Cortex-Optionen: Sequential Mode, Diskussionsrunden."""
+        if user_input is not None:
+            self._data["sequential_mode"] = user_input.get("sequential_mode", False)
+            self._data["discussion_rounds"] = user_input.get("discussion_rounds", 2)
+            return await self.async_step_agent_1_setup()
+
+        current_seq = self.config_entry.data.get("sequential_mode", False)
+        current_rounds = self.config_entry.data.get("discussion_rounds", 2)
+
+        return self.async_show_form(
+            step_id="cortex_options",
+            data_schema=vol.Schema({
+                vol.Required("sequential_mode", default=current_seq): bool,
+                vol.Required(
+                    "discussion_rounds", default=current_rounds,
+                ): vol.In({1: "1 Runde", 2: "2 Runden", 3: "3 Runden"}),
             }),
         )
 
@@ -509,6 +531,8 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             "preset": preset_key,
             "enable_dashboard": self._data.get("enable_dashboard", True),
             "enable_cortex": self._data.get("enable_cortex", False),
+            "sequential_mode": self._data.get("sequential_mode", False),
+            "discussion_rounds": self._data.get("discussion_rounds", 2),
             **{k: v for k, v in preset.items() if k != "label"},
         }
 

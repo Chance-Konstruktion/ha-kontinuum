@@ -336,8 +336,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         if entry_agents and entry.data.get("enable_cortex", False):
             brain["_cortex_agents"] = entry_agents
             cortex.configure(list(entry_agents.values()))
-            _LOGGER.info("Cortex aus Config geladen: %d Agents",
-                         len(cortex.agents))
+            # Sequential Mode + Diskussionsrunden aus Config
+            cortex.sequential_mode = entry.data.get("sequential_mode", False)
+            cortex.discussion_rounds = entry.data.get("discussion_rounds", 2)
+            _LOGGER.info(
+                "Cortex aus Config geladen: %d Agents, sequential=%s, rounds=%d",
+                len(cortex.agents), cortex.sequential_mode,
+                cortex.discussion_rounds,
+            )
 
         # ── Entities entdecken ────────────────────────────────
         await _discover_entities(hass, thalamus)

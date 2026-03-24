@@ -123,6 +123,14 @@
   .dbg-btn:active{transform:scale(.97)}
   .dbg-btn.running{border-color:var(--amber);color:var(--amber);pointer-events:none}
   .dbg-btn .ico{font-size:.8rem}
+  .dbg-btn{position:relative}
+  .dbg-btn .btn-tip{display:none;position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+    background:rgba(10,14,28,.96);border:1px solid var(--glow);border-radius:6px;padding:6px 10px;
+    font-size:.5rem;color:var(--t2);white-space:nowrap;pointer-events:none;z-index:50;
+    backdrop-filter:blur(12px);letter-spacing:.3px;line-height:1.4}
+  .dbg-btn .btn-tip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    border:5px solid transparent;border-top-color:var(--glow)}
+  .dbg-btn:hover .btn-tip{display:block}
   .dbg-btns{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
   .dbg-out{background:rgba(2,4,10,.7);border:1px solid var(--border);border-radius:8px;padding:14px;max-height:500px;
     overflow-y:auto;font-size:.58rem;line-height:1.7;color:var(--t2);white-space:pre-wrap;word-break:break-word}
@@ -396,39 +404,50 @@
       <div class="dbg-btns">
         <button class="dbg-btn" onclick="callService('cortex_consult')" id="btn-consult">
           <span class="ico">🤖</span> Cortex Consult
+          <span class="btn-tip">LLM-Agents beraten über den aktuellen Zustand</span>
         </button>
         <button class="dbg-btn" onclick="callService('brain_review')" id="btn-review">
           <span class="ico">🔬</span> Brain Review
+          <span class="btn-tip">Gesundheits-Check aller Gehirn-Module</span>
         </button>
         <button class="dbg-btn" onclick="callService('status')" id="btn-status">
           <span class="ico">📋</span> Status
+          <span class="btn-tip">Zeigt den aktuellen System-Status</span>
         </button>
         <button class="dbg-btn" onclick="callService('export_brain')" id="btn-export">
           <span class="ico">💾</span> Brain Export
+          <span class="btn-tip">Speichert den Gehirn-Zustand als JSON</span>
         </button>
         <button class="dbg-btn" onclick="callService('activate',{semantic:'light'})" id="btn-act-light">
           <span class="ico">💡</span> Activate Light
+          <span class="btn-tip">Aktiviert Licht-Steuerung (Prefrontal)</span>
         </button>
         <button class="dbg-btn" onclick="callService('deactivate',{semantic:'all'})" id="btn-deact">
           <span class="ico">🚫</span> Deactivate All
+          <span class="btn-tip">Deaktiviert alle Steuerungen</span>
         </button>
-        <button class="dbg-btn" onclick="callService('cortex_sequential',{enabled:true})" id="btn-seq">
-          <span class="ico">🔗</span> Sequential Mode
+        <button class="dbg-btn" onclick="toggleSequential()" id="btn-seq">
+          <span class="ico">🔗</span> Sequential: <span id="seq-state">?</span>
+          <span class="btn-tip">Agents nacheinander statt parallel befragen (1 GPU)</span>
         </button>
       </div>
       <div class="pnl-t" style="margin-top:14px">Betriebsmodus</div>
       <div class="dbg-btns">
         <button class="dbg-btn" onclick="callService('set_mode',{mode:'shadow'})" id="btn-mode-shadow">
           <span class="ico">👁️</span> Shadow
+          <span class="btn-tip">Nur beobachten, keine Aktionen ausführen</span>
         </button>
         <button class="dbg-btn" onclick="callService('set_mode',{mode:'confirm'})" id="btn-mode-confirm">
           <span class="ico">✋</span> Confirm
+          <span class="btn-tip">Aktionen vorschlagen, Bestätigung nötig</span>
         </button>
         <button class="dbg-btn" onclick="callService('set_mode',{mode:'active'})" id="btn-mode-active">
           <span class="ico">⚡</span> Active
+          <span class="btn-tip">Aktionen automatisch ausführen</span>
         </button>
         <button class="dbg-btn" onclick="callService('confirm_action',{confirm_all:true})" id="btn-confirm-all">
           <span class="ico">✅</span> Alle bestätigen
+          <span class="btn-tip">Alle wartenden Aktionen bestätigen</span>
         </button>
       </div>
     </div>
@@ -586,24 +605,29 @@ async function fetchSensors() {
   }
 }
 
+// Helper: Prüft ob ein Sensor-State gültig ist
+function _valid(s) {
+  return s && s.state && s.state !== 'unknown' && s.state !== 'unavailable';
+}
+
 function updateDashboard(d) {
   // ── Last Event ──
   const ev = d['sensor.kontinuum_last_event'];
-  if (ev) {
+  if (_valid(ev)) {
     const val = ev.state;
     document.getElementById('v-event').textContent = val;
-    document.getElementById('d-event').textContent =
-      (ev.attr.room || '?') + ' · ' + (ev.attr.semantic || '') + ' · events: ' + (ev.attr.events_total || 0);
+    const room = ev.attr.room || '?';
+    const sem = ev.attr.semantic || '';
+    const evTotal = ev.attr.events_total || 0;
+    document.getElementById('d-event').textContent = room + ' · ' + sem + ' · events: ' + evTotal;
 
     if (val !== prevEvent && prevEvent !== '') {
-      // New event – fire brain regions
       fire('thalamus');
       if (val.includes('house.energy') || val.includes('house.climate')) fire('hypothalamus');
       else if (val.includes('person.')) fire('spatial');
       else if (val.includes('house.mode')) fire('insula');
       else fire('hippocampus');
 
-      // Also fire prefrontal if a decision was made
       const pred = d['sensor.kontinuum_prediction'];
       if (pred && pred.attr && pred.attr.decision) fire('prefrontal');
 
@@ -612,63 +636,86 @@ function updateDashboard(d) {
                val.includes('mode.') ? 'var(--pink)' : 'var(--blue)');
     }
     prevEvent = val;
+  } else if (ev) {
+    document.getElementById('v-event').textContent = 'warte…';
+    document.getElementById('d-event').textContent = 'Noch keine Events verarbeitet';
   }
 
   // ── Prediction ──
   const pr = d['sensor.kontinuum_prediction'];
-  if (pr) {
+  if (_valid(pr)) {
     document.getElementById('v-pred').textContent = pr.state;
     const conf = pr.attr.confidence;
-    document.getElementById('d-pred').textContent = conf != null
-      ? 'confidence: ' + (conf * 100).toFixed(0) + '%' : '—';
+    document.getElementById('d-pred').textContent = conf != null && conf > 0
+      ? 'confidence: ' + (conf * 100).toFixed(0) + '%'
+      : 'Sammle Daten…';
+  } else if (pr) {
+    document.getElementById('v-pred').textContent = 'warte…';
+    document.getElementById('d-pred').textContent = 'Braucht mehr Events für Vorhersagen';
   }
 
   // ── Accuracy ──
   const ac = d['sensor.kontinuum_accuracy'];
-  if (ac) {
+  if (_valid(ac)) {
     document.getElementById('v-acc').textContent = ac.state;
     document.getElementById('d-acc').textContent =
-      'hits: ' + (ac.attr.shadow_hits || 0) + ' / total: ' + (ac.attr.shadow_total || 0);
+      'hits: ' + (ac.attr.hits || ac.attr.shadow_hits || 0) + ' / total: ' + (ac.attr.total || ac.attr.shadow_total || 0);
     document.getElementById('s-acc').textContent = ac.state;
   }
 
   // ── Energy ──
   const nrg = d['sensor.kontinuum_energy'];
-  if (nrg) {
+  if (_valid(nrg)) {
     document.getElementById('v-nrg').textContent = nrg.state;
     document.getElementById('d-nrg').textContent =
       'solar: ' + (nrg.attr.solar || '?') + ' · absorbed: ' + (nrg.attr.events_absorbed || 0);
     document.getElementById('s-abs').textContent = nrg.attr.events_absorbed || 0;
+  } else if (nrg) {
+    document.getElementById('v-nrg').textContent = '?';
+    document.getElementById('d-nrg').textContent = 'Keine Energiedaten';
   }
 
   // ── Location ──
   const loc = d['sensor.kontinuum_location'];
-  if (loc) {
+  if (_valid(loc)) {
     document.getElementById('v-loc').textContent = loc.state;
     const sp = loc.attr;
     if (sp && sp.presence_map) {
       const rooms = Object.entries(sp.presence_map)
         .filter(([,v]) => v.occupied).map(([k]) => k);
       document.getElementById('d-loc').textContent = rooms.length > 0
-        ? 'besetzt: ' + rooms.join(', ') : '—';
+        ? 'besetzt: ' + rooms.join(', ')
+        : sp.predicted_next ? 'nächster: ' + sp.predicted_next : 'kein Raum besetzt';
+    } else {
+      document.getElementById('d-loc').textContent = 'patterns: ' + (sp.movement_patterns || 0);
     }
+  } else if (loc) {
+    document.getElementById('v-loc').textContent = 'unbekannt';
+    document.getElementById('d-loc').textContent = 'Warte auf Bewegungsdaten…';
   }
 
   // ── Mode ──
   const mo = d['sensor.kontinuum_mode'];
-  if (mo) {
+  if (_valid(mo)) {
     document.getElementById('v-mode').textContent = mo.state;
     const conf = mo.attr.confidence;
-    document.getElementById('d-mode').textContent = conf != null
-      ? 'confidence: ' + (conf * 100).toFixed(0) + '%' : '—';
+    document.getElementById('d-mode').textContent = conf != null && conf > 0
+      ? 'confidence: ' + (conf * 100).toFixed(0) + '%'
+      : 'Modus wird ermittelt…';
+  } else if (mo) {
+    document.getElementById('v-mode').textContent = 'aktiv';
+    document.getElementById('d-mode').textContent = 'Standard-Modus';
   }
 
   // ── Cerebellum ──
   const cb = d['sensor.kontinuum_cerebellum'];
-  if (cb) {
+  if (_valid(cb)) {
     document.getElementById('v-cereb').textContent = cb.state;
     document.getElementById('d-cereb').textContent =
-      'fired: ' + (cb.attr.total_fired || 0);
+      'fired: ' + (cb.attr.total_fired || 0) + ' · 1g: ' + (cb.attr.rules_1gram || 0) + ' · 2g: ' + (cb.attr.rules_2gram || 0);
+  } else if (cb) {
+    document.getElementById('v-cereb').textContent = '0 Regeln';
+    document.getElementById('d-cereb').textContent = 'Lerne Muster… (braucht ~50 Events)';
   }
 
   // ── Status (contains all module stats) ──
@@ -807,8 +854,13 @@ function updateCortexStatus() {
 
   if (a.cortex) {
     const c = a.cortex;
+    // Sequential-Mode-Status aus Cortex-Daten lesen
+    if (c.sequential_mode !== undefined) {
+      sequentialMode = !!c.sequential_mode;
+      updateSequentialButton();
+    }
     parts.push(`<span class="hi">CORTEX</span>`);
-    parts.push(`  Agents: ${c.agents || 0}`);
+    parts.push(`  Agents: ${c.agents || 0}  ·  Sequential: ${sequentialMode ? '<span class="ok">AN</span>' : 'AUS'}`);
     parts.push(`  Beratungen: ${c.total_consultations || 0}`);
     parts.push(`  Diskussionen: ${c.total_discussions || 0}`);
 
@@ -872,6 +924,30 @@ function updateCortexStatus() {
 
 // Speichere Status-Daten global für Debug-Panel
 let lastStatusData = null;
+
+// ── Sequential Toggle ──
+let sequentialMode = false;
+function toggleSequential() {
+  sequentialMode = !sequentialMode;
+  callService('cortex_sequential', {enabled: sequentialMode});
+  updateSequentialButton();
+}
+function updateSequentialButton() {
+  const el = document.getElementById('seq-state');
+  const btn = document.getElementById('btn-seq');
+  if (el) el.textContent = sequentialMode ? 'AN' : 'AUS';
+  if (btn) {
+    if (sequentialMode) {
+      btn.style.borderColor = 'var(--cyan)';
+      btn.style.color = 'var(--cyan)';
+      btn.style.background = 'rgba(74,158,255,.12)';
+    } else {
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      btn.style.background = '';
+    }
+  }
+}
 
 // ── Mode Buttons ──
 function updateModeButtons(currentMode) {
