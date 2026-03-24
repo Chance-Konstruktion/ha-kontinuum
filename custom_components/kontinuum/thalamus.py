@@ -209,6 +209,9 @@ class Thalamus:
         self._unassigned_entities = {}
         self._unassigned_event_counts = {}  # entity_id → event count
 
+        # ignore_kontinuum Label-Filter (v0.15.0)
+        self._ignored_entities = set()  # entity_ids mit ignore_kontinuum Label
+
         # Stats
         self.stats = {
             "entities_registered": 0,
@@ -228,6 +231,14 @@ class Thalamus:
         """Registriert eine Entity mit Raum und Semantik."""
         if not entity_id:
             return
+
+        # ignore_kontinuum Label → komplett ausschließen (v0.15.0)
+        if labels:
+            for label in labels:
+                if label.lower().strip() in ("ignore_kontinuum", "ignore kontinuum"):
+                    self._ignored_entities.add(entity_id)
+                    self.stats["entities_ignored"] = len(self._ignored_entities)
+                    return
 
         if not domain:
             domain = entity_id.split(".")[0] if "." in entity_id else ""
@@ -456,9 +467,13 @@ class Thalamus:
         Verarbeitet einen State-Change und erzeugt ein Token-Signal.
         Returns None wenn gefiltert, sonst dict mit Signal-Info.
         """
+        # ignore_kontinuum Label → sofort raus (v0.15.0)
+        if entity_id in self._ignored_entities:
+            return None
+
         if entity_id not in self.entity_semantic:
             return None
-        
+
         semantic = self.entity_semantic[entity_id]
         room = self.entity_room.get(entity_id, "unknown")
 

@@ -379,6 +379,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if entity_id.startswith("sensor.kontinuum_"):
                     return
 
+                # ignore_kontinuum Label → komplett ignorieren (v0.15.0)
+                if entity_id in thalamus._ignored_entities:
+                    return
+
                 # Sonnenstand tracken (v0.12.0)
                 if entity_id == "sun.sun":
                     elevation = new_state_obj.attributes.get("elevation", 0)
@@ -566,6 +570,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             f"Preset: {preset_key} · "
             f"Routinen: {len(cerebellum.rules)}",
         ]
+        ignored_count = thalamus.stats.get("entities_ignored", 0)
+        if ignored_count:
+            startup_parts.append(
+                f"🚫 {ignored_count} Entities via `ignore_kontinuum` Label ausgeschlossen")
         if filtered:
             startup_parts.append(
                 f"*{filtered} Entities ohne Raum – "
