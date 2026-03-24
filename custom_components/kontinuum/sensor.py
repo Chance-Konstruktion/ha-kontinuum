@@ -119,11 +119,69 @@ class KontinuumStatusSensor(KontinuumSensorBase):
     def extra_state_attributes(self):
         from . import VERSION
         cerebellum = self._brain["cerebellum"]
-        return {
+        hippocampus = self._brain["hippocampus"]
+        thalamus = self._brain["thalamus"]
+        spatial = self._brain["spatial"]
+        insula = self._brain["insula"]
+        amygdala = self._brain["amygdala"]
+        prefrontal = self._brain["prefrontal"]
+        hypothalamus = self._brain["hypothalamus"]
+        cortex = self._brain["cortex"]
+        attrs = {
             "version": VERSION,
             "preset": self._brain.get("preset", "?"),
             "rules": len(cerebellum.rules),
+            "thalamus": {
+                "entities_registered": len(thalamus.entity_semantic),
+                "rooms_discovered": len(set(thalamus.entity_room.values()) - {"unknown"}),
+            },
+            "hippocampus": {
+                "total_events": hippocampus.total_events,
+                "patterns": hippocampus.stats.get("patterns", 0),
+                "memory_kb": hippocampus.stats.get("memory_kb", 0),
+            },
+            "hypothalamus": {
+                "events_absorbed": hypothalamus.stats.get("events_absorbed", 0),
+            },
+            "spatial": {
+                "current_room": spatial.get_current_location(),
+                "transitions_emitted": spatial.stats.get("transitions_emitted", 0),
+            },
+            "insula": {
+                "current_mode": insula.current_mode,
+                "mode_changes": insula.stats.get("mode_changes", 0),
+            },
+            "amygdala": {
+                "total_vetoes": amygdala.stats.get("total_vetoes", 0),
+                "learned_risks": amygdala.stats.get("learned_risks", 0),
+            },
+            "cerebellum": {
+                "rules_count": len(cerebellum.rules),
+                "total_fired": cerebellum.stats.get("total_fired", 0),
+            },
+            "prefrontal": {
+                "total_decisions": prefrontal.total_decisions,
+                "overrides_detected": prefrontal.overrides_detected,
+            },
         }
+        # Cortex-Info (wenn aktiv)
+        if cortex.enabled:
+            attrs["cortex"] = {
+                "enabled": True,
+                "agents": len(cortex.agents),
+                "total_consultations": cortex.total_consultations,
+                "total_discussions": cortex.total_discussions,
+                "last_consensus": cortex.last_consensus or {},
+            }
+        # Letzter Brain Review
+        review = self._brain.get("_last_brain_review")
+        if review:
+            attrs["last_brain_review"] = {
+                "health_score": review.get("health_score", 0),
+                "timestamp": review.get("timestamp"),
+                "agents_consulted": review.get("agents_consulted", 0),
+            }
+        return attrs
 
 
 class KontinuumEventsSensor(KontinuumSensorBase):

@@ -103,6 +103,37 @@
   .tip.show{display:block}
   .tip-t{font-family:'Orbitron',sans-serif;font-size:.6rem;font-weight:700;margin-bottom:4px;letter-spacing:1px}
   .tip-d{color:var(--t2);line-height:1.5}
+
+  /* Debug Panel */
+  .dbg-toggle{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;cursor:pointer;padding:8px;
+    border:1px solid var(--border);border-radius:8px;background:var(--panel);transition:border-color .3s}
+  .dbg-toggle:hover{border-color:var(--glow)}
+  .dbg-toggle .lbl{font-family:'Orbitron',sans-serif;font-size:.58rem;letter-spacing:2.5px;color:var(--t2);text-transform:uppercase}
+  .dbg-toggle .sw{width:36px;height:18px;border-radius:9px;background:var(--t3);position:relative;transition:background .3s}
+  .dbg-toggle .sw::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--t2);transition:transform .3s}
+  .dbg-toggle.on .sw{background:var(--cyan)}
+  .dbg-toggle.on .sw::after{transform:translateX(18px);background:#fff}
+  .dbg{display:none;margin-top:14px}
+  .dbg.show{display:block}
+  .dbg-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:900px){.dbg-grid{grid-template-columns:1fr}}
+  .dbg-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--border);border-radius:6px;
+    background:rgba(5,5,16,.6);color:var(--t1);font-family:'JetBrains Mono',monospace;font-size:.6rem;cursor:pointer;transition:all .2s;letter-spacing:.5px}
+  .dbg-btn:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(74,158,255,.06)}
+  .dbg-btn:active{transform:scale(.97)}
+  .dbg-btn.running{border-color:var(--amber);color:var(--amber);pointer-events:none}
+  .dbg-btn .ico{font-size:.8rem}
+  .dbg-btns{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .dbg-out{background:rgba(2,4,10,.7);border:1px solid var(--border);border-radius:8px;padding:14px;max-height:500px;
+    overflow-y:auto;font-size:.58rem;line-height:1.7;color:var(--t2);white-space:pre-wrap;word-break:break-word}
+  .dbg-out .ts{color:var(--t3);font-size:.5rem}
+  .dbg-out .ok{color:var(--green)}
+  .dbg-out .er{color:var(--red)}
+  .dbg-out .hi{color:var(--cyan)}
+  .dbg-out .ag{color:var(--purple);font-weight:500}
+  .dbg-out .sep{border-top:1px solid var(--border);margin:8px 0}
+  .dbg-hist{margin-top:14px}
+  .dbg-hist-t{font-family:'Orbitron',sans-serif;font-size:.55rem;letter-spacing:2px;color:var(--t2);text-transform:uppercase;margin-bottom:8px}
 </style>
 </head>
 <body>
@@ -351,6 +382,54 @@
     <div class="si"><div class="si-i">💾</div><div><div class="si-l">Memory</div><div class="si-v" style="color:var(--green)" id="s-mem">—</div></div></div>
     <div class="si"><div class="si-i">⚡</div><div><div class="si-l">Absorbed</div><div class="si-v" style="color:var(--amber)" id="s-abs">—</div></div></div>
   </div>
+
+  <!-- Debug Toggle -->
+  <div class="dbg-toggle" id="dbg-toggle" onclick="toggleDebug()">
+    <span class="lbl">Debug / Cortex Control</span>
+    <span class="sw"></span>
+  </div>
+
+  <!-- Debug Panel -->
+  <div class="dbg" id="dbg-panel">
+    <div class="pnl">
+      <div class="pnl-t">Service Trigger</div>
+      <div class="dbg-btns">
+        <button class="dbg-btn" onclick="callService('cortex_consult')" id="btn-consult">
+          <span class="ico">🤖</span> Cortex Consult
+        </button>
+        <button class="dbg-btn" onclick="callService('brain_review')" id="btn-review">
+          <span class="ico">🔬</span> Brain Review
+        </button>
+        <button class="dbg-btn" onclick="callService('status')" id="btn-status">
+          <span class="ico">📋</span> Status
+        </button>
+        <button class="dbg-btn" onclick="callService('export_brain')" id="btn-export">
+          <span class="ico">💾</span> Brain Export
+        </button>
+        <button class="dbg-btn" onclick="callService('activate',{semantic:'light'})" id="btn-act-light">
+          <span class="ico">💡</span> Activate Light
+        </button>
+        <button class="dbg-btn" onclick="callService('deactivate',{semantic:'all'})" id="btn-deact">
+          <span class="ico">🚫</span> Deactivate All
+        </button>
+      </div>
+    </div>
+
+    <div class="dbg-grid" style="margin-top:14px">
+      <!-- Left: Live Output -->
+      <div class="pnl">
+        <div class="pnl-t">Cortex Output</div>
+        <div class="dbg-out" id="dbg-out">Warte auf Cortex-Aktivität…</div>
+      </div>
+
+      <!-- Right: Last Consensus + Cortex Info -->
+      <div class="pnl">
+        <div class="pnl-t">Cortex Status</div>
+        <div class="dbg-out" id="dbg-cortex">Keine Cortex-Daten verfügbar.</div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -548,6 +627,7 @@ function updateDashboard(d) {
 
   // ── Status (contains all module stats) ──
   const st = d['sensor.kontinuum_status'];
+  lastStatusData = st || null;
   if (st) {
     document.getElementById('s-status').textContent = (st.state || '').toUpperCase();
     const a = st.attr;
@@ -587,7 +667,153 @@ function updateDashboard(d) {
         'decisions: ' + (a.prefrontal.total_decisions || 0) + ' · overrides: ' + (a.prefrontal.overrides_detected || 0);
     }
   }
+
+  // Debug-Panel aktualisieren (wenn aktiv)
+  if (debugMode) updateCortexStatus();
 }
+
+// ══════════════════════════════════════════════════════════════
+// DEBUG PANEL
+// ══════════════════════════════════════════════════════════════
+
+let debugMode = false;
+const dbgOut = document.getElementById('dbg-out');
+const dbgCortex = document.getElementById('dbg-cortex');
+
+function toggleDebug() {
+  debugMode = !debugMode;
+  const toggle = document.getElementById('dbg-toggle');
+  const panel = document.getElementById('dbg-panel');
+  toggle.classList.toggle('on', debugMode);
+  panel.classList.toggle('show', debugMode);
+  if (debugMode) {
+    dbgLog('Debug-Modus aktiviert', 'ok');
+    updateCortexStatus();
+  }
+}
+
+function dbgLog(text, cls) {
+  const t = new Date().toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="ts">[${t}]</span> <span class="${cls||''}">${text}</span>`;
+  dbgOut.insertBefore(line, dbgOut.firstChild);
+  // Max 100 Zeilen
+  while (dbgOut.children.length > 100) dbgOut.removeChild(dbgOut.lastChild);
+}
+
+async function callService(service, data) {
+  const btn = document.querySelector(`[onclick*="${service}"]`);
+  if (btn) btn.classList.add('running');
+  dbgLog(`Service <span class="hi">kontinuum.${service}</span> wird aufgerufen…`);
+
+  try {
+    const body = data ? JSON.stringify(data) : '{}';
+    const resp = await fetch(HA_BASE + `/api/services/kontinuum/${service}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + HA_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: body,
+    });
+
+    if (resp.ok) {
+      dbgLog(`<span class="hi">kontinuum.${service}</span> <span class="ok">erfolgreich</span>`, '');
+      // Nach kurzer Pause Sensor-Update holen (Ergebnis braucht ~1-5s)
+      if (service === 'cortex_consult' || service === 'brain_review') {
+        dbgLog('Warte auf Cortex-Antwort…');
+        setTimeout(async () => {
+          await fetchSensors();
+          updateCortexStatus();
+        }, 5000);
+      }
+    } else {
+      dbgLog(`<span class="er">Fehler ${resp.status}: ${resp.statusText}</span>`);
+    }
+  } catch (e) {
+    dbgLog(`<span class="er">Netzwerk-Fehler: ${e.message}</span>`);
+  }
+  if (btn) btn.classList.remove('running');
+}
+
+function updateCortexStatus() {
+  // Liest Cortex-Daten aus dem Status-Sensor
+  const st = lastStatusData;
+  if (!st || !st.attr) {
+    dbgCortex.innerHTML = 'Keine Cortex-Daten verfügbar.';
+    return;
+  }
+
+  const parts = [];
+  const a = st.attr;
+
+  if (a.cortex) {
+    const c = a.cortex;
+    parts.push(`<span class="hi">CORTEX</span>`);
+    parts.push(`  Agents: ${c.agents || 0}`);
+    parts.push(`  Beratungen: ${c.total_consultations || 0}`);
+    parts.push(`  Diskussionen: ${c.total_discussions || 0}`);
+
+    if (c.last_consensus && c.last_consensus.consensus_action) {
+      const lc = c.last_consensus;
+      parts.push('');
+      parts.push(`<span class="ag">LETZTER KONSENS</span>`);
+      parts.push(`  Aktion: <span class="hi">${lc.consensus_action || 'keine'}</span>`);
+      parts.push(`  Entity: ${lc.consensus_entity || '–'}`);
+      parts.push(`  Grund: ${(lc.consensus_reason || '').substring(0, 200)}`);
+      parts.push(`  Veto: ${lc.vetoed ? '<span class="er">JA</span>' : '<span class="ok">Nein</span>'}`);
+      parts.push(`  Runden: ${lc.discussion_rounds || 1}`);
+
+      if (lc.proposals && lc.proposals.length) {
+        parts.push('');
+        parts.push(`<span class="ag">VORSCHLÄGE (Runde 1)</span>`);
+        for (const p of lc.proposals) {
+          const veto = p.veto ? ' <span class="er">[VETO]</span>' : '';
+          parts.push(`  <span class="hi">${p.agent||'?'}</span>: ${p.action||'keine'} → ${p.entity_id||'–'}${veto}`);
+          parts.push(`    Grund: ${(p.reason||'?').substring(0, 150)}`);
+          parts.push(`    Priorität: ${p.priority||0}`);
+        }
+      }
+
+      if (lc.revisions && lc.revisions.length) {
+        parts.push('');
+        parts.push(`<span class="ag">REVISIONEN (Runde 2)</span>`);
+        for (const r of lc.revisions) {
+          parts.push(`  <span class="hi">${r.agent||'?'}</span>: ${r.action||'keine'} → ${r.entity_id||'–'}`);
+          parts.push(`    Grund: ${(r.reason||'?').substring(0, 150)}`);
+        }
+      }
+    }
+  } else {
+    parts.push('Cortex nicht konfiguriert.');
+  }
+
+  if (a.last_brain_review) {
+    const br = a.last_brain_review;
+    parts.push('');
+    parts.push('<div class="sep"></div>');
+    parts.push(`<span class="ag">BRAIN REVIEW</span>`);
+    parts.push(`  Health Score: <span class="hi">${br.health_score}/100</span>`);
+    parts.push(`  Agents: ${br.agents_consulted || 0}`);
+    if (br.timestamp) parts.push(`  Zeitpunkt: ${br.timestamp}`);
+  }
+
+  // Module Overview
+  parts.push('');
+  parts.push('<div class="sep"></div>');
+  parts.push(`<span class="ag">MODULE</span>`);
+  if (a.hippocampus) parts.push(`  Hippocampus: ${a.hippocampus.total_events||0} Events, ${a.hippocampus.patterns||0} Patterns, ${a.hippocampus.memory_kb||0} KB`);
+  if (a.cerebellum) parts.push(`  Cerebellum: ${a.cerebellum.rules_count||0} Regeln, ${a.cerebellum.total_fired||0} gefeuert`);
+  if (a.prefrontal) parts.push(`  Prefrontal: ${a.prefrontal.total_decisions||0} Entscheidungen, ${a.prefrontal.overrides_detected||0} Overrides`);
+  if (a.amygdala) parts.push(`  Amygdala: ${a.amygdala.total_vetoes||0} Vetos, ${a.amygdala.learned_risks||0} Risiken`);
+  if (a.spatial) parts.push(`  Spatial: Raum ${a.spatial.current_room||'?'}, ${a.spatial.transitions_emitted||0} Transitions`);
+  if (a.insula) parts.push(`  Insula: Modus ${a.insula.current_mode||'?'}, ${a.insula.mode_changes||0} Wechsel`);
+
+  dbgCortex.innerHTML = parts.join('\n');
+}
+
+// Speichere Status-Daten global für Debug-Panel
+let lastStatusData = null;
 
 // ── Start Polling ──
 setConn('wait');
