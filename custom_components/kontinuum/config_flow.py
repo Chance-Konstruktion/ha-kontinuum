@@ -238,7 +238,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             if user_input.get("enable_cortex", False):
                 return await self.async_step_agent_1_setup()
             # Sonst direkt speichern
-            return self._save_and_finish()
+            return await self._save_and_finish()
 
         current = self.config_entry.data.get("preset", "ausgeglichen")
         current_dashboard = self.config_entry.data.get("enable_dashboard", True)
@@ -400,7 +400,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             # Weiter oder fertig?
             if show_add_more and user_input.get("add_more", False):
                 return await getattr(self, f"async_step_{next_step}")()
-            return self._save_and_finish()
+            return await self._save_and_finish()
 
         # ── Formular bauen ──
         existing = self.config_entry.data.get(
@@ -476,8 +476,8 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
 
     # ── Speichern ───────────────────────────────────────────────
 
-    def _save_and_finish(self):
-        """Speichert alle Einstellungen und beendet den Flow."""
+    async def _save_and_finish(self):
+        """Speichert alle Einstellungen und lädt die Integration neu."""
         preset_key = self._data.get(
             "preset",
             self.config_entry.data.get("preset", "ausgeglichen"),
@@ -502,5 +502,8 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         self.hass.config_entries.async_update_entry(
             self.config_entry, data=new_data
         )
+
+        # Integration neu laden damit neue Entitäten erstellt werden
+        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
 
         return self.async_create_entry(title="", data={})
