@@ -59,3 +59,21 @@ set_scene:
 status:
   name: Status anzeigen
   description: Zeigt detaillierten KONTINUUM-Status als Notification.
+
+set_meta_params:
+  name: Meta-Parameter setzen
+  description: Überschreibt Meta-Plasticity Parameter für ein Modul.
+  fields:
+    module:
+      name: Modulname
+      description: z.B. hippocampus, cerebellum, basal_ganglia, reticular, accumbens, locus
+      required: true
+      example: hippocampus
+      selector:
+        text:
+    params:
+      name: Parameter
+      description: JSON-Dict mit Parametern (z.B. {"learning_rate":0.08})
+      required: true
+      selector:
+        object:
