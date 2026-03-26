@@ -15,13 +15,15 @@ from collections import defaultdict
 
 _LOGGER = logging.getLogger(__name__)
 
-SPATIAL_SEMANTICS = {"motion", "presence", "door", "tracker"}
+SPATIAL_SEMANTICS = {"motion", "presence", "door", "tracker", "co2", "bed_presence"}
 
 SIGNAL_WEIGHTS = {
     "tracker": 0.9,
     "presence": 0.7,
     "motion": 0.5,     # 0.5 statt 0.3 – Motion ist Hauptsignal
     "door": 0.2,
+    "co2": 0.25,
+    "bed_presence": 0.8,
 }
 
 DECAY_RATES = {
@@ -29,6 +31,8 @@ DECAY_RATES = {
     "presence": 600,   # 10 min
     "motion": 300,     # 5 min statt 3 min
     "door": 180,       # 3 min
+    "co2": 900,        # 15 min
+    "bed_presence": 1200,  # 20 min
 }
 
 
@@ -88,7 +92,13 @@ class SpatialCortex:
         rs = self.rooms[room]
         
         # Signal registrieren
-        if state in ("on", "home", "open", "detected"):
+        active_signal = state in ("on", "home", "open", "detected")
+        if semantic == "co2" and state in ("elevated", "high"):
+            active_signal = True
+        if semantic == "bed_presence" and state in ("on", "occupied"):
+            active_signal = True
+
+        if active_signal:
             weight = SIGNAL_WEIGHTS.get(semantic, 0.2)
             sig_key = f"{entity_id}_{semantic}"
             rs.signals[sig_key] = (weight, now)
@@ -96,7 +106,7 @@ class SpatialCortex:
             if semantic == "motion":
                 rs.motion_count += 1
                 rs.last_motion_time = now
-        elif state in ("off", "away", "closed", "clear", "not_home"):
+        elif state in ("off", "away", "closed", "clear", "not_home", "good"):
             sig_key = f"{entity_id}_{semantic}"
             rs.signals.pop(sig_key, None)
             
