@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KONTINUUM</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #06080f;
+    --panel: rgba(12,16,28,0.92);
+    --border: rgba(60,90,160,0.12);
+    --glow: rgba(80,160,255,0.35);
+    --t1: #b8ccdf;
+    --t2: #5a7090;
+    --t3: #2e3e55;
+    --blue: #4a9eff;
+    --cyan: #00d4ff;
+    --purple: #8b5cf6;
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --pink: #ec4899;
+    --teal: #06b6d4;
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--t1);font-family:'JetBrains Mono',monospace;min-height:100vh;overflow-x:hidden}
+
+  .root{max-width:1440px;margin:0 auto;padding:16px}
+
+  /* Header – kompakt für iframe (HA Sidebar zeigt bereits "KONTINUUM") */
+  .hdr{text-align:center;padding:6px 0 4px}
+  .hdr h1{display:none}
+  .hdr .sub{display:none}
+  .hdr .ver{display:inline-block;padding:2px 10px;border:1px solid var(--border);border-radius:12px;font-size:.55rem;color:var(--t3);letter-spacing:1.5px}
+  .conn{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  .conn.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+  .conn.err{background:var(--red);box-shadow:0 0 6px var(--red)}
+  .conn.wait{background:var(--amber);animation:blink 1s infinite}
+  @keyframes blink{0%,100%{opacity:.3}50%{opacity:1}}
+
+  /* Grid */
+  .grid{display:grid;grid-template-columns:260px 1fr 260px;gap:14px;margin-top:14px}
+  @media(max-width:1100px){.grid{grid-template-columns:1fr;}}
+
+  /* Panels */
+  .pnl{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;backdrop-filter:blur(8px)}
+  .pnl-t{font-family:'Orbitron',sans-serif;font-size:.58rem;letter-spacing:2.5px;color:var(--t2);text-transform:uppercase;margin-bottom:10px}
+
+  /* Sensor cards */
+  .sc{padding:8px 10px;border-radius:6px;margin-bottom:6px;border:1px solid var(--border);background:rgba(5,5,16,.4);transition:border-color .3s}
+  .sc:hover{border-color:var(--glow)}
+  .sc-l{font-size:.55rem;color:var(--t2);letter-spacing:1px;text-transform:uppercase}
+  .sc-v{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;margin-top:3px;word-break:break-all}
+  .sc-d{font-size:.55rem;color:var(--t3);margin-top:2px}
+
+  /* Brain container */
+  .brain-wrap{display:flex;align-items:center;justify-content:center;padding:0}
+  .brain-svg{width:100%;max-width:600px;height:auto}
+
+  /* Brain regions */
+  .br{fill-opacity:.08;stroke-width:1.2;stroke-opacity:.3;transition:all .5s;cursor:pointer}
+  .br:hover{fill-opacity:.25;stroke-opacity:.7}
+  .br.on{fill-opacity:.18;stroke-opacity:.6;animation:glo 2.5s ease-in-out infinite}
+  .br.fire{fill-opacity:.45;stroke-opacity:1;animation:fir .5s ease-out}
+  @keyframes glo{0%,100%{fill-opacity:.12;filter:drop-shadow(0 0 3px currentColor)}50%{fill-opacity:.28;filter:drop-shadow(0 0 12px currentColor)}}
+  @keyframes fir{0%{fill-opacity:.7;filter:drop-shadow(0 0 20px currentColor)}100%{fill-opacity:.18;filter:drop-shadow(0 0 3px currentColor)}}
+
+  .bl{font-family:'JetBrains Mono',monospace;font-size:6.5px;fill:var(--t3);pointer-events:none;text-anchor:middle;letter-spacing:.8px;text-transform:uppercase}
+  .bl.on{fill:var(--t2)}
+
+  /* Neural paths */
+  .np{stroke:rgba(74,158,255,.06);stroke-width:.7;fill:none;stroke-dasharray:3 3}
+  .np.on{stroke:rgba(74,158,255,.18);animation:nf 4s linear infinite}
+  @keyframes nf{0%{stroke-dashoffset:0}100%{stroke-dashoffset:-18}}
+
+  /* Module list */
+  .ml{padding:6px 10px;border-radius:6px;margin-bottom:5px;border:1px solid var(--border);background:rgba(5,5,16,.3)}
+  .ml-n{font-size:.55rem;letter-spacing:1px;display:flex;align-items:center;gap:5px}
+  .ml-n .dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+  .ml-d{font-size:.5rem;color:var(--t3);margin-top:2px}
+  .ml.off{opacity:.35}
+
+  /* Collapsible panel toggle */
+  .pnl-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+  .pnl-toggle:hover{color:var(--t1)}
+  .pnl-toggle .arrow{font-size:.6rem;color:var(--t3);transition:transform .3s}
+  .pnl-toggle .arrow.open{transform:rotate(180deg)}
+  .pnl-body{overflow:hidden;transition:max-height .3s ease;max-height:800px}
+  .pnl-body.collapsed{max-height:0}
+
+  /* Status bar */
+  .sbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:14px}
+  .si{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--panel);border:1px solid var(--border);border-radius:8px}
+  .si-i{font-size:.9rem;width:28px;text-align:center}
+  .si-l{font-size:.5rem;color:var(--t2);letter-spacing:1px;text-transform:uppercase}
+  .si-v{font-family:'Orbitron',sans-serif;font-size:.8rem;font-weight:700}
+
+  /* Event log */
+  .elog{margin-top:10px}
+  .el{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(60,90,160,.05);font-size:.6rem}
+  .el-t{color:var(--t3);font-size:.52rem;min-width:52px}
+  .el-d{width:4px;height:4px;border-radius:50%;flex-shrink:0}
+  .el-x{color:var(--t2)}
+
+  /* Tooltip */
+  .tip{display:none;position:fixed;background:rgba(10,14,28,.96);border:1px solid var(--glow);border-radius:8px;padding:10px 14px;font-size:.6rem;z-index:100;max-width:260px;pointer-events:none;backdrop-filter:blur(16px)}
+  .tip.show{display:block}
+  .tip-t{font-family:'Orbitron',sans-serif;font-size:.6rem;font-weight:700;margin-bottom:4px;letter-spacing:1px}
+  .tip-d{color:var(--t2);line-height:1.5}
+
+  /* Debug Panel */
+  .dbg-toggle{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;cursor:pointer;padding:8px;
+    border:1px solid var(--border);border-radius:8px;background:var(--panel);transition:border-color .3s}
+  .dbg-toggle:hover{border-color:var(--glow)}
+  .dbg-toggle .lbl{font-family:'Orbitron',sans-serif;font-size:.58rem;letter-spacing:2.5px;color:var(--t2);text-transform:uppercase}
+  .dbg-toggle .sw{width:36px;height:18px;border-radius:9px;background:var(--t3);position:relative;transition:background .3s}
+  .dbg-toggle .sw::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--t2);transition:transform .3s}
+  .dbg-toggle.on .sw{background:var(--cyan)}
+  .dbg-toggle.on .sw::after{transform:translateX(18px);background:#fff}
+  .dbg{display:none;margin-top:14px}
+  .dbg.show{display:block}
+  .dbg-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:900px){.dbg-grid{grid-template-columns:1fr}}
+  .dbg-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--border);border-radius:6px;
+    background:rgba(5,5,16,.6);color:var(--t1);font-family:'JetBrains Mono',monospace;font-size:.6rem;cursor:pointer;transition:all .2s;letter-spacing:.5px}
+  .dbg-btn:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(74,158,255,.06)}
+  .dbg-btn:active{transform:scale(.97)}
+  .dbg-btn.running{border-color:var(--amber);color:var(--amber);pointer-events:none}
+  .dbg-btn .ico{font-size:.8rem}
+  .dbg-btn{position:relative}
+  .dbg-btn .btn-tip{display:none;position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+    background:rgba(10,14,28,.96);border:1px solid var(--glow);border-radius:6px;padding:6px 10px;
+    font-size:.5rem;color:var(--t2);white-space:nowrap;pointer-events:none;z-index:50;
+    backdrop-filter:blur(12px);letter-spacing:.3px;line-height:1.4}
+  .dbg-btn .btn-tip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    border:5px solid transparent;border-top-color:var(--glow)}
+  .dbg-btn:hover .btn-tip{display:block}
+  .dbg-btns{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .dbg-out{background:rgba(2,4,10,.7);border:1px solid var(--border);border-radius:8px;padding:14px;max-height:500px;
+    overflow-y:auto;font-size:.58rem;line-height:1.7;color:var(--t2);white-space:pre-wrap;word-break:break-word}
+  .dbg-out .ts{color:var(--t3);font-size:.5rem}
+  .dbg-out .ok{color:var(--green)}
+  .dbg-out .er{color:var(--red)}
+  .dbg-out .hi{color:var(--cyan)}
+  .dbg-out .ag{color:var(--purple);font-weight:500}
+  .dbg-out .sep{border-top:1px solid var(--border);margin:8px 0}
+  .dbg-hist{margin-top:14px}
+  .dbg-hist-t{font-family:'Orbitron',sans-serif;font-size:.55rem;letter-spacing:2px;color:var(--t2);text-transform:uppercase;margin-bottom:8px}
+</style>
+</head>
+<body>
+
+<div class="tip" id="tip"><div class="tip-t" id="tip-t"></div><div class="tip-d" id="tip-d"></div></div>
+
+<div class="root">
+  <div class="hdr">
+    <h1>KONTINUUM</h1>
+    <div class="sub">Neuroinspired Home Intelligence</div>
+    <div class="ver"><span class="conn wait" id="conn-dot"></span> <span id="conn-text">VERBINDE...</span></div>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT -->
+    <div>
+      <div class="pnl">
+        <div class="pnl-t">Sensorik</div>
+        <div class="sc"><div class="sc-l">Letztes Event</div><div class="sc-v" style="color:var(--blue)" id="v-event">—</div><div class="sc-d" id="d-event">—</div></div>
+        <div class="sc"><div class="sc-l">Vorhersage</div><div class="sc-v" style="color:var(--purple)" id="v-pred">—</div><div class="sc-d" id="d-pred">—</div></div>
+        <div class="sc"><div class="sc-l">Genauigkeit</div><div class="sc-v" style="color:var(--cyan)" id="v-acc">—</div><div class="sc-d" id="d-acc">—</div></div>
+        <div class="sc"><div class="sc-l">Energie</div><div class="sc-v" style="color:var(--amber)" id="v-nrg">—</div><div class="sc-d" id="d-nrg">—</div></div>
+      </div>
+      <div class="pnl" style="margin-top:10px">
+        <div class="pnl-t">Kontext</div>
+        <div class="sc"><div class="sc-l">Aufenthaltsort</div><div class="sc-v" style="color:var(--green)" id="v-loc">—</div><div class="sc-d" id="d-loc">—</div></div>
+        <div class="sc"><div class="sc-l">Modus</div><div class="sc-v" style="color:var(--pink)" id="v-mode">—</div><div class="sc-d" id="d-mode">—</div></div>
+        <div class="sc"><div class="sc-l">Routinen</div><div class="sc-v" style="color:var(--teal)" id="v-cereb">—</div><div class="sc-d" id="d-cereb">—</div></div>
+      </div>
+    </div>
+
+    <!-- CENTER: Brain -->
+    <div>
+      <div class="pnl brain-wrap">
+        <svg class="brain-svg" viewBox="0 0 520 440" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="g"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <filter id="gs"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+
+          <!-- Realistic brain outline – lateral/sagittal view -->
+          <!-- Cortex outer boundary -->
+          <path d="M130,180 C115,155 108,128 112,100 C116,72 132,50 158,38 C184,26 218,22 250,24
+                   C282,22 316,26 342,38 C368,50 384,72 388,100 C392,128 385,155 370,180
+                   C358,200 352,218 350,235 C348,258 355,278 368,295
+                   C382,314 400,328 408,342 C416,356 415,368 405,376
+                   C395,384 378,386 358,382 C338,378 315,368 295,358
+                   C275,348 262,342 250,340
+                   C238,342 225,348 205,358
+                   C185,368 162,378 142,382
+                   C122,386 105,384 95,376
+                   C85,368 84,356 92,342
+                   C100,328 118,314 132,295
+                   C145,278 152,258 150,235
+                   C148,218 142,200 130,180Z"
+                fill="none" stroke="rgba(100,140,200,.14)" stroke-width="1.8"/>
+
+          <!-- Cerebellum outline (separate structure, posterior-inferior) -->
+          <path d="M320,330 C335,318 358,312 378,316 C398,320 412,332 418,348
+                   C424,364 420,380 408,388 C396,396 378,398 358,394
+                   C338,390 322,378 316,362 C310,346 312,336 320,330Z"
+                fill="none" stroke="rgba(100,140,200,.1)" stroke-width="1.2"/>
+          <!-- Cerebellum folia (wrinkled texture) -->
+          <path d="M335,340 C348,332 365,330 380,335" fill="none" stroke="rgba(100,140,200,.06)" stroke-width=".8"/>
+          <path d="M328,354 C345,346 368,344 390,350" fill="none" stroke="rgba(100,140,200,.06)" stroke-width=".8"/>
+          <path d="M325,368 C342,362 365,360 388,366" fill="none" stroke="rgba(100,140,200,.06)" stroke-width=".8"/>
+
+          <!-- Brainstem -->
+          <path d="M248,310 C245,325 242,345 240,370 C238,390 240,405 245,415
+                   C250,415 255,405 257,390 C259,370 256,345 253,325 C252,318 250,312 248,310Z"
+                fill="none" stroke="rgba(100,140,200,.1)" stroke-width="1"/>
+
+          <!-- Major sulci (fissures) -->
+          <!-- Central sulcus -->
+          <path d="M240,32 C235,60 228,95 232,130 C236,165 242,195 245,220" fill="none" stroke="rgba(100,140,200,.08)" stroke-width="1"/>
+          <!-- Lateral sulcus (Sylvian fissure) -->
+          <path d="M145,195 C175,200 210,210 240,225 C260,235 275,248 285,260" fill="none" stroke="rgba(100,140,200,.08)" stroke-width="1"/>
+          <!-- Parieto-occipital sulcus -->
+          <path d="M335,70 C330,110 328,150 332,190" fill="none" stroke="rgba(100,140,200,.08)" stroke-width="1"/>
+
+          <!-- Cortical folds (gyri texture) -->
+          <path d="M155,65 C170,58 188,55 205,60" fill="none" stroke="rgba(100,140,200,.04)" stroke-width=".7"/>
+          <path d="M165,90 C182,82 200,80 218,85" fill="none" stroke="rgba(100,140,200,.04)" stroke-width=".7"/>
+          <path d="M140,120 C160,112 182,110 200,115" fill="none" stroke="rgba(100,140,200,.04)" stroke-width=".7"/>
+          <path d="M275,55 C295,48 315,50 332,58" fill="none" stroke="rgba(100,140,200,.04)" stroke-width=".7"/>
+          <path d="M280,85 C298,78 318,78 335,85" fill="none" stroke="rgba(100,140,200,.04)" stroke-width=".7"/>
+          <path d="M290,115 C308,108 325,110 340,118" fill="none" stroke="rgba(100,140,200,.04)" stroke-width=".7"/>
+          <path d="M155,155 C175,148 195,150 210,158" fill="none" stroke="rgba(100,140,200,.04)" stroke-width=".7"/>
+          <path d="M300,155 C318,148 336,150 350,158" fill="none" stroke="rgba(100,140,200,.04)" stroke-width=".7"/>
+
+          <!-- Neural connections -->
+          <path d="M250,210 C225,240 210,260 205,280" class="np on"/>
+          <path d="M250,210 C240,230 235,248 232,258" class="np on"/>
+          <path d="M250,210 C210,180 175,130 155,90" class="np on"/>
+          <path d="M250,210 C290,180 325,130 345,90" class="np on"/>
+          <path d="M205,285 C250,310 320,330 365,350" class="np"/>
+
+          <!-- ═══ BRAIN REGIONS (anatomically positioned) ═══ -->
+
+          <!-- PREFRONTAL CORTEX – anterior frontal lobe -->
+          <path id="r-prefrontal" class="br on"
+                d="M130,170 C118,148 112,122 115,98 C118,74 130,56 155,44 C175,34 200,30 222,32
+                   C228,50 232,80 232,115 C232,145 228,168 222,185
+                   C200,188 168,185 148,180 C138,176 133,174 130,170Z"
+                fill="var(--cyan)" stroke="var(--cyan)" filter="url(#g)"
+                data-m="prefrontal" data-t="Präfrontaler Kortex"
+                data-d="Entscheidungsengine: OBSERVE → SUGGEST → EXECUTE. Override-Erkennung. Implizites Feedback-Lernen."/>
+          <text class="bl on" x="172" y="108">Präfrontal</text>
+
+          <!-- MOTOR CORTEX – precentral gyrus (placeholder) -->
+          <path id="r-motor" class="br"
+                d="M222,32 C230,28 240,26 250,24 C256,26 262,28 268,32
+                   C265,55 258,85 255,115 C252,85 242,55 235,38Z"
+                fill="#a78bfa" stroke="#a78bfa" filter="url(#gs)"
+                data-m="motor" data-t="Motorischer Kortex"
+                data-d="PLATZHALTER – Phase 4: Service-Call-Orchestrierung mit Sequenzen und Delays."/>
+          <text class="bl" x="248" y="52">Motor</text>
+
+          <!-- SPATIAL CORTEX (Parietal lobe) – posterior-superior -->
+          <path id="r-spatial" class="br on"
+                d="M268,32 C295,34 322,44 342,56 C362,70 375,88 380,110
+                   C384,132 378,155 368,172
+                   C350,168 335,160 322,148
+                   C308,134 295,115 285,95 C275,75 270,52 268,32Z"
+                fill="var(--green)" stroke="var(--green)" filter="url(#g)"
+                data-m="spatial" data-t="Spatial Cortex"
+                data-d="Raumwahrnehmung: Fusioniert Motion+Präsenz+Tracker → Raumwechsel-Events statt Motion-Spam."/>
+          <text class="bl on" x="328" y="100">Spatial</text>
+
+          <!-- OCCIPITAL (visual – placeholder, back of brain) -->
+          <path id="r-occipital" class="br"
+                d="M368,172 C378,188 382,208 378,228 C374,248 365,265 355,278
+                   C342,265 335,248 332,228 C330,208 335,188 345,172 C352,168 360,168 368,172Z"
+                fill="#64748b" stroke="#64748b" filter="url(#gs)"
+                data-m="occipital" data-t="Visueller Kortex"
+                data-d="PLATZHALTER – Zukunft: Kamera-basierte Erkennung (optional, nicht für Raspi4)."/>
+          <text class="bl" x="355" y="222">Visuell</text>
+
+          <!-- TEMPORAL LOBE (houses Hippocampus, Amygdala) -->
+          <path d="M145,195 C155,210 158,228 155,248 C152,268 145,285 138,298
+                   C130,288 125,272 122,255 C118,235 120,215 128,198 C133,192 139,190 145,195Z"
+                fill="none" stroke="rgba(100,140,200,.08)" stroke-width=".8"/>
+
+          <!-- THALAMUS – deep center -->
+          <ellipse id="r-thalamus" class="br on" cx="250" cy="210" rx="35" ry="24"
+                   fill="var(--blue)" stroke="var(--blue)" filter="url(#g)"
+                   data-m="thalamus" data-t="Thalamus"
+                   data-d="Sensorisches Tor: Filtert alle HA-Events, tokenisiert, routet an Hypothalamus / Spatial / Hippocampus."/>
+          <text class="bl on" x="250" y="213">Thalamus</text>
+          <!-- Thalamus pulse -->
+          <circle cx="250" cy="210" r="2.5" fill="var(--blue)" opacity=".6">
+            <animate attributeName="r" values="2;5;2" dur="2.5s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values=".6;.15;.6" dur="2.5s" repeatCount="indefinite"/>
+          </circle>
+
+          <!-- INSULA – deep, lateral to thalamus -->
+          <ellipse id="r-insula" class="br on" cx="195" cy="195" rx="24" ry="16"
+                   fill="var(--pink)" stroke="var(--pink)" filter="url(#gs)"
+                   data-m="insula" data-t="Insula"
+                   data-d="Modus-Erkennung: sleeping / active / relaxing / away – kontextbasiert, nicht zeitbasiert."/>
+          <text class="bl on" x="195" y="198">Insula</text>
+
+          <!-- BASALGANGLIEN – lateral to thalamus -->
+          <ellipse id="r-basalganglien" class="br on" cx="298" cy="195" rx="22" ry="14"
+                   fill="#f97316" stroke="#f97316" filter="url(#gs)"
+                   data-m="basalganglien" data-t="Basalganglien"
+                   data-d="Belohnungslernen: Q-Value-Tabelle, Go/NoGo-Pfade, Gewohnheitsbildung, Dopamin-Signal."/>
+          <text class="bl on" x="298" y="198">Basal</text>
+
+          <!-- HYPOTHALAMUS – inferior to thalamus -->
+          <ellipse id="r-hypothalamus" class="br on" cx="238" cy="258" rx="28" ry="16"
+                   fill="var(--amber)" stroke="var(--amber)" filter="url(#gs)"
+                   data-m="hypothalamus" data-t="Hypothalamus"
+                   data-d="Energie/Klima-Kontext: Absorbiert Batterie/Solar/Temperatur. Max 1 Summary-Token pro 30 Min."/>
+          <text class="bl on" x="238" y="261">Hypothal.</text>
+
+          <!-- AMYGDALA – anterior-medial temporal -->
+          <ellipse id="r-amygdala" class="br on" cx="198" cy="268" rx="16" ry="13"
+                   fill="var(--red)" stroke="var(--red)" filter="url(#gs)"
+                   data-m="amygdala" data-t="Amygdala"
+                   data-d="Risiko-Veto: Bewertet Aktionen, lernt aus Override-Feedback. Verhindert gefährliche Automationen."/>
+          <text class="bl on" x="198" y="271">Amyg</text>
+
+          <!-- HIPPOCAMPUS – curved, medial temporal -->
+          <path id="r-hippocampus" class="br on"
+                d="M178,278 C188,268 205,264 220,268 C235,272 245,284 242,298
+                   C239,312 225,318 210,315 C195,312 182,302 178,292 C175,286 175,282 178,278Z"
+                fill="var(--purple)" stroke="var(--purple)" filter="url(#g)"
+                data-m="hippocampus" data-t="Hippocampus"
+                data-d="Gedächtnis: Arbeitsgedächtnis (Buffer 20 Events) + Konsolidiert (Markov N-Gramme). Decay vergisst alte Muster."/>
+          <text class="bl on" x="212" y="294">Hippocampus</text>
+
+          <!-- CEREBELLUM – posterior-inferior, foliated -->
+          <path id="r-cerebellum" class="br on"
+                d="M320,330 C335,318 358,312 378,316 C398,320 412,332 418,348
+                   C424,364 420,380 408,388 C396,396 378,398 358,394
+                   C338,390 322,378 316,362 C310,346 312,336 320,330Z"
+                fill="var(--teal)" stroke="var(--teal)" filter="url(#g)"
+                data-m="cerebellum" data-t="Cerebellum"
+                data-d="Routinen-Kompilierung: Alle 6h werden häufigste Muster zu festen Regeln kompiliert."/>
+          <text class="bl on" x="370" y="356">Cerebellum</text>
+
+          <!-- BRAINSTEM (placeholder) -->
+          <path id="r-brainstem" class="br"
+                d="M244,310 C242,328 240,350 239,375 C238,395 240,408 245,415
+                   C250,415 255,408 256,395 C257,375 255,350 253,328 C252,318 248,312 244,310Z"
+                fill="#64748b" stroke="#64748b" filter="url(#gs)"
+                data-m="brainstem" data-t="Hirnstamm"
+                data-d="PLATZHALTER – Phase 4: Notfall-Bypass bei Rauch, Wasser, Einbruch. Umgeht alle Module."/>
+          <text class="bl" x="248" y="388">Stamm</text>
+
+        </svg>
+      </div>
+
+      <!-- Event Log -->
+      <div class="pnl elog">
+        <div class="pnl-t">Activity Log</div>
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Module Status (einklappbar) -->
+    <div>
+      <div class="pnl">
+        <div class="pnl-t pnl-toggle" onclick="toggleModules()">
+          <span>Module</span>
+          <span class="arrow open" id="mod-arrow">▼</span>
+        </div>
+        <div class="pnl-body" id="mod-body">
+          <div class="ml" id="m-thalamus"><div class="ml-n"><span class="dot" style="background:var(--blue)"></span> Thalamus</div><div class="ml-d" id="md-thalamus">—</div></div>
+          <div class="ml" id="m-hippocampus"><div class="ml-n"><span class="dot" style="background:var(--purple)"></span> Hippocampus</div><div class="ml-d" id="md-hippocampus">—</div></div>
+          <div class="ml" id="m-hypothalamus"><div class="ml-n"><span class="dot" style="background:var(--amber)"></span> Hypothalamus</div><div class="ml-d" id="md-hypothalamus">—</div></div>
+          <div class="ml" id="m-spatial"><div class="ml-n"><span class="dot" style="background:var(--green)"></span> Spatial Cortex</div><div class="ml-d" id="md-spatial">—</div></div>
+          <div class="ml" id="m-insula"><div class="ml-n"><span class="dot" style="background:var(--pink)"></span> Insula</div><div class="ml-d" id="md-insula">—</div></div>
+          <div class="ml" id="m-amygdala"><div class="ml-n"><span class="dot" style="background:var(--red)"></span> Amygdala</div><div class="ml-d" id="md-amygdala">—</div></div>
+          <div class="ml" id="m-cerebellum"><div class="ml-n"><span class="dot" style="background:var(--teal)"></span> Cerebellum</div><div class="ml-d" id="md-cerebellum">—</div></div>
+          <div class="ml" id="m-prefrontal"><div class="ml-n"><span class="dot" style="background:var(--cyan)"></span> Prefrontal</div><div class="ml-d" id="md-prefrontal">—</div></div>
+          <div class="ml" id="m-basalganglien"><div class="ml-n"><span class="dot" style="background:#f97316"></span> Basalganglien</div><div class="ml-d" id="md-basalganglien">—</div></div>
+          <div class="ml off"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Motorischer Kortex</div><div class="ml-d">Phase 4</div></div>
+          <div class="ml off"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Hirnstamm</div><div class="ml-d">Phase 4</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="sbar">
+    <div class="si"><div class="si-i">🧠</div><div><div class="si-l">Status</div><div class="si-v" style="color:var(--blue)" id="s-status">—</div></div></div>
+    <div class="si"><div class="si-i">📊</div><div><div class="si-l">Events</div><div class="si-v" style="color:var(--purple)" id="s-events">—</div></div></div>
+    <div class="si"><div class="si-i">🎯</div><div><div class="si-l">Accuracy</div><div class="si-v" style="color:var(--cyan)" id="s-acc">—</div></div></div>
+    <div class="si"><div class="si-i">💾</div><div><div class="si-l">Memory</div><div class="si-v" style="color:var(--green)" id="s-mem">—</div></div></div>
+    <div class="si"><div class="si-i">⚡</div><div><div class="si-l">Absorbed</div><div class="si-v" style="color:var(--amber)" id="s-abs">—</div></div></div>
+  </div>
+
+  <!-- Debug Toggle -->
+  <div class="dbg-toggle" id="dbg-toggle" onclick="toggleDebug()">
+    <span class="lbl">Debug / Cortex Control</span>
+    <span class="sw"></span>
+  </div>
+
+  <!-- Debug Panel -->
+  <div class="dbg" id="dbg-panel">
+    <div class="pnl">
+      <div class="pnl-t">Service Trigger</div>
+      <div class="dbg-btns">
+        <button class="dbg-btn" onclick="callService('cortex_consult')" id="btn-consult">
+          <span class="ico">🤖</span> Cortex Consult
+          <span class="btn-tip">LLM-Agents beraten über den aktuellen Zustand</span>
+        </button>
+        <button class="dbg-btn" onclick="callService('brain_review')" id="btn-review">
+          <span class="ico">🔬</span> Brain Review
+          <span class="btn-tip">Gesundheits-Check aller Gehirn-Module</span>
+        </button>
+        <button class="dbg-btn" onclick="callService('status')" id="btn-status">
+          <span class="ico">📋</span> Status
+          <span class="btn-tip">Zeigt den aktuellen System-Status</span>
+        </button>
+        <button class="dbg-btn" onclick="callService('export_brain')" id="btn-export">
+          <span class="ico">💾</span> Brain Export
+          <span class="btn-tip">Speichert den Gehirn-Zustand als JSON</span>
+        </button>
+        <button class="dbg-btn" onclick="callService('activate',{semantic:'light'})" id="btn-act-light">
+          <span class="ico">💡</span> Activate Light
+          <span class="btn-tip">Aktiviert Licht-Steuerung (Prefrontal)</span>
+        </button>
+        <button class="dbg-btn" onclick="callService('deactivate',{semantic:'all'})" id="btn-deact">
+          <span class="ico">🚫</span> Deactivate All
+          <span class="btn-tip">Deaktiviert alle Steuerungen</span>
+        </button>
+        <button class="dbg-btn" onclick="toggleSequential()" id="btn-seq">
+          <span class="ico">🔗</span> Sequential: <span id="seq-state">?</span>
+          <span class="btn-tip">Agents nacheinander statt parallel befragen (1 GPU)</span>
+        </button>
+      </div>
+      <div class="pnl-t" style="margin-top:14px">Betriebsmodus</div>
+      <div class="dbg-btns">
+        <button class="dbg-btn" onclick="callService('set_mode',{mode:'shadow'})" id="btn-mode-shadow">
+          <span class="ico">👁️</span> Shadow
+          <span class="btn-tip">Nur beobachten, keine Aktionen ausführen</span>
+        </button>
+        <button class="dbg-btn" onclick="callService('set_mode',{mode:'confirm'})" id="btn-mode-confirm">
+          <span class="ico">✋</span> Confirm
+          <span class="btn-tip">Aktionen vorschlagen, Bestätigung nötig</span>
+        </button>
+        <button class="dbg-btn" onclick="callService('set_mode',{mode:'active'})" id="btn-mode-active">
+          <span class="ico">⚡</span> Active
+          <span class="btn-tip">Aktionen automatisch ausführen</span>
+        </button>
+        <button class="dbg-btn" onclick="callService('confirm_action',{confirm_all:true})" id="btn-confirm-all">
+          <span class="ico">✅</span> Alle bestätigen
+          <span class="btn-tip">Alle wartenden Aktionen bestätigen</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="dbg-grid" style="margin-top:14px">
+      <!-- Left: Live Output -->
+      <div class="pnl">
+        <div class="pnl-t">Cortex Output</div>
+        <div class="dbg-out" id="dbg-out">Warte auf Cortex-Aktivität…</div>
+      </div>
+
+      <!-- Right: Last Consensus + Cortex Info -->
+      <div class="pnl">
+        <div class="pnl-t">Cortex Status</div>
+        <div class="dbg-out" id="dbg-cortex">Keine Cortex-Daten verfügbar.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// KONTINUUM Dashboard – Real HA Integration
+// ══════════════════════════════════════════════════════════════
+//
+// Das Dashboard erkennt den HA-Auth-Token automatisch (same-origin iframe).
+// Kein manueller Token nötig.
+//
+// ══════════════════════════════════════════════════════════════
+
+// ── KONFIGURATION ──
+const HA_BASE = window.location.origin;
+
+// Auth-Token automatisch aus HA-Session lesen (Desktop + Mobile App)
+function _getHAToken() {
+  // 1. Parent-Frame: home-assistant Element (Desktop + Mobile App)
+  try {
+    const ha = window.parent.document.querySelector('home-assistant');
+    if (ha && ha.hass && ha.hass.auth && ha.hass.auth.data) {
+      return ha.hass.auth.data.access_token;
+    }
+  } catch(e) { /* cross-origin */ }
+
+  // 2. Parent hassConnection (ältere HA-Versionen)
+  try {
+    if (window.parent && window.parent.hassConnection) {
+      const conn = window.parent.hassConnection;
+      if (conn.options && conn.options.auth) {
+        const auth = conn.options.auth;
+        if (auth.data && auth.data.access_token) return auth.data.access_token;
+        if (auth.accessToken) return auth.accessToken;
+      }
+    }
+  } catch(e) { /* cross-origin */ }
+
+  // 3. localStorage hassTokens (Desktop-Browser Fallback)
+  try {
+    const stored = localStorage.getItem('hassTokens');
+    if (stored) {
+      const tokens = JSON.parse(stored);
+      if (tokens && tokens.access_token) return tokens.access_token;
+    }
+  } catch(e) { /* storage blocked */ }
+
+  // 4. External Auth (HA Companion App Bridge)
+  try {
+    if (window.parent.externalAuth) {
+      const ext = window.parent.externalAuth;
+      if (ext.data && ext.data.access_token) return ext.data.access_token;
+    }
+  } catch(e) { /* unavailable */ }
+
+  return null;
+}
+let HA_TOKEN = _getHAToken();
+
+// Token-Refresh: Periodisch neu versuchen falls Token abgelaufen oder nicht gefunden
+let _tokenRetries = 0;
+function _refreshToken() {
+  const fresh = _getHAToken();
+  if (fresh && fresh !== HA_TOKEN) {
+    HA_TOKEN = fresh;
+    _tokenRetries = 0;
+    log('Auth-Token aktualisiert', 'var(--green)');
+    return true;
+  }
+  if (fresh) _tokenRetries = 0;
+  return !!fresh;
+}
+
+// Sensor-Discovery: Findet KONTINUUM-Sensoren unabhängig von der entity_id
+// Unterstützt sowohl neue (sensor.kontinuum_*) als auch alte (sensor.vorhersage etc.) IDs
+const SENSOR_ALIASES = {
+  status:      ['sensor.kontinuum_status'],
+  last_event:  ['sensor.kontinuum_last_event', 'sensor.letztes_event'],
+  prediction:  ['sensor.kontinuum_prediction', 'sensor.vorhersage'],
+  accuracy:    ['sensor.kontinuum_accuracy'],
+  energy:      ['sensor.kontinuum_energy', 'sensor.energie'],
+  location:    ['sensor.kontinuum_location', 'sensor.standort'],
+  mode:        ['sensor.kontinuum_mode', 'sensor.kontinuum_modus'],
+  cerebellum:  ['sensor.kontinuum_cerebellum', 'sensor.cerebellum'],
+};
+
+// Name-Patterns als Fallback (friendly_name enthält diese Texte)
+const SENSOR_NAME_PATTERNS = {
+  status:      ['kontinuum status'],
+  last_event:  ['last event', 'letztes event'],
+  prediction:  ['prediction', 'vorhersage'],
+  accuracy:    ['accuracy'],
+  energy:      ['energy', 'energie'],
+  location:    ['location', 'standort'],
+  mode:        ['mode', 'modus'],
+  cerebellum:  ['cerebellum'],
+};
+
+function discoverSensors(states) {
+  const found = {};
+  const byId = {};
+  for (const s of states) byId[s.entity_id] = s;
+
+  for (const [key, aliases] of Object.entries(SENSOR_ALIASES)) {
+    // 1. Exakte entity_id Matches
+    for (const alias of aliases) {
+      if (byId[alias]) { found[key] = { state: byId[alias].state, attr: byId[alias].attributes || {} }; break; }
+    }
+    if (found[key]) continue;
+
+    // 2. Name-Pattern Fallback
+    const patterns = SENSOR_NAME_PATTERNS[key] || [];
+    for (const s of states) {
+      const name = (s.attributes && s.attributes.friendly_name || '').toLowerCase();
+      if (patterns.some(p => name.includes(p))) {
+        found[key] = { state: s.state, attr: s.attributes || {} };
+        break;
+      }
+    }
+  }
+  return found;
+}
+
+const POLL_INTERVAL = 3000; // ms
+
+// ── State ──
+let prevEvent = '';
+let prevEventCount = 0;
+let connected = false;
+
+// ── Tooltip ──
+const tip = document.getElementById('tip');
+document.querySelectorAll('.br').forEach(r => {
+  r.addEventListener('mouseenter', () => {
+    document.getElementById('tip-t').textContent = r.dataset.t;
+    document.getElementById('tip-d').textContent = r.dataset.d;
+    tip.classList.add('show');
+  });
+  r.addEventListener('mousemove', e => {
+    tip.style.left = (e.clientX + 12) + 'px';
+    tip.style.top = (e.clientY - 8) + 'px';
+  });
+  r.addEventListener('mouseleave', () => tip.classList.remove('show'));
+});
+
+// ── Fire region ──
+function fire(mod) {
+  const el = document.getElementById('r-' + mod);
+  if (!el) return;
+  el.classList.add('fire');
+  setTimeout(() => el.classList.remove('fire'), 500);
+}
+
+// ── Log ──
+const logEl = document.getElementById('log');
+function log(text, color) {
+  const t = new Date().toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const e = document.createElement('div');
+  e.className = 'el';
+  e.innerHTML = `<span class="el-t">${t}</span><span class="el-d" style="background:${color||'var(--blue)'}"></span><span class="el-x">${text}</span>`;
+  logEl.insertBefore(e, logEl.firstChild);
+  while (logEl.children.length > 25) logEl.removeChild(logEl.lastChild);
+}
+
+// ── Connection indicator ──
+function setConn(state) {
+  const dot = document.getElementById('conn-dot');
+  const txt = document.getElementById('conn-text');
+  dot.className = 'conn ' + state;
+  txt.textContent = state === 'ok' ? 'VERBUNDEN' : state === 'err' ? 'FEHLER' : 'VERBINDE...';
+}
+
+// ══════════════════════════════════════════════════════════════
+// HA REST API Polling
+// ══════════════════════════════════════════════════════════════
+
+async function fetchSensors() {
+  if (!HA_TOKEN) {
+    // Token noch nicht gefunden – erneut versuchen (Mobile App braucht manchmal etwas)
+    if (_tokenRetries < 10) {
+      _tokenRetries++;
+      if (_refreshToken()) return fetchSensors();
+      if (_tokenRetries <= 1) setConn('wait');
+      if (_tokenRetries >= 5) {
+        setConn('err');
+        log('Auth-Token nicht gefunden – HA-Seite neu laden oder App neu starten', 'var(--red)');
+      }
+    }
+    return;
+  }
+  try {
+    const resp = await fetch(HA_BASE + '/api/states', {
+      headers: { 'Authorization': 'Bearer ' + HA_TOKEN, 'Content-Type': 'application/json' }
+    });
+
+    if (!resp.ok) {
+      if (resp.status === 401) {
+        // Token abgelaufen – neu lesen
+        if (_refreshToken()) return fetchSensors();
+      }
+      if (!connected) setConn('err');
+      return;
+    }
+
+    const states = await resp.json();
+    if (!connected) {
+      connected = true; setConn('ok');
+      log('Verbunden mit Home Assistant', 'var(--green)');
+      // Beim ersten Connect: Sensor-Discovery loggen
+      const discovered = discoverSensors(states);
+      const keys = Object.keys(discovered);
+      if (keys.length > 0) {
+        log(keys.length + ' KONTINUUM Sensoren gefunden', 'var(--cyan)');
+      } else {
+        log('Keine KONTINUUM Sensoren gefunden – Integration geladen?', 'var(--amber)');
+      }
+    }
+
+    // Dynamische Sensor-Erkennung statt hardcoded entity_ids
+    const data = discoverSensors(states);
+    updateDashboard(data);
+  } catch (e) {
+    if (connected) { connected = false; setConn('err'); log('Verbindung verloren: ' + e.message, 'var(--red)'); }
+  }
+}
+
+// Helper: Prüft ob ein Sensor-State gültig ist
+function _valid(s) {
+  return s && s.state && s.state !== 'unknown' && s.state !== 'unavailable';
+}
+
+function updateDashboard(d) {
+  // ── Last Event ──
+  const ev = d.last_event;
+  if (_valid(ev)) {
+    const val = ev.state;
+    const room = ev.attr.room || '?';
+    const sem = ev.attr.semantic || '';
+    const evTotal = ev.attr.events_total || 0;
+
+    document.getElementById('v-event').textContent = val;
+    document.getElementById('d-event').textContent = room + ' · ' + sem + ' · events: ' + evTotal;
+
+    // Neues Event erkannt: entweder Token geändert oder Event-Zähler gestiegen
+    const isNewEvent = (val !== prevEvent || (evTotal > 0 && evTotal !== prevEventCount));
+    if (isNewEvent && connected) {
+      fire('thalamus');
+      if (val.includes('house.energy') || val.includes('house.climate')) fire('hypothalamus');
+      else if (val.includes('person.')) fire('spatial');
+      else if (val.includes('house.mode')) fire('insula');
+      else fire('hippocampus');
+
+      if (d.prediction && d.prediction.attr && d.prediction.attr.decision) fire('prefrontal');
+
+      // Activity Log: Event-Typ + Raum anzeigen
+      const logText = sem ? (room + ' · ' + sem + ' → ' + val) : val;
+      log(logText, val.includes('energy') ? 'var(--amber)' :
+                    val.includes('person.') ? 'var(--green)' :
+                    val.includes('mode.') ? 'var(--pink)' : 'var(--blue)');
+    }
+    prevEvent = val;
+    if (evTotal > 0) prevEventCount = evTotal;
+  } else if (ev) {
+    document.getElementById('v-event').textContent = 'warte…';
+    document.getElementById('d-event').textContent = 'Noch keine Events verarbeitet';
+  }
+
+  // ── Prediction ──
+  const pr = d.prediction;
+  if (_valid(pr)) {
+    document.getElementById('v-pred').textContent = pr.state;
+    const conf = pr.attr.confidence;
+    document.getElementById('d-pred').textContent = conf != null && conf > 0
+      ? 'confidence: ' + (conf * 100).toFixed(0) + '%'
+      : 'Sammle Daten…';
+  } else if (pr) {
+    document.getElementById('v-pred').textContent = 'warte…';
+    document.getElementById('d-pred').textContent = 'Braucht mehr Events für Vorhersagen';
+  }
+
+  // ── Accuracy ──
+  const ac = d.accuracy;
+  if (_valid(ac)) {
+    document.getElementById('v-acc').textContent = ac.state;
+    document.getElementById('d-acc').textContent =
+      'hits: ' + (ac.attr.hits || ac.attr.shadow_hits || 0) + ' / total: ' + (ac.attr.total || ac.attr.shadow_total || 0);
+    document.getElementById('s-acc').textContent = ac.state;
+  }
+
+  // ── Energy ──
+  const nrg = d.energy;
+  if (_valid(nrg)) {
+    document.getElementById('v-nrg').textContent = nrg.state;
+    document.getElementById('d-nrg').textContent =
+      'solar: ' + (nrg.attr.solar || '?') + ' · absorbed: ' + (nrg.attr.events_absorbed || 0);
+    document.getElementById('s-abs').textContent = nrg.attr.events_absorbed || 0;
+  } else if (nrg) {
+    document.getElementById('v-nrg').textContent = '?';
+    document.getElementById('d-nrg').textContent = 'Keine Energiedaten';
+  }
+
+  // ── Location ──
+  const loc = d.location;
+  if (_valid(loc)) {
+    document.getElementById('v-loc').textContent = loc.state;
+    const sp = loc.attr;
+    if (sp && sp.presence_map) {
+      const rooms = Object.entries(sp.presence_map)
+        .filter(([,v]) => v.occupied).map(([k]) => k);
+      document.getElementById('d-loc').textContent = rooms.length > 0
+        ? 'besetzt: ' + rooms.join(', ')
+        : sp.predicted_next ? 'nächster: ' + sp.predicted_next : 'kein Raum besetzt';
+    } else {
+      document.getElementById('d-loc').textContent = 'patterns: ' + (sp.movement_patterns || 0);
+    }
+  } else if (loc) {
+    document.getElementById('v-loc').textContent = 'unbekannt';
+    document.getElementById('d-loc').textContent = 'Warte auf Bewegungsdaten…';
+  }
+
+  // ── Mode ──
+  const mo = d.mode;
+  if (_valid(mo)) {
+    document.getElementById('v-mode').textContent = mo.state;
+    const conf = mo.attr.confidence;
+    document.getElementById('d-mode').textContent = conf != null && conf > 0
+      ? 'confidence: ' + (conf * 100).toFixed(0) + '%'
+      : 'Modus wird ermittelt…';
+  } else if (mo) {
+    document.getElementById('v-mode').textContent = 'aktiv';
+    document.getElementById('d-mode').textContent = 'Standard-Modus';
+  }
+
+  // ── Cerebellum ──
+  const cb = d.cerebellum;
+  if (_valid(cb)) {
+    document.getElementById('v-cereb').textContent = cb.state;
+    document.getElementById('d-cereb').textContent =
+      'fired: ' + (cb.attr.total_fired || 0) + ' · 1g: ' + (cb.attr.rules_1gram || 0) + ' · 2g: ' + (cb.attr.rules_2gram || 0);
+  } else if (cb) {
+    document.getElementById('v-cereb').textContent = '0 Regeln';
+    document.getElementById('d-cereb').textContent = 'Lerne Muster… (braucht ~50 Events)';
+  }
+
+  // ── Status (contains all module stats) ──
+  const st = d.status;
+  lastStatusData = st || null;
+  if (st) {
+    document.getElementById('s-status').textContent = (st.state || '').toUpperCase();
+    const a = st.attr;
+
+    if (a.thalamus) {
+      document.getElementById('md-thalamus').textContent =
+        'entities: ' + (a.thalamus.entities_registered || '?') + ' · rooms: ' + (a.thalamus.rooms_discovered || '?');
+    }
+    if (a.hippocampus) {
+      document.getElementById('md-hippocampus').textContent =
+        'events: ' + (a.hippocampus.total_events || 0) + ' · patterns: ' + (a.hippocampus.patterns || 0);
+      document.getElementById('s-events').textContent = a.hippocampus.total_events || 0;
+      document.getElementById('s-mem').textContent = (a.hippocampus.memory_kb || 0) + ' KB';
+    }
+    if (a.hypothalamus) {
+      document.getElementById('md-hypothalamus').textContent =
+        'absorbed: ' + (a.hypothalamus.events_absorbed || 0);
+    }
+    if (a.spatial) {
+      document.getElementById('md-spatial').textContent =
+        'room: ' + (a.spatial.current_room || '?') + ' · transitions: ' + (a.spatial.transitions_emitted || 0);
+    }
+    if (a.insula) {
+      document.getElementById('md-insula').textContent =
+        'mode: ' + (a.insula.current_mode || '?') + ' · changes: ' + (a.insula.mode_changes || 0);
+    }
+    if (a.amygdala) {
+      document.getElementById('md-amygdala').textContent =
+        'vetoes: ' + (a.amygdala.total_vetoes || 0) + ' · risks: ' + (a.amygdala.learned_risks || 0);
+    }
+    if (a.cerebellum) {
+      document.getElementById('md-cerebellum').textContent =
+        'rules: ' + (a.cerebellum.rules_count || 0) + ' · fired: ' + (a.cerebellum.total_fired || 0);
+    }
+    if (a.prefrontal) {
+      const pf = a.prefrontal;
+      const mode = pf.operation_mode || (pf.shadow_mode ? 'shadow' : 'active');
+      document.getElementById('md-prefrontal').textContent =
+        mode.toUpperCase() + ' · decisions: ' + (pf.total_decisions || 0) + ' · overrides: ' + (pf.overrides_detected || 0);
+      // Mode-Buttons aktualisieren
+      updateModeButtons(mode);
+    }
+    if (a.basal_ganglia) {
+      document.getElementById('md-basalganglien').textContent =
+        'habits: ' + (a.basal_ganglia.total_habits || 0) + ' · q-entries: ' + (a.basal_ganglia.q_entries || 0) + ' · dopamin: ' + (a.basal_ganglia.dopamine_signal || 0);
+      // Basalganglien-Region aktivieren bei Aktivität
+      if ((a.basal_ganglia.total_updates || 0) > 0) {
+        fire('basalganglien');
+      }
+    }
+  }
+
+  // Debug-Panel aktualisieren (wenn aktiv)
+  if (debugMode) updateCortexStatus();
+}
+
+// ══════════════════════════════════════════════════════════════
+// COLLAPSIBLE MODULES
+// ══════════════════════════════════════════════════════════════
+
+// Auf Smartphone: Module standardmäßig eingeklappt
+let modulesOpen = window.innerWidth > 900;
+function toggleModules() {
+  modulesOpen = !modulesOpen;
+  document.getElementById('mod-body').classList.toggle('collapsed', !modulesOpen);
+  document.getElementById('mod-arrow').classList.toggle('open', modulesOpen);
+}
+// Initial: auf Mobile eingeklappt
+if (!modulesOpen) {
+  document.getElementById('mod-body').classList.add('collapsed');
+  document.getElementById('mod-arrow').classList.remove('open');
+}
+
+// ══════════════════════════════════════════════════════════════
+// DEBUG PANEL
+// ══════════════════════════════════════════════════════════════
+
+let debugMode = false;
+const dbgOut = document.getElementById('dbg-out');
+const dbgCortex = document.getElementById('dbg-cortex');
+
+function toggleDebug() {
+  debugMode = !debugMode;
+  const toggle = document.getElementById('dbg-toggle');
+  const panel = document.getElementById('dbg-panel');
+  toggle.classList.toggle('on', debugMode);
+  panel.classList.toggle('show', debugMode);
+  if (debugMode) {
+    dbgLog('Debug-Modus aktiviert', 'ok');
+    updateCortexStatus();
+  }
+}
+
+function dbgLog(text, cls) {
+  const t = new Date().toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="ts">[${t}]</span> <span class="${cls||''}">${text}</span>`;
+  dbgOut.insertBefore(line, dbgOut.firstChild);
+  // Max 100 Zeilen
+  while (dbgOut.children.length > 100) dbgOut.removeChild(dbgOut.lastChild);
+}
+
+async function callService(service, data) {
+  const btn = document.querySelector(`[onclick*="${service}"]`);
+  if (btn) btn.classList.add('running');
+  dbgLog(`Service <span class="hi">kontinuum.${service}</span> wird aufgerufen…`);
+
+  try {
+    const body = data ? JSON.stringify(data) : '{}';
+    const resp = await fetch(HA_BASE + `/api/services/kontinuum/${service}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + HA_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: body,
+    });
+
+    if (resp.ok) {
+      const svcLabels = {
+        'cortex_consult': 'Cortex-Beratung gestartet (Agents diskutieren…)',
+        'brain_review': 'Brain-Analyse gestartet (Agents prüfen Gehirn-Gesundheit…)',
+        'status': 'Status abgerufen',
+        'export_brain': 'Gehirn-Export gespeichert',
+        'set_mode': 'Betriebsmodus geändert',
+        'cortex_sequential': 'Sequential Mode umgeschaltet',
+      };
+      const label = svcLabels[service] || `${service} erfolgreich`;
+      dbgLog(`<span class="ok">${label}</span>`, '');
+      // Nach kurzer Pause Sensor-Update holen
+      if (service === 'cortex_consult' || service === 'brain_review') {
+        dbgLog('Ergebnis wird als History-Datei gespeichert – Warte auf Antwort…');
+        setTimeout(async () => {
+          await fetchSensors();
+          updateCortexStatus();
+          const svc = service === 'cortex_consult' ? 'Beratung' : 'Analyse';
+          dbgLog(`<span class="ok">${svc} abgeschlossen</span> → Ergebnis in Cortex Status sichtbar`);
+        }, 5000);
+      }
+    } else {
+      dbgLog(`<span class="er">Fehler ${resp.status}: ${resp.statusText}</span>`);
+    }
+  } catch (e) {
+    dbgLog(`<span class="er">Netzwerk-Fehler: ${e.message}</span>`);
+  }
+  if (btn) btn.classList.remove('running');
+}
+
+function updateCortexStatus() {
+  // Liest Cortex-Daten aus dem Status-Sensor
+  const st = lastStatusData;
+  if (!st || !st.attr) {
+    dbgCortex.innerHTML = 'Keine Cortex-Daten verfügbar.';
+    return;
+  }
+
+  const parts = [];
+  const a = st.attr;
+
+  if (a.cortex) {
+    const c = a.cortex;
+    // Sequential-Mode-Status aus Cortex-Daten lesen
+    if (c.sequential_mode !== undefined) {
+      sequentialMode = !!c.sequential_mode;
+      updateSequentialButton();
+    }
+    parts.push(`<span class="hi">CORTEX</span>`);
+    parts.push(`  Agents: ${c.agents || 0}  ·  Sequential: ${sequentialMode ? '<span class="ok">AN</span>' : 'AUS'}`);
+    parts.push(`  Beratungen: ${c.total_consultations || 0}`);
+    parts.push(`  Diskussionen: ${c.total_discussions || 0}`);
+
+    if (c.last_consensus && c.last_consensus.consensus_action) {
+      const lc = c.last_consensus;
+      parts.push('');
+      parts.push(`<span class="ag">LETZTER KONSENS</span>`);
+      parts.push(`  Aktion: <span class="hi">${lc.consensus_action || 'keine'}</span>`);
+      parts.push(`  Entity: ${lc.consensus_entity || '–'}`);
+      parts.push(`  Grund: ${(lc.consensus_reason || '').substring(0, 200)}`);
+      parts.push(`  Veto: ${lc.vetoed ? '<span class="er">JA</span>' : '<span class="ok">Nein</span>'}`);
+      parts.push(`  Runden: ${lc.discussion_rounds || 1}`);
+
+      if (lc.proposals && lc.proposals.length) {
+        parts.push('');
+        parts.push(`<span class="ag">VORSCHLÄGE (Runde 1)</span>`);
+        for (const p of lc.proposals) {
+          const veto = p.veto ? ' <span class="er">[VETO]</span>' : '';
+          parts.push(`  <span class="hi">${p.agent||'?'}</span>: ${p.action||'keine'} → ${p.entity_id||'–'}${veto}`);
+          parts.push(`    Grund: ${(p.reason||'?').substring(0, 150)}`);
+          parts.push(`    Priorität: ${p.priority||0}`);
+        }
+      }
+
+      if (lc.revisions && lc.revisions.length) {
+        parts.push('');
+        parts.push(`<span class="ag">REVISIONEN (Runde 2)</span>`);
+        for (const r of lc.revisions) {
+          parts.push(`  <span class="hi">${r.agent||'?'}</span>: ${r.action||'keine'} → ${r.entity_id||'–'}`);
+          parts.push(`    Grund: ${(r.reason||'?').substring(0, 150)}`);
+        }
+      }
+    }
+  } else {
+    parts.push('Cortex nicht konfiguriert.');
+  }
+
+  if (a.last_brain_review) {
+    const br = a.last_brain_review;
+    parts.push('');
+    parts.push('<div class="sep"></div>');
+    parts.push(`<span class="ag">BRAIN REVIEW</span>`);
+    parts.push(`  Health Score: <span class="hi">${br.health_score}/100</span>`);
+    parts.push(`  Agents: ${br.agents_consulted || 0}`);
+    if (br.timestamp) parts.push(`  Zeitpunkt: ${br.timestamp}`);
+  }
+
+  // Module Overview
+  parts.push('');
+  parts.push('<div class="sep"></div>');
+  parts.push(`<span class="ag">MODULE</span>`);
+  if (a.hippocampus) parts.push(`  Hippocampus: ${a.hippocampus.total_events||0} Events, ${a.hippocampus.patterns||0} Patterns, ${a.hippocampus.memory_kb||0} KB`);
+  if (a.cerebellum) parts.push(`  Cerebellum: ${a.cerebellum.rules_count||0} Regeln, ${a.cerebellum.total_fired||0} gefeuert`);
+  if (a.prefrontal) parts.push(`  Prefrontal: ${a.prefrontal.total_decisions||0} Entscheidungen, ${a.prefrontal.overrides_detected||0} Overrides`);
+  if (a.amygdala) parts.push(`  Amygdala: ${a.amygdala.total_vetoes||0} Vetos, ${a.amygdala.learned_risks||0} Risiken`);
+  if (a.spatial) parts.push(`  Spatial: Raum ${a.spatial.current_room||'?'}, ${a.spatial.transitions_emitted||0} Transitions`);
+  if (a.insula) parts.push(`  Insula: Modus ${a.insula.current_mode||'?'}, ${a.insula.mode_changes||0} Wechsel`);
+
+  dbgCortex.innerHTML = parts.join('\n');
+}
+
+// Speichere Status-Daten global für Debug-Panel
+let lastStatusData = null;
+
+// ── Sequential Toggle ──
+let sequentialMode = false;
+function toggleSequential() {
+  sequentialMode = !sequentialMode;
+  callService('cortex_sequential', {enabled: sequentialMode});
+  updateSequentialButton();
+}
+function updateSequentialButton() {
+  const el = document.getElementById('seq-state');
+  const btn = document.getElementById('btn-seq');
+  if (el) el.textContent = sequentialMode ? 'AN' : 'AUS';
+  if (btn) {
+    if (sequentialMode) {
+      btn.style.borderColor = 'var(--cyan)';
+      btn.style.color = 'var(--cyan)';
+      btn.style.background = 'rgba(74,158,255,.12)';
+    } else {
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      btn.style.background = '';
+    }
+  }
+}
+
+// ── Mode Buttons ──
+function updateModeButtons(currentMode) {
+  ['shadow','confirm','active'].forEach(m => {
+    const btn = document.getElementById('btn-mode-' + m);
+    if (btn) {
+      if (m === currentMode) {
+        btn.style.borderColor = 'var(--cyan)';
+        btn.style.color = 'var(--cyan)';
+        btn.style.background = 'rgba(74,158,255,.12)';
+      } else {
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        btn.style.background = '';
+      }
+    }
+  });
+}
+
+// ── Periodisches Firing basierend auf Modulaktivität ──
+let lastEventCount = 0;
+function animateBrainRegions() {
+  const st = lastStatusData;
+  if (!st || !st.attr) return;
+  const a = st.attr;
+  const currentEvents = (a.hippocampus && a.hippocampus.total_events) || 0;
+  if (currentEvents > lastEventCount) {
+    // Neue Events → relevante Module feuern
+    fire('thalamus');
+    setTimeout(() => fire('hippocampus'), 200);
+    if (a.cerebellum && (a.cerebellum.total_fired || 0) > 0) {
+      setTimeout(() => fire('cerebellum'), 400);
+    }
+    if (a.prefrontal && (a.prefrontal.total_decisions || 0) > 0) {
+      setTimeout(() => fire('prefrontal'), 600);
+    }
+    if (a.basal_ganglia && (a.basal_ganglia.total_updates || 0) > 0) {
+      setTimeout(() => fire('basalganglien'), 500);
+    }
+    lastEventCount = currentEvents;
+  }
+}
+
+// ── Start Polling ──
+setConn('wait');
+fetchSensors();
+setInterval(fetchSensors, POLL_INTERVAL);
+setInterval(animateBrainRegions, 5000);
+
+</script>
+</body>
+</html>
