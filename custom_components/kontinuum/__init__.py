@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import time
+import gzip
 from collections import Counter, deque
 from datetime import datetime, timezone
 
@@ -37,6 +38,11 @@ from .amygdala import Amygdala
 from .cerebellum import Cerebellum
 from .prefrontal_cortex import PrefrontalCortex
 from .basal_ganglia import BasalGanglia
+from .reticular import ReticularFormation
+from .nucleus_accumbens import NucleusAccumbens
+from .locus_coeruleus import LocusCoeruleus
+from .entorhinal_cortex import EntorhinalCortex
+from .metaplasticity import MetaPlasticity
 
 from .config_flow import PRESETS
 
@@ -45,6 +51,12 @@ DOMAIN = "kontinuum"
 VERSION = "0.13.1"
 BRAIN_FILE = "brain.json"
 SAVE_INTERVAL = 300
+AUX_MODULE_FILES = {
+    "reticular": "reticular.json.gz",
+    "accumbens": "accumbens.json.gz",
+    "locus": "locus.json.gz",
+    "entorhinal": "entorhinal.json.gz",
+}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -98,6 +110,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         cerebellum = Cerebellum()
         basal_ganglia = BasalGanglia()
         prefrontal = PrefrontalCortex(amygdala)
+        reticular = ReticularFormation()
+        accumbens = NucleusAccumbens()
+        locus = LocusCoeruleus()
+        entorhinal = EntorhinalCortex()
+        metaplasticity = MetaPlasticity(hass)
+        await metaplasticity.async_load()
+        await metaplasticity.async_start()
+
+        # Optional: Context-Profile für erweiterte Semantik/Thresholds
+        profile_path = hass.config.path("kontinuum_context_profile.json")
+        thalamus.load_custom_profiles(profile_path)
 
         # ── Presets anwenden ──────────────────────────────────
         cerebellum.MIN_OBSERVATIONS = config_data.get("cerebellum_min_obs", 5)
@@ -126,6 +149,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "cerebellum": cerebellum,
             "basal_ganglia": basal_ganglia,
             "prefrontal": prefrontal,
+            "reticular": reticular,
+            "accumbens": accumbens,
+            "locus": locus,
+            "entorhinal": entorhinal,
+            "metaplasticity": metaplasticity,
             "preset": preset_key,
             "_scenes_enabled": False,
             "_scene_config": _default_scene_config(),
@@ -140,6 +168,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         # ── Gehirn laden ──────────────────────────────────────
         brain_path = hass.config.path(BRAIN_FILE)
         await hass.async_add_executor_job(_load_brain, brain, brain_path)
+        await hass.async_add_executor_job(_load_aux_modules, hass, brain)
 
         # ── Entities entdecken ────────────────────────────────
         await _discover_entities(hass, thalamus)
@@ -171,6 +200,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 # KONTINUUM-eigene Sensoren ignorieren
                 if entity_id.startswith("sensor.kontinuum_"):
                     return
+                
+                # ── Reticular Formation (RAS) ────────────────
+                domain = entity_id.split(".")[0] if "." in entity_id else ""
+                if not reticular.should_process(entity_id, domain):
+                    return
+                locus.observe_event()
 
                 # Sonnenstand tracken (v0.12.0)
                 if entity_id == "sun.sun":
@@ -196,11 +231,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if was_override:
                     # Basalganglien: Negatives Feedback (NoGo-Pathway)
                     basal_ganglia.process_outcome(entity_id, positive=False)
+                    state_key = f"{room}|{insula.current_mode}|{datetime.now(timezone.utc).hour}"
+                    accumbens.reinforce(state_key, entity_id, -1.0)
                 # Implizite Positives → Basalganglien: Go-Pathway
                 accepted = prefrontal.check_implicit_positives(amygdala)
                 if accepted:
                     for acc_eid in accepted:
                         basal_ganglia.process_outcome(acc_eid, positive=True)
+                        state_key = f"{room}|{insula.current_mode}|{datetime.now(timezone.utc).hour}"
+                        accumbens.reinforce(state_key, acc_eid, 1.0)
                 basal_ganglia.cleanup_pending()
 
                 # ── Hypothalamus (Energie/Klima) ──────────────
@@ -215,6 +254,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     tokens = spatial.absorb(room, semantic, new_state, entity_id)
                     for tok in tokens:
                         _inject_token(hass, brain, tok, now)
+                        if tok.get("semantic") == "spatial" and tok.get("state") == "entered":
+                            prev_room = brain.get("_entorhinal_last_room")
+                            next_room = tok.get("room")
+                            if prev_room and next_room:
+                                entorhinal.observe_transition(prev_room, next_room)
+                            brain["_entorhinal_last_room"] = next_room
 
                     # Insula mit räumlichem Signal füttern
                     mode_result = insula.process(semantic, new_state, room)
@@ -257,7 +302,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 predictions = hippocampus.predict(ctx)
                 if predictions:
                     predictions = _rank_with_basal_ganglia(
-                        predictions, basal_ganglia, bucket)
+                        predictions, basal_ganglia, bucket, thalamus, accumbens, room, insula.current_mode)
 
                 # PFC entscheidet
                 decision = prefrontal.evaluate(predictions, thalamus)
@@ -286,6 +331,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
 
                 if now_ts - brain["_last_save"] > SAVE_INTERVAL:
                     hass.async_add_executor_job(_save_brain, brain, brain_path)
+                    hass.async_add_executor_job(_save_aux_modules, hass, brain)
+                    if now_ts - entorhinal.last_prune_ts > 86400:
+                        entorhinal.prune_old_transitions(0.05)
                     brain["_last_save"] = now_ts
 
                 # Personen-Zähler
@@ -302,6 +350,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         async def on_shutdown(event):
             _LOGGER.info("KONTINUUM wird heruntergefahren – speichere Gehirn...")
             await hass.async_add_executor_job(_save_brain, brain, brain_path)
+            await hass.async_add_executor_job(_save_aux_modules, hass, brain)
+            await brain["metaplasticity"].async_stop()
+            await brain["metaplasticity"].async_save()
 
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_shutdown)
 
@@ -360,6 +411,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
     if brain:
         brain_path = hass.config.path(BRAIN_FILE)
         await hass.async_add_executor_job(_save_brain, brain, brain_path)
+        await hass.async_add_executor_job(_save_aux_modules, hass, brain)
+        await brain["metaplasticity"].async_stop()
+        await brain["metaplasticity"].async_save()
     _LOGGER.info("KONTINUUM entladen und gespeichert.")
     return True
 
@@ -368,17 +422,24 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 # TOKEN INJECTION
 # ══════════════════════════════════════════════════════════════════
 
-def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket):
+def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
+                             accumbens=None, room="unknown", mode="active"):
     """
     Basalganglien-Ranking: Sortiert Predictions nach Go/NoGo-Pathway.
     Go (positive Q-Values) → nach oben
     NoGo (negative Q-Values) → nach unten
     """
     ranked = []
+    hour = datetime.now(timezone.utc).hour
+    state_key = f"{room}|{mode}|{hour}"
     for token_id, prob, conf, source in predictions:
         priority = basal_ganglia.get_action_priority(token_id, bucket)
+        reward_boost = 0.0
+        if accumbens and thalamus:
+            action_key = thalamus.decode_token(token_id)
+            reward_boost = accumbens.get_bias(state_key, action_key) * 0.1
         # Confidence durch Basalganglien modifizieren
-        bg_conf = conf + priority * 0.1  # Max ±0.2 Einfluss
+        bg_conf = conf + priority * 0.1 + reward_boost  # Max ±0.3 Einfluss
         bg_conf = max(0.05, min(1.0, bg_conf))
         ranked.append((token_id, prob, bg_conf, source))
     # Re-sort by modified confidence * probability
@@ -686,12 +747,26 @@ def _register_services(hass, brain):
             "notification_id": "kontinuum_status_detail",
         })
 
+    async def handle_set_meta_params(call):
+        module = call.data.get("module")
+        params = call.data.get("params", {})
+        if not module or not isinstance(params, dict):
+            _LOGGER.warning("set_meta_params: invalid payload")
+            return
+        meta = brain.get("metaplasticity")
+        if not meta:
+            return
+        meta.set_params(module, params)
+        await meta.async_save()
+        _LOGGER.info("Meta-Parameter gesetzt: %s -> %s", module, params)
+
     hass.services.async_register(DOMAIN, "enable_scenes", handle_enable_scenes)
     hass.services.async_register(DOMAIN, "disable_scenes", handle_disable_scenes)
     hass.services.async_register(DOMAIN, "set_scene", handle_set_scene)
     hass.services.async_register(DOMAIN, "status", handle_status)
+    hass.services.async_register(DOMAIN, "set_meta_params", handle_set_meta_params)
 
-    _LOGGER.info("Services registriert: enable_scenes, disable_scenes, set_scene, status")
+    _LOGGER.info("Services registriert: enable_scenes, disable_scenes, set_scene, status, set_meta_params")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -936,6 +1011,33 @@ def _update_sensors(hass, brain, last_signal=None, predictions=None):
         "q_entries": len(bg.q_values),
         "active_habits": bg.stats.get("active_habits", []),
     })
+    ret = brain["reticular"]
+    hass.states.async_set("sensor.kontinuum_attention", round(ret.get_priority("global"), 3), {
+        "friendly_name": "Reticular Attention",
+        "icon": "mdi:filter",
+        "filtered_events": ret.filtered_events,
+    })
+    loc = brain["locus"]
+    hass.states.async_set("sensor.kontinuum_arousal", round(loc.get_arousal(), 3), {
+        "friendly_name": "Locus Arousal",
+        "icon": "mdi:pulse",
+    })
+    ent = brain["entorhinal"]
+    cur_room = spatial.get_current_location()
+    hass.states.async_set("sensor.kontinuum_next_room_map",
+        ent.predict_next_room(cur_room) or "unknown", {
+        "friendly_name": "Entorhinal Next Room",
+        "icon": "mdi:map-search",
+        "current_room": cur_room,
+    })
+    meta = brain.get("metaplasticity")
+    if meta:
+        hass.states.async_set("sensor.kontinuum_metaplasticity",
+            meta.data.get("last_update") or "idle", {
+            "friendly_name": "Meta-Plasticity",
+            "icon": "mdi:tune-variant",
+            "modules": list(meta.data.get("module_params", {}).keys()),
+        })
     # Unassigned Entities aktualisieren (v0.12.1)
     unassigned = thalamus.get_unassigned_report(10)
     hass.states.async_set("sensor.kontinuum_unknown_entities",
@@ -1007,6 +1109,43 @@ def _save_brain(brain, path=None):
         _LOGGER.debug("Gehirn gespeichert: %s", path)
     except Exception as e:
         _LOGGER.error("Fehler beim Speichern: %s", e)
+
+
+def _save_aux_modules(hass, brain):
+    """Speichert leichte Zusatzareale in eigene .json.gz Dateien."""
+    for key, fname in AUX_MODULE_FILES.items():
+        module = brain.get(key)
+        if not module:
+            continue
+        path = hass.config.path(fname)
+        tmp = path + ".tmp"
+        try:
+            with gzip.open(tmp, "wt", encoding="utf-8") as f:
+                json.dump(module.to_dict(), f)
+            try:
+                os.replace(tmp, path)
+            except Exception as replace_err:
+                _LOGGER.warning("Aux-Modul %s replace fehlgeschlagen: %s", key, replace_err)
+                continue
+        except Exception as err:
+            _LOGGER.warning("Aux-Modul %s konnte nicht gespeichert werden: %s", key, err)
+
+
+def _load_aux_modules(hass, brain):
+    """Lädt leichte Zusatzareale aus eigenen .json.gz Dateien."""
+    for key, fname in AUX_MODULE_FILES.items():
+        module = brain.get(key)
+        if not module:
+            continue
+        path = hass.config.path(fname)
+        if not os.path.exists(path):
+            continue
+        try:
+            with gzip.open(path, "rt", encoding="utf-8") as f:
+                data = json.load(f)
+            module.from_dict(data)
+        except Exception as err:
+            _LOGGER.warning("Aux-Modul %s konnte nicht geladen werden: %s", key, err)
 
 
 def _load_brain(brain, path):
