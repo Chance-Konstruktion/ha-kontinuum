@@ -24,9 +24,10 @@
     "step": {
       "init": {
         "title": "KONTINUUM Settings",
-        "description": "Change personality and enable Cortex for LLM-powered multi-agent decisions.",
+        "description": "Change personality, tracking mode, and enable Cortex for LLM-powered multi-agent decisions.",
         "data": {
           "preset": "Personality",
+          "track_mode": "Entity Tracking Mode",
           "enable_dashboard": "Enable Dashboard",
           "home_only_mode": "Home-Only Mode (pause when nobody is home)",
           "enable_cortex": "Enable Cortex (LLM Agents)"

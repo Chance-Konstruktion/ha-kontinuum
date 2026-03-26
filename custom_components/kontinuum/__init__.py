@@ -291,13 +291,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         prefrontal.shadow_mode = config_data.get("shadow_mode", True)
         prefrontal.operation_mode = config_data.get("operation_mode", MODE_SHADOW if prefrontal.shadow_mode else MODE_ACTIVE)
 
+        # ── Track Mode (v0.15.0) ────────────────────────────────
+        track_mode = entry.data.get("track_mode", "standard")
+        thalamus.track_mode = track_mode
+
         _LOGGER.info(
             "Preset '%s': Cerebellum(obs=%d, conf=%.0f%%), "
-            "Hippocampus(decay=%.3f, obs=%d), Shadow=%s",
+            "Hippocampus(decay=%.3f, obs=%d), Shadow=%s, Track=%s",
             preset_key, cerebellum.MIN_OBSERVATIONS,
             cerebellum.MIN_CONFIDENCE * 100,
             hippocampus.DECAY_RATE, hippocampus.MIN_OBSERVATIONS,
-            prefrontal.shadow_mode,
+            prefrontal.shadow_mode, track_mode,
         )
 
         # ── Brain-Dict ────────────────────────────────────────
@@ -521,7 +525,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 # ignore_kontinuum Labels periodisch refreshen (v0.15.0)
                 if now_ts - brain.get("_last_label_refresh", 0) > 300:
                     brain["_last_label_refresh"] = now_ts
-                    _refresh_ignore_labels(hass, thalamus)
+                    _refresh_labels(hass, thalamus)
 
                 # ── Brain Review: Monatlich automatisch ──
                 BRAIN_REVIEW_INTERVAL = 30 * 86400  # 30 Tage
@@ -576,6 +580,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         filtered = thalamus.stats.get("entities_filtered", 0)
         op_mode = prefrontal.operation_mode
         mode_label = {"shadow": "Shadow", "confirm": "Confirm", "active": "Active"}.get(op_mode, op_mode)
+        track_labels = {
+            "standard": "Standard",
+            "labeled": "Nur markierte (Opt-in)",
+            "auto": "Automatisch (Smart Filter)",
+        }
         startup_parts = [
             f"**{len(thalamus.entity_semantic)}** Entities · "
             f"**{len(thalamus._known_rooms)}** Räume · "
@@ -583,10 +592,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             f"Accuracy **{hippocampus.accuracy:.0%}**",
             f"Modus: **{mode_label}** · "
             f"Preset: {preset_key} · "
+            f"Tracking: **{track_labels.get(track_mode, track_mode)}** · "
             f"Routinen: {len(cerebellum.rules)}",
         ]
         if home_only_mode:
             startup_parts.append("🏠 **Home-Only Modus** aktiv – pausiert wenn niemand zuhause")
+        included_count = len(thalamus._included_entities)
+        if included_count:
+            startup_parts.append(
+                f"🏷️ {included_count} Entities mit `kontinuum` Label")
         ignored_count = thalamus.stats.get("entities_ignored", 0)
         if ignored_count:
             startup_parts.append(
@@ -1498,47 +1512,39 @@ def _register_services(hass, brain):
 # LABEL HELPERS
 # ══════════════════════════════════════════════════════════════════
 
-def _get_ignore_label_ids(hass) -> set:
-    """Gibt die Label-IDs zurück die 'ignore_kontinuum' heißen."""
+def _get_label_ids_by_name(hass, names: set) -> set:
+    """Gibt Label-IDs zurück deren Name in names enthalten ist."""
     try:
         from homeassistant.helpers.label_registry import async_get as get_lr
         lr = get_lr(hass)
         return {
             l.label_id for l in lr.async_list_labels()
-            if l.name.lower().strip() in ("ignore_kontinuum", "ignore kontinuum")
+            if l.name.lower().strip() in names
         }
     except (ImportError, AttributeError):
         return set()
 
 
-def _has_ignore_label(hass, entity_id: str) -> bool:
-    """Prüft live ob eine Entity das ignore_kontinuum Label hat."""
+def _refresh_labels(hass, thalamus):
+    """Scannt alle Entities auf ignore_kontinuum + kontinuum Labels (periodisch)."""
     try:
         from homeassistant.helpers.entity_registry import async_get as get_er
         er = get_er(hass)
-        entity = er.async_get(entity_id)
-        if not entity or not hasattr(entity, "labels") or not entity.labels:
-            return False
-        ignore_ids = _get_ignore_label_ids(hass)
-        return bool(entity.labels & ignore_ids) if ignore_ids else False
-    except (ImportError, AttributeError, Exception):
-        pass
-    return False
 
+        ignore_ids = _get_label_ids_by_name(hass, {"ignore_kontinuum", "ignore kontinuum"})
+        include_ids = _get_label_ids_by_name(hass, {"kontinuum"})
 
-def _refresh_ignore_labels(hass, thalamus):
-    """Scannt alle Entities auf ignore_kontinuum Labels (periodisch)."""
-    try:
-        from homeassistant.helpers.entity_registry import async_get as get_er
-        er = get_er(hass)
-        ignore_ids = _get_ignore_label_ids(hass)
-        if not ignore_ids:
-            return
         new_ignored = set()
+        new_included = set()
         for entity in er.entities.values():
-            if hasattr(entity, "labels") and entity.labels:
-                if entity.labels & ignore_ids:
-                    new_ignored.add(entity.entity_id)
+            if not hasattr(entity, "labels") or not entity.labels:
+                continue
+            if ignore_ids and (entity.labels & ignore_ids):
+                new_ignored.add(entity.entity_id)
+            if include_ids and (entity.labels & include_ids):
+                new_included.add(entity.entity_id)
+
+        # ignore_kontinuum Updates
         if new_ignored != thalamus._ignored_entities:
             added = new_ignored - thalamus._ignored_entities
             removed = thalamus._ignored_entities - new_ignored
@@ -1548,6 +1554,18 @@ def _refresh_ignore_labels(hass, thalamus):
                 _LOGGER.info("ignore_kontinuum hinzugefügt: %s", added)
             if removed:
                 _LOGGER.info("ignore_kontinuum entfernt: %s", removed)
+
+        # kontinuum (include) Updates
+        if new_included != thalamus._included_entities:
+            added = new_included - thalamus._included_entities
+            removed = thalamus._included_entities - new_included
+            thalamus._included_entities = new_included
+            thalamus.stats["entities_included"] = len(new_included)
+            if added:
+                _LOGGER.info("kontinuum Label hinzugefügt: %s", added)
+            if removed:
+                _LOGGER.info("kontinuum Label entfernt: %s", removed)
+
     except (ImportError, AttributeError, Exception):
         pass
 
