@@ -18,6 +18,7 @@ Neu integriert:
 
 4. **Entorhinal Cortex (`entorhinal_cortex.py`)**
    - Raumtransitionen und nächste-Raum-Prognose
+   - tägliches Pruning schwächster 5% Transitionen
    - Persistenz: `entorhinal.json.gz`
 
 Alle Areale werden in `__init__.py` erzeugt, geladen, periodisch gespeichert und als Sensorwerte sichtbar gemacht.

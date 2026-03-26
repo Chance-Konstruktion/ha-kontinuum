@@ -327,6 +327,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if now_ts - brain["_last_save"] > SAVE_INTERVAL:
                     hass.async_add_executor_job(_save_brain, brain, brain_path)
                     hass.async_add_executor_job(_save_aux_modules, hass, brain)
+                    if now_ts - entorhinal.last_prune_ts > 86400:
+                        entorhinal.prune_old_transitions(0.05)
                     brain["_last_save"] = now_ts
 
                 # Personen-Zähler
@@ -1089,7 +1091,11 @@ def _save_aux_modules(hass, brain):
         try:
             with gzip.open(tmp, "wt", encoding="utf-8") as f:
                 json.dump(module.to_dict(), f)
-            os.replace(tmp, path)
+            try:
+                os.replace(tmp, path)
+            except Exception as replace_err:
+                _LOGGER.warning("Aux-Modul %s replace fehlgeschlagen: %s", key, replace_err)
+                continue
         except Exception as err:
             _LOGGER.warning("Aux-Modul %s konnte nicht gespeichert werden: %s", key, err)
 
