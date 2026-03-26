@@ -3,9 +3,16 @@
     "step": {
       "user": {
         "title": "KONTINUUM Einrichtung",
-        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als Nächstes passiert. Wähle eine Persönlichkeit – sie bestimmt, wie schnell das System lernt und handelt.",
+        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als N\u00e4chstes passiert. W\u00e4hle eine Pers\u00f6nlichkeit.",
         "data": {
-          "preset": "Persönlichkeit"
+          "preset": "Pers\u00f6nlichkeit"
+        }
+      },
+      "dashboard": {
+        "title": "Dashboard",
+        "description": "KONTINUUM enth\u00e4lt ein Gehirn-Dashboard. Wenn aktiviert, wird es automatisch installiert.",
+        "data": {
+          "enable_dashboard": "Dashboard aktivieren"
         }
       }
     },
@@ -17,11 +24,101 @@
     "step": {
       "init": {
         "title": "KONTINUUM Einstellungen",
-        "description": "Ändere wie schnell KONTINUUM lernt und handelt. Änderungen werden nach Neustart wirksam.",
+        "description": "\u00c4ndere Pers\u00f6nlichkeit, Tracking-Modus und aktiviere Cortex f\u00fcr LLM-gest\u00fctzte Multi-Agent-Entscheidungen.",
         "data": {
-          "preset": "Persönlichkeit"
+          "preset": "Pers\u00f6nlichkeit",
+          "track_mode": "Entity-Tracking-Modus",
+          "enable_dashboard": "Dashboard aktivieren",
+          "home_only_mode": "Home-Only Modus (pausiert wenn niemand zuhause)",
+          "enable_cortex": "Cortex aktivieren (LLM-Agents)"
+        }
+      },
+      "cortex_options": {
+        "title": "Cortex Optionen",
+        "description": "Sequential Mode fragt die Agents nacheinander statt parallel \u2013 empfohlen bei einer GPU/Ollama-Instanz. Diskussionsrunden bestimmen, wie oft die Agents debattieren bevor ein Konsens entsteht.",
+        "data": {
+          "sequential_mode": "Sequential Mode (empfohlen bei 1 GPU)",
+          "discussion_rounds": "Diskussionsrunden"
+        }
+      },
+      "agent_1_setup": {
+        "title": "Cortex \u2013 Agent 1 (Verbindung)",
+        "description": "W\u00e4hle Rolle und Provider. F\u00fcr Ollama einfach den Host eingeben (z.B. 'localhost' oder '192.168.1.100').",
+        "data": {
+          "role": "Rolle",
+          "provider": "Provider",
+          "url": "URL / Host (leer = Standard)",
+          "api_key": "API-Key (nur Cloud)"
+        }
+      },
+      "agent_1_model": {
+        "title": "Cortex \u2013 Agent 1 (Modell)",
+        "description": "{status}",
+        "data": {
+          "model": "Modell",
+          "system_prompt": "System-Prompt (leer = Standard)",
+          "add_more": "Weiteren Agent hinzuf\u00fcgen"
+        }
+      },
+      "agent_2_setup": {
+        "title": "Cortex \u2013 Agent 2 (Verbindung)",
+        "description": "Konfiguriere den zweiten Agent. Verschiedene Agents diskutieren und finden gemeinsam einen Konsens.",
+        "data": {
+          "role": "Rolle",
+          "provider": "Provider",
+          "url": "URL / Host",
+          "api_key": "API-Key"
+        }
+      },
+      "agent_2_model": {
+        "title": "Cortex \u2013 Agent 2 (Modell)",
+        "description": "{status}",
+        "data": {
+          "model": "Modell",
+          "system_prompt": "System-Prompt",
+          "add_more": "Dritten Agent hinzuf\u00fcgen"
+        }
+      },
+      "agent_3_setup": {
+        "title": "Cortex \u2013 Agent 3 (Verbindung)",
+        "description": "Konfiguriere den dritten Agent.",
+        "data": {
+          "role": "Rolle",
+          "provider": "Provider",
+          "url": "URL / Host",
+          "api_key": "API-Key"
+        }
+      },
+      "agent_3_model": {
+        "title": "Cortex \u2013 Agent 3 (Modell)",
+        "description": "{status}",
+        "data": {
+          "model": "Modell",
+          "system_prompt": "System-Prompt",
+          "add_more": "Coordinator-Agent hinzuf\u00fcgen"
+        }
+      },
+      "agent_4_setup": {
+        "title": "Cortex \u2013 Agent 4 / Coordinator (Verbindung)",
+        "description": "Der Coordinator sieht alle Vorschl\u00e4ge der anderen Agents und trifft per LLM die finale Entscheidung.",
+        "data": {
+          "role": "Rolle",
+          "provider": "Provider",
+          "url": "URL / Host",
+          "api_key": "API-Key"
+        }
+      },
+      "agent_4_model": {
+        "title": "Cortex \u2013 Agent 4 / Coordinator (Modell)",
+        "description": "{status}",
+        "data": {
+          "model": "Modell",
+          "system_prompt": "System-Prompt"
         }
       }
+    },
+    "error": {
+      "ollama_unreachable": "Ollama nicht erreichbar. Pr\u00fcfe ob Ollama l\u00e4uft und die URL stimmt."
     }
   }
 }

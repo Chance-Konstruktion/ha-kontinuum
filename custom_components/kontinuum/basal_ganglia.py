@@ -117,19 +117,21 @@ class BasalGanglia:
         Sortiert Aktionskandidaten nach Basalganglien-Priorität.
 
         Args:
-            candidates: [(token_id, prob, conf, source), ...]
+            candidates: [(token_id, prob, conf, source, n_obs), ...]
             bucket: Aktueller Kontext-Bucket
 
         Returns:
             Sortierte Liste mit zusätzlichem priority-Score.
         """
         ranked = []
-        for token_id, prob, conf, source in candidates:
+        for candidate in candidates:
+            token_id, prob, conf, source = candidate[:4]
+            n_obs = candidate[4] if len(candidate) > 4 else 0
             priority = self.get_action_priority(token_id, bucket)
-            ranked.append((token_id, prob, conf, source, priority))
+            ranked.append((token_id, prob, conf, source, n_obs, priority))
 
         # Sortiere: Höchste Priorität zuerst (Go-Pathway dominiert)
-        ranked.sort(key=lambda x: x[4], reverse=True)
+        ranked.sort(key=lambda x: x[5], reverse=True)
         return ranked
 
     # ── Dopamin-Signal: Reward Processing ──────────────────────

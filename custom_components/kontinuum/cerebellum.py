@@ -30,7 +30,7 @@ class CerebellumRule:
         self.target = target
         self.confidence = confidence
         self.avg_delay = avg_delay
-        self.ngram_order = ngram_order  # 1, 2, oder 3
+        self.ngram_order = ngram_order  # 1, 2, 3 oder 4
         self.trigger_sequence = trigger_sequence or (trigger,)  # Volle Sequenz
         self.successes = 0
         self.failures = 0
@@ -49,11 +49,11 @@ class Cerebellum:
 
     # v0.13.0: Confidence-Schwellen pro N-Gram Ordnung
     # Höhere N-Grams sind kontextreicher → niedrigere Schwelle nötig
-    NGRAM_CONF_THRESHOLDS = {1: None, 2: 0.60, 3: 0.45}  # None = self.MIN_CONFIDENCE
+    NGRAM_CONF_THRESHOLDS = {1: None, 2: 0.60, 3: 0.45, 4: 0.35}  # None = self.MIN_CONFIDENCE
 
     def __init__(self):
         self.rules = {}  # "trigger_target" → CerebellumRule
-        self._recent_buffer = deque(maxlen=10)  # Letzte Token für Sequenz-Check
+        self._recent_buffer = deque(maxlen=15)  # Letzte Token für Sequenz-Check
 
     def compile_rules(self, hippocampus):
         """
@@ -69,7 +69,7 @@ class Cerebellum:
         for bucket in hippocampus.transitions:
             for ngram, targets in hippocampus.transitions[bucket].items():
                 n = len(ngram)
-                if n not in (1, 2, 3):
+                if n not in (1, 2, 3, 4):
                     continue
 
                 # Letztes Token der Sequenz als Trigger
@@ -130,12 +130,12 @@ class Cerebellum:
             new_rules[key] = rule
 
         self.rules = new_rules
-        n_by_order = {1: 0, 2: 0, 3: 0}
+        n_by_order = {1: 0, 2: 0, 3: 0, 4: 0}
         for r in self.rules.values():
             n_by_order[r.ngram_order] = n_by_order.get(r.ngram_order, 0) + 1
         _LOGGER.info(
-            "Cerebellum: %d Routinen kompiliert (1-gram=%d, 2-gram=%d, 3-gram=%d)",
-            len(self.rules), n_by_order[1], n_by_order[2], n_by_order[3],
+            "Cerebellum: %d Routinen kompiliert (1=%d, 2=%d, 3=%d, 4=%d)",
+            len(self.rules), n_by_order[1], n_by_order[2], n_by_order[3], n_by_order[4],
         )
     
     def check(self, token_id: int):
@@ -216,7 +216,7 @@ class Cerebellum:
     def stats(self) -> dict:
         total_fires = sum(r.successes + r.failures for r in self.rules.values())
         total_success = sum(r.successes for r in self.rules.values())
-        n_by_order = {1: 0, 2: 0, 3: 0}
+        n_by_order = {1: 0, 2: 0, 3: 0, 4: 0}
         for r in self.rules.values():
             n_by_order[r.ngram_order] = n_by_order.get(r.ngram_order, 0) + 1
         return {
@@ -224,6 +224,7 @@ class Cerebellum:
             "rules_1gram": n_by_order[1],
             "rules_2gram": n_by_order[2],
             "rules_3gram": n_by_order[3],
+            "rules_4gram": n_by_order[4],
             "total_fires": total_fires,
             "success_rate": f"{total_success / max(1, total_fires):.0%}",
             "top_rules": [

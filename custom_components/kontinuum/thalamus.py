@@ -92,7 +92,8 @@ SENSOR_KEYWORDS = {
     "voltage": "voltage", "spannung": "voltage",
     "illuminance": "illuminance", "lux": "illuminance", "hell": "illuminance",
     "pressure": "pressure", "druck": "pressure",
-    "solar": "solar", "pv": "solar", "photovoltaic": "solar",
+    # Wichtig: "solar" und "pv_" mit Unterstrich um false-matches auf "pve" zu vermeiden
+    "solar": "solar", "pv_": "solar", "photovoltaic": "solar",
     "grid": "grid", "netz": "grid",
     "co2": "co2", "carbon": "co2",
     "cpu": "cpu", "processor": "cpu",
@@ -135,7 +136,57 @@ class Thalamus:
         re.compile(r"_linkquality$"),
         re.compile(r"_signal_strength$"),
         re.compile(r"_last_seen$"),
+        # HACS pre-release switches (keine Verhaltensrelevanz)
+        re.compile(r"_pre_release$"),
+        re.compile(r"^switch\.\w+_pre_release"),
+        # Batteriezellen-Spannungen (zu detailliert, Token-Explosion)
+        re.compile(r"_cell_voltage[s]?_\d+"),
+        re.compile(r"_cell_\d+"),
+        # PVE/NAS Netzwerkschnittstellen (high-cardinality, wertlos)
+        re.compile(r"^sensor\.pve.*_net(in|out|_in|_out)"),
+        re.compile(r"^sensor\.pve.*_(netin|netout|read|write)"),
+        re.compile(r"_netin$"), re.compile(r"_netout$"),
+        # Uptime / Stunden-Zähler (monoton steigend, erzeugen Tausende Tokens)
+        re.compile(r"_uptime$"), re.compile(r"_runtime$"),
+        re.compile(r"_operating_hours$"), re.compile(r"_run_time$"),
+        # Disk-I/O bytes (high-cardinality)
+        re.compile(r"_disk_(read|write)$"),
+        # ── System-Entities: HA-Infrastruktur, kein menschliches Verhalten ──
+        # Home Assistant Core / Supervisor / Hassio
+        re.compile(r"^sensor\.home_assistant_"),
+        re.compile(r"^sensor\.hassio_"),
+        re.compile(r"^binary_sensor\.hassio_"),
+        re.compile(r"^sensor\.supervisor_"),
+        re.compile(r"^binary_sensor\.supervisor_"),
+        # Addon-States (running/not running – kein Verhaltens-Signal)
+        re.compile(r"^binary_sensor\.\w+_running$"),
+        # CPU/Memory-Metriken von Addons und Containern
+        re.compile(r"_cpu_prozent$"),
+        re.compile(r"_cpu_percent$"),
+        re.compile(r"_memory_percent$"),
+        re.compile(r"_speicher_prozent$"),
+        # ── Server / NAS / Proxmox – kein menschliches Verhalten ──
+        re.compile(r"^sensor\.pve_"),         # Proxmox VE
+        re.compile(r"^sensor\.proxmox_"),
+        re.compile(r"^binary_sensor\.pve_"),
+        re.compile(r"^sensor\.nas_"),          # NAS (Synology, TrueNAS, etc.)
+        re.compile(r"^sensor\.synology_"),
+        re.compile(r"^sensor\.truenas_"),
+        re.compile(r"^sensor\.qnap_"),
+        re.compile(r"^sensor\.unraid_"),
+        re.compile(r"^sensor\.docker_"),       # Docker Container
+        re.compile(r"^sensor\.portainer_"),
+        re.compile(r"^sensor\.server_"),        # Generic server sensors
+        re.compile(r"^sensor\.pi_hole_"),       # Pi-hole
+        re.compile(r"^sensor\.adguard_"),       # AdGuard
+        re.compile(r"^sensor\.speedtest_"),     # Speedtest (kein Verhalten)
+        re.compile(r"^sensor\.unifi_"),         # UniFi Netzwerk-Infrastruktur
+        re.compile(r"^sensor\.fritzbox_"),      # FritzBox Router-Metriken
+        re.compile(r"^sensor\.glances_"),       # Glances System-Monitor
     ]
+
+    # Vokabular-Begrenzung (v0.14.2)
+    MAX_VOCAB_SIZE = 5000
     
     def __init__(self):
         # Entity → Raum/Semantik
@@ -158,6 +209,13 @@ class Thalamus:
         self._unassigned_entities = {}
         self._unassigned_event_counts = {}  # entity_id → event count
 
+        # ignore_kontinuum Label-Filter (v0.15.0)
+        self._ignored_entities = set()  # entity_ids mit ignore_kontinuum Label
+        self._included_entities = set()  # entity_ids mit kontinuum Label (Opt-in)
+
+        # Track Mode (v0.15.0): "standard" | "labeled" | "auto"
+        self.track_mode = "standard"
+
         # Stats
         self.stats = {
             "entities_registered": 0,
@@ -170,25 +228,135 @@ class Thalamus:
         self.custom_semantic_rules = []
         self.custom_thresholds = {}
     
+    def should_track(self, entity_id: str, domain: str = "",
+                     labels: list = None) -> bool:
+        """
+        Mehrstufige Filter-Pipeline (v0.15.0):
+        1. Labels haben IMMER höchste Priorität
+           - ignore_kontinuum → IMMER raus
+           - kontinuum → IMMER rein
+        2. Track-Mode entscheidet über den Rest
+           - standard: alles außer Hard-Filter
+           - labeled: NUR mit kontinuum-Label
+           - auto: Heuristik (nur verhaltensrelevante Domains)
+        3. Hard-Filter (IGNORED_DOMAINS, IGNORED_PATTERNS) greifen immer
+        """
+        label_names = [l.lower().strip() for l in (labels or [])]
+
+        # ── Stufe 1: Label-Overrides (höchste Priorität) ──────
+        if any(n in ("ignore_kontinuum", "ignore kontinuum") for n in label_names):
+            self._ignored_entities.add(entity_id)
+            self.stats["entities_ignored"] = len(self._ignored_entities)
+            return False
+
+        has_include_label = any(n == "kontinuum" for n in label_names)
+        if has_include_label:
+            self._included_entities.add(entity_id)
+
+        # ── Stufe 2: Hard-Filter (System-Level, immer aktiv) ──
+        if not domain:
+            domain = entity_id.split(".")[0] if "." in entity_id else ""
+
+        if domain in self.IGNORED_DOMAINS:
+            # kontinuum-Label überschreibt sogar Hard-Filter
+            if has_include_label:
+                return True
+            return False
+
+        for pat in self.IGNORED_PATTERNS:
+            if pat.search(entity_id):
+                if has_include_label:
+                    return True
+                return False
+
+        # ── Stufe 3: Track-Mode ───────────────────────────────
+        if self.track_mode == "labeled":
+            # Nur Entities mit kontinuum-Label
+            return has_include_label
+
+        if self.track_mode == "auto":
+            # Heuristik: nur verhaltensrelevante Domains
+            if has_include_label:
+                return True
+            return self._heuristic_filter(entity_id, domain)
+
+        # standard: alles durchlassen
+        return True
+
+    # ── Heuristik für Auto-Modus ──────────────────────────────
+
+    # Domains die menschliches Verhalten abbilden
+    BEHAVIOR_DOMAINS = {
+        "light", "switch", "binary_sensor", "climate", "cover",
+        "fan", "media_player", "lock", "vacuum", "alarm_control_panel",
+        "person", "device_tracker", "sensor",
+    }
+
+    # Sensor-Patterns die trotzdem relevant sind (im Auto-Modus)
+    RELEVANT_SENSOR_PATTERNS = [
+        re.compile(r"temperature|temp"),
+        re.compile(r"humidity|feucht"),
+        re.compile(r"illumin|lux|helligkeit"),
+        re.compile(r"power|energy|energie|watt|kwh"),
+        re.compile(r"presence|pr[äa]senz|occupancy|besetzt"),
+        re.compile(r"motion|bewegung"),
+        re.compile(r"door|t[üu]r|window|fenster"),
+        re.compile(r"contact|kontakt"),
+        re.compile(r"co2|voc|air_quality|luft"),
+    ]
+
+    # Sensor-Patterns die im Auto-Modus rausfliegen
+    NOISE_SENSOR_PATTERNS = [
+        re.compile(r"battery|batterie|akku"),
+        re.compile(r"signal|rssi|linkquality"),
+        re.compile(r"update|firmware|version"),
+        re.compile(r"uptime|laufzeit"),
+        re.compile(r"ip_address|mac_address"),
+        re.compile(r"last_seen|zuletzt_gesehen"),
+    ]
+
+    def _heuristic_filter(self, entity_id: str, domain: str) -> bool:
+        """Auto-Modus: Nur verhaltensrelevante Entities durchlassen."""
+        if domain not in self.BEHAVIOR_DOMAINS:
+            return False
+
+        # Nicht-Sensor-Domains sind fast immer relevant
+        if domain != "sensor":
+            return True
+
+        # Sensoren: Relevanz-Check per Name-Pattern
+        eid_lower = entity_id.lower()
+
+        # Noise rausfiltern
+        for pat in self.NOISE_SENSOR_PATTERNS:
+            if pat.search(eid_lower):
+                return False
+
+        # Relevante Sensoren durchlassen
+        for pat in self.RELEVANT_SENSOR_PATTERNS:
+            if pat.search(eid_lower):
+                return True
+
+        # Unbekannte Sensoren: im Zweifel raus (lieber präzise als laut)
+        return False
+
     def register_entity(self, entity_id: str, ha_area: str = "",
                         device_class: str = "", domain: str = "",
-                        friendly_name: str = "", unit: str = ""):
+                        friendly_name: str = "", unit: str = "",
+                        labels: list = None):
         """Registriert eine Entity mit Raum und Semantik."""
         if not entity_id:
             return
-        
+
         if not domain:
             domain = entity_id.split(".")[0] if "." in entity_id else ""
-        
-        if domain in self.IGNORED_DOMAINS:
+
+        # Filter-Pipeline (v0.15.0)
+        if not self.should_track(entity_id, domain, labels):
             return
-        
-        for pat in self.IGNORED_PATTERNS:
-            if pat.search(entity_id):
-                return
-        
+
         # Raum ermitteln
-        room = self._resolve_room(entity_id, ha_area, friendly_name)
+        room = self._resolve_room(entity_id, ha_area, friendly_name, labels)
         
         # Semantik ermitteln
         semantic = self._resolve_semantic(entity_id, domain, device_class,
@@ -197,23 +365,20 @@ class Thalamus:
         if not semantic:
             return
 
-        # v0.13.0: Entities ohne Raum → area_unknown statt verwerfen
-        # Vorher: 12.5M Events komplett gefiltert. Jetzt: Weiterleiten
-        # an area_unknown damit das System daraus lernen kann.
+        # v0.14.3: Entities ohne Raum → nur tracken, KEINE Tokens erzeugen.
+        # area_unknown erzeugte 18 Tokens / 51% Transitions → reiner Noise.
         if room == "unknown":
             self.stats["entities_filtered"] = self.stats.get("entities_filtered", 0) + 1
-            # v0.12.1: Unassigned tracken für Vorschläge
             self._unassigned_entities[entity_id] = {
                 "semantic": semantic,
                 "name": friendly_name or entity_id,
                 "domain": domain,
             }
-            # Vorschlag-basierte Soft-Zuweisung probieren
             suggested = self.suggest_room(entity_id)
             if suggested:
                 room = suggested
             else:
-                room = "area_unknown"
+                return  # Kein Raum → nicht registrieren, nur tracken
 
         self.entity_room[entity_id] = room
         self.entity_semantic[entity_id] = semantic
@@ -224,7 +389,8 @@ class Thalamus:
 
         self.stats["entities_registered"] = len(self.entity_semantic)
     
-    def _resolve_room(self, entity_id: str, ha_area: str, friendly_name: str) -> str:
+    def _resolve_room(self, entity_id: str, ha_area: str, friendly_name: str,
+                       labels: list = None) -> str:
         """Ermittelt den Raum einer Entity."""
         # 1. HA Area (beste Quelle)
         if ha_area:
@@ -232,20 +398,33 @@ class Thalamus:
             for pattern, room in HA_AREA_MAP.items():
                 if pattern == area_lower or pattern in area_lower:
                     return room
-        
+            # Area vorhanden aber nicht in Map → direkt als Raum nutzen
+            # (slugified: Leerzeichen → _, Sonderzeichen entfernt)
+            slug = re.sub(r"[^a-z0-9_]", "", area_lower.replace(" ", "_"))
+            if slug:
+                return slug
+
+        # 1b. Labels als Raum-Hinweis (v0.14.0)
+        if labels:
+            for label in labels:
+                label_lower = label.lower().strip()
+                for pattern, room in HA_AREA_MAP.items():
+                    if pattern == label_lower or pattern in label_lower:
+                        return room
+
         # 2. Friendly Name
         if friendly_name:
             name_lower = friendly_name.lower()
             for hint, room in NAME_ROOM_HINTS.items():
                 if hint in name_lower:
                     return room
-        
+
         # 3. Entity ID
         eid_lower = entity_id.lower()
         for hint, room in NAME_ROOM_HINTS.items():
             if hint in eid_lower:
                 return room
-        
+
         return "unknown"
     
     def _resolve_semantic(self, entity_id: str, domain: str,
@@ -393,9 +572,13 @@ class Thalamus:
         Verarbeitet einen State-Change und erzeugt ein Token-Signal.
         Returns None wenn gefiltert, sonst dict mit Signal-Info.
         """
+        # ignore_kontinuum Label → sofort raus (v0.15.0)
+        if entity_id in self._ignored_entities:
+            return None
+
         if entity_id not in self.entity_semantic:
             return None
-        
+
         semantic = self.entity_semantic[entity_id]
         room = self.entity_room.get(entity_id, "unknown")
 
@@ -420,10 +603,19 @@ class Thalamus:
         
         # Token-ID vergeben
         if token not in self.token_to_id:
+            # Vokabular-Limit prüfen (v0.14.2)
+            if len(self.token_to_id) >= self.MAX_VOCAB_SIZE:
+                # Älteste 10% Tokens entfernen (niedrigste IDs = selten genutzt)
+                cutoff = self._next_id - int(self.MAX_VOCAB_SIZE * 0.9)
+                stale = [t for t, i in self.token_to_id.items() if i < cutoff]
+                for t in stale:
+                    old_id = self.token_to_id.pop(t)
+                    self.id_to_token.pop(old_id, None)
+                _LOGGER.debug("Vokabular beschnitten: %d Tokens entfernt", len(stale))
             self.token_to_id[token] = self._next_id
             self.id_to_token[self._next_id] = token
             self._next_id += 1
-        
+
         token_id = self.token_to_id[token]
         
         self.stats["events_processed"] += 1
@@ -451,7 +643,7 @@ class Thalamus:
         # On/Off Domains
         if semantic in ("light", "switch", "fan", "automation",
                         "motion", "door", "presence", "binary",
-                        "gaming", "bed_presence", "screen", "network", "wallbox"):
+                        "gaming", "bed_presence", "screen", "wallbox"):
             if state_lower in ("on", "true", "open", "detected", "home"):
                 return "on"
             if state_lower in ("off", "false", "closed", "clear", "not_home"):
@@ -494,9 +686,16 @@ class Thalamus:
         if semantic in ("temperature", "humidity", "power", "energy",
                         "battery", "voltage", "illuminance", "pressure",
                         "solar", "grid", "co2", "cpu", "gpu", "tpms",
-                        "heartrate", "steps"):
+                        "heartrate", "steps", "network", "sleep"):
             return self._bucket_value(semantic, state)
         
+        # Float-Strings abfangen: rohe Zahlen als Fallback bucketen (verhindert Token-Explosion)
+        try:
+            float(state_lower)
+            return self._bucket_value("_generic", state_lower)
+        except (ValueError, TypeError):
+            pass
+
         return state_lower if len(state_lower) < 30 else None
     
     def _bucket_value(self, semantic: str, state: str) -> str:
@@ -620,8 +819,40 @@ class Thalamus:
             if val < self._threshold("steps", "high", 7000):
                 return "active"
             return "high"
-        
-        return "medium"
+
+        elif semantic == "network":
+            # MB/s oder Bytes/s – generisch gebucketed
+            if val < 1:
+                return "idle"
+            elif val < 10:
+                return "low"
+            elif val < 100:
+                return "medium"
+            else:
+                return "high"
+
+        elif semantic == "sleep":
+            # Schlafphasen / Tiefe
+            if val <= 0:
+                return "awake"
+            elif val < 30:
+                return "light"
+            elif val < 70:
+                return "deep"
+            else:
+                return "rem"
+
+        # Fallback: alles andere auf 5 Buckets (verhindert Float-Token-Explosion)
+        if val < 20:
+            return "very_low"
+        elif val < 40:
+            return "low"
+        elif val < 60:
+            return "medium"
+        elif val < 80:
+            return "high"
+        else:
+            return "very_high"
 
     def _threshold(self, semantic: str, level: str, default: float) -> float:
         sem_cfg = self.custom_thresholds.get(semantic, {})
@@ -636,8 +867,12 @@ class Thalamus:
         Format:
           {"semantic_rules": [...], "thresholds": {...}}
         """
+        p = Path(path)
+        if not p.exists():
+            _LOGGER.debug("Thalamus: Kein Custom-Profil (%s) – übersprungen", path)
+            return
         try:
-            content = Path(path).read_text(encoding="utf-8")
+            content = p.read_text(encoding="utf-8")
             import json
             data = json.loads(content)
         except (OSError, ValueError) as err:
@@ -649,7 +884,21 @@ class Thalamus:
     def decode_token(self, token_id: int) -> str:
         """Token-ID → Token-String."""
         return self.id_to_token.get(token_id, f"?{token_id}")
-    
+
+    def resolve_entities(self, token: str) -> list:
+        """
+        Reverse-Lookup: Token-String → passende Entity-IDs.
+        z.B. "bedroom.light.on" → ["light.wiz_schlafzimmer_lampe", ...]
+        """
+        parts = token.split(".")
+        if len(parts) != 3:
+            return []
+        room, semantic, state = parts
+        return [
+            eid for eid, sem in self.entity_semantic.items()
+            if sem == semantic and self.entity_room.get(eid) == room
+        ]
+
     def update_sun(self, elevation: float, is_daylight: bool):
         """Aktualisiert Sonnenstand aus sun.sun Entity (v0.12.0)."""
         self._sun_elevation = elevation

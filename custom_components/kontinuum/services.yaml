@@ -59,3 +59,132 @@ set_scene:
 status:
   name: Status anzeigen
   description: Zeigt detaillierten KONTINUUM-Status als Notification.
+
+export_brain:
+  name: Brain exportieren
+  description: >
+    Exportiert die komprimierte brain.json.gz als lesbare brain_export.json
+    nach /config/. Für externe Analyse mit DeepSeek oder anderen Tools.
+
+activate:
+  name: Semantik aktivieren
+  description: >
+    Schaltet autonome Ausführung für einen Gerätetyp frei.
+    Schrittweise: Erst "light", dann "switch", etc.
+    KONTINUUM steuert dann diese Geräte selbständig.
+  fields:
+    semantic:
+      name: Gerätetyp
+      description: Der zu aktivierende semantische Typ
+      required: true
+      example: light
+      selector:
+        select:
+          options:
+            - light
+            - switch
+            - fan
+            - cover
+            - climate
+            - media
+            - automation
+            - vacuum
+
+deactivate:
+  name: Semantik deaktivieren
+  description: >
+    Deaktiviert autonome Ausführung für einen Gerätetyp.
+    Mit semantic: "all" werden alle Typen deaktiviert.
+  fields:
+    semantic:
+      name: Gerätetyp
+      description: Der zu deaktivierende Typ (oder "all" für alle)
+      required: true
+      example: light
+      selector:
+        text:
+
+configure_agent:
+  name: Cortex Agent konfigurieren
+  description: >
+    Konfiguriert einen LLM-Agent für den KONTINUUM Cortex.
+    Bis zu 4 Agents möglich (Slots 1-4). Slot 4 ist ideal für den Coordinator.
+    Provider: ollama, openai, claude, gemini, grok.
+  fields:
+    slot:
+      name: Slot
+      description: Agent-Slot (1-4)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 4
+    name:
+      name: Name
+      description: Rolle des Agents (comfort, energy, safety, oder frei)
+      required: true
+      example: comfort
+      selector:
+        text:
+    provider:
+      name: Provider
+      description: LLM-Provider
+      required: true
+      example: ollama
+      selector:
+        select:
+          options:
+            - ollama
+            - openai
+            - claude
+            - gemini
+            - grok
+    model:
+      name: Modell
+      description: Modellname (z.B. llama3.2, gpt-4o-mini, claude-sonnet-4-20250514)
+      required: false
+      example: llama3.2
+      selector:
+        text:
+    url:
+      name: URL
+      description: API-URL (bei Ollama z.B. http://192.168.1.100:11434)
+      required: false
+      example: "http://localhost:11434"
+      selector:
+        text:
+    api_key:
+      name: API Key
+      description: API-Schlüssel (nur für Cloud-Provider)
+      required: false
+      selector:
+        text:
+    prompt:
+      name: System-Prompt
+      description: Eigener System-Prompt (leer = Standard-Prompt für die Rolle)
+      required: false
+      selector:
+        text:
+          multiline: true
+
+cortex_consult:
+  name: Cortex befragen
+  description: >
+    Löst manuell eine Beratung aller konfigurierten Cortex-Agents aus.
+    Die Agents analysieren den aktuellen KONTINUUM-Zustand und geben
+    Vorschläge als Notification aus.
+
+remove_agent:
+  name: Cortex Agent entfernen
+  description: Entfernt einen Cortex-Agent aus einem Slot.
+  fields:
+    slot:
+      name: Slot
+      description: Agent-Slot zum Entfernen (1-4)
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 4

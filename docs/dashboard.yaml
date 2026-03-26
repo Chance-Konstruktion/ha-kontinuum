@@ -1,0 +1,204 @@
+title: 🧠 KONTINUUM
+views:
+  - title: Übersicht
+    path: kontinuum
+    icon: mdi:brain
+    badges: []
+    cards:
+
+      # ── KOPFZEILE: Status + Modus ─────────────────────────────────────
+      - type: horizontal-stack
+        cards:
+          - type: entity
+            entity: sensor.kontinuum_status
+            name: Status
+            icon: mdi:brain
+          - type: entity
+            entity: sensor.kontinuum_mode
+            name: Modus
+            icon: mdi:home-automation
+          - type: entity
+            entity: sensor.kontinuum_room
+            name: Raum
+            icon: mdi:map-marker
+          - type: entity
+            entity: sensor.kontinuum_persons_home
+            name: Personen
+            icon: mdi:account-group
+
+      # ── LERNSTATUS ────────────────────────────────────────────────────
+      - type: horizontal-stack
+        cards:
+          - type: entity
+            entity: sensor.kontinuum_events
+            name: Events
+            icon: mdi:counter
+          - type: entity
+            entity: sensor.kontinuum_accuracy
+            name: Genauigkeit
+            icon: mdi:target
+          - type: entity
+            entity: sensor.kontinuum_cerebellum
+            name: Routinen
+            icon: mdi:cog-transfer
+          - type: entity
+            entity: sensor.kontinuum_basal_ganglia
+            name: Habits
+            icon: mdi:arrow-decision
+
+      # ── GEHIRN-AKTIVITÄT ─────────────────────────────────────────────
+      - type: custom:mushroom-chips-card
+        chips:
+          - type: entity
+            entity: sensor.kontinuum_status
+        title: 🧠 Gehirn-Aktivität
+
+      - type: grid
+        columns: 3
+        square: false
+        cards:
+          - type: gauge
+            entity: sensor.kontinuum_thalamus_activity
+            name: Thalamus
+            min: 0
+            max: 1
+            needle: true
+            severity:
+              green: 0.5
+              yellow: 0.2
+              red: 0
+          - type: gauge
+            entity: sensor.kontinuum_hippocampus_activity
+            name: Hippocampus
+            min: 0
+            max: 1
+            needle: true
+            severity:
+              green: 0.5
+              yellow: 0.2
+              red: 0
+          - type: gauge
+            entity: sensor.kontinuum_hypothalamus_activity
+            name: Hypothalamus
+            min: 0
+            max: 1
+            needle: true
+            severity:
+              green: 0.5
+              yellow: 0.2
+              red: 0
+          - type: gauge
+            entity: sensor.kontinuum_insula_activity
+            name: Insula
+            min: 0
+            max: 1
+            needle: true
+            severity:
+              green: 0.5
+              yellow: 0.2
+              red: 0
+          - type: gauge
+            entity: sensor.kontinuum_amygdala_activity
+            name: Amygdala
+            min: 0
+            max: 1
+            needle: true
+            severity:
+              green: 0
+              yellow: 0.3
+              red: 0.7
+          - type: gauge
+            entity: sensor.kontinuum_cerebellum_activity
+            name: Cerebellum
+            min: 0
+            max: 1
+            needle: true
+            severity:
+              green: 0.5
+              yellow: 0.2
+              red: 0
+          - type: gauge
+            entity: sensor.kontinuum_spatial_activity
+            name: Spatial Cortex
+            min: 0
+            max: 1
+            needle: true
+            severity:
+              green: 0.5
+              yellow: 0.2
+              red: 0
+          - type: gauge
+            entity: sensor.kontinuum_prefrontal_activity
+            name: Präfrontaler Kortex
+            min: 0
+            max: 1
+            needle: true
+            severity:
+              green: 0.5
+              yellow: 0.2
+              red: 0
+          - type: gauge
+            entity: sensor.kontinuum_basalganglia_activity
+            name: Basalganglien
+            min: 0
+            max: 1
+            needle: true
+            severity:
+              green: 0.5
+              yellow: 0.2
+              red: 0
+
+      # ── VORHERSAGE & STANDORT ─────────────────────────────────────────
+      - type: horizontal-stack
+        cards:
+          - type: entity
+            entity: sensor.kontinuum_prediction
+            name: Vorhersage
+            icon: mdi:crystal-ball
+          - type: entity
+            entity: sensor.kontinuum_location
+            name: Standort
+            icon: mdi:crosshairs-gps
+          - type: entity
+            entity: sensor.kontinuum_last_event
+            name: Letztes Event
+            icon: mdi:lightning-bolt
+
+      # ── ENERGIE ──────────────────────────────────────────────────────
+      - type: entity
+        entity: sensor.kontinuum_energy
+        name: Energie
+        icon: mdi:battery
+
+      # ── BASALGANGLIEN DETAILS ─────────────────────────────────────────
+      - type: entities
+        title: Basalganglien – Gewohnheiten
+        entities:
+          - entity: sensor.kontinuum_basal_ganglia
+            name: Habits gesamt
+          - type: attribute
+            entity: sensor.kontinuum_basal_ganglia
+            attribute: go_actions
+            name: Go-Aktionen
+            icon: mdi:check-circle
+          - type: attribute
+            entity: sensor.kontinuum_basal_ganglia
+            attribute: nogo_actions
+            name: NoGo-Aktionen
+            icon: mdi:cancel
+          - type: attribute
+            entity: sensor.kontinuum_basal_ganglia
+            attribute: dopamine_signal
+            name: Dopamin-Signal
+            icon: mdi:chemical-weapon
+          - type: attribute
+            entity: sensor.kontinuum_basal_ganglia
+            attribute: q_entries
+            name: Q-Value Einträge
+            icon: mdi:table
+
+      # ── UNBEKANNTE ENTITIES ───────────────────────────────────────────
+      - type: entity
+        entity: sensor.kontinuum_unknown_entities
+        name: Entities ohne Raum
+        icon: mdi:help-circle-outline
