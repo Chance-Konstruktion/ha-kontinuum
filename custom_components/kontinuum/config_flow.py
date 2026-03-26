@@ -246,13 +246,23 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         current_dashboard = self.config_entry.data.get("enable_dashboard", True)
         current_cortex = self.config_entry.data.get("enable_cortex", False)
         current_home_only = self.config_entry.data.get("home_only_mode", False)
+        current_track_mode = self.config_entry.data.get("track_mode", "standard")
         preset_options = {k: v["label"] for k, v in PRESETS.items()}
+
+        track_mode_options = {
+            "standard": "Standard (all entities, opt-out)",
+            "labeled": "Labeled only (opt-in: only 'kontinuum' label)",
+            "auto": "Automatic (smart heuristic filter)",
+        }
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
                 vol.Required("preset", default=current): vol.In(
                     preset_options
+                ),
+                vol.Required("track_mode", default=current_track_mode): vol.In(
+                    track_mode_options
                 ),
                 vol.Required("enable_dashboard", default=current_dashboard): bool,
                 vol.Required("home_only_mode", default=current_home_only): bool,
@@ -531,6 +541,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         new_data = {
             **self.config_entry.data,
             "preset": preset_key,
+            "track_mode": self._data.get("track_mode", "standard"),
             "enable_dashboard": self._data.get("enable_dashboard", True),
             "home_only_mode": self._data.get("home_only_mode", False),
             "enable_cortex": self._data.get("enable_cortex", False),

@@ -24,9 +24,10 @@
     "step": {
       "init": {
         "title": "KONTINUUM Einstellungen",
-        "description": "\u00c4ndere Pers\u00f6nlichkeit und aktiviere Cortex f\u00fcr LLM-gest\u00fctzte Multi-Agent-Entscheidungen.",
+        "description": "\u00c4ndere Pers\u00f6nlichkeit, Tracking-Modus und aktiviere Cortex f\u00fcr LLM-gest\u00fctzte Multi-Agent-Entscheidungen.",
         "data": {
           "preset": "Pers\u00f6nlichkeit",
+          "track_mode": "Entity-Tracking-Modus",
           "enable_dashboard": "Dashboard aktivieren",
           "home_only_mode": "Home-Only Modus (pausiert wenn niemand zuhause)",
           "enable_cortex": "Cortex aktivieren (LLM-Agents)"

@@ -211,6 +211,10 @@ class Thalamus:
 
         # ignore_kontinuum Label-Filter (v0.15.0)
         self._ignored_entities = set()  # entity_ids mit ignore_kontinuum Label
+        self._included_entities = set()  # entity_ids mit kontinuum Label (Opt-in)
+
+        # Track Mode (v0.15.0): "standard" | "labeled" | "auto"
+        self.track_mode = "standard"
 
         # Stats
         self.stats = {
@@ -224,6 +228,118 @@ class Thalamus:
         self.custom_semantic_rules = []
         self.custom_thresholds = {}
     
+    def should_track(self, entity_id: str, domain: str = "",
+                     labels: list = None) -> bool:
+        """
+        Mehrstufige Filter-Pipeline (v0.15.0):
+        1. Labels haben IMMER höchste Priorität
+           - ignore_kontinuum → IMMER raus
+           - kontinuum → IMMER rein
+        2. Track-Mode entscheidet über den Rest
+           - standard: alles außer Hard-Filter
+           - labeled: NUR mit kontinuum-Label
+           - auto: Heuristik (nur verhaltensrelevante Domains)
+        3. Hard-Filter (IGNORED_DOMAINS, IGNORED_PATTERNS) greifen immer
+        """
+        label_names = [l.lower().strip() for l in (labels or [])]
+
+        # ── Stufe 1: Label-Overrides (höchste Priorität) ──────
+        if any(n in ("ignore_kontinuum", "ignore kontinuum") for n in label_names):
+            self._ignored_entities.add(entity_id)
+            self.stats["entities_ignored"] = len(self._ignored_entities)
+            return False
+
+        has_include_label = any(n == "kontinuum" for n in label_names)
+        if has_include_label:
+            self._included_entities.add(entity_id)
+
+        # ── Stufe 2: Hard-Filter (System-Level, immer aktiv) ──
+        if not domain:
+            domain = entity_id.split(".")[0] if "." in entity_id else ""
+
+        if domain in self.IGNORED_DOMAINS:
+            # kontinuum-Label überschreibt sogar Hard-Filter
+            if has_include_label:
+                return True
+            return False
+
+        for pat in self.IGNORED_PATTERNS:
+            if pat.search(entity_id):
+                if has_include_label:
+                    return True
+                return False
+
+        # ── Stufe 3: Track-Mode ───────────────────────────────
+        if self.track_mode == "labeled":
+            # Nur Entities mit kontinuum-Label
+            return has_include_label
+
+        if self.track_mode == "auto":
+            # Heuristik: nur verhaltensrelevante Domains
+            if has_include_label:
+                return True
+            return self._heuristic_filter(entity_id, domain)
+
+        # standard: alles durchlassen
+        return True
+
+    # ── Heuristik für Auto-Modus ──────────────────────────────
+
+    # Domains die menschliches Verhalten abbilden
+    BEHAVIOR_DOMAINS = {
+        "light", "switch", "binary_sensor", "climate", "cover",
+        "fan", "media_player", "lock", "vacuum", "alarm_control_panel",
+        "person", "device_tracker", "sensor",
+    }
+
+    # Sensor-Patterns die trotzdem relevant sind (im Auto-Modus)
+    RELEVANT_SENSOR_PATTERNS = [
+        re.compile(r"temperature|temp"),
+        re.compile(r"humidity|feucht"),
+        re.compile(r"illumin|lux|helligkeit"),
+        re.compile(r"power|energy|energie|watt|kwh"),
+        re.compile(r"presence|pr[äa]senz|occupancy|besetzt"),
+        re.compile(r"motion|bewegung"),
+        re.compile(r"door|t[üu]r|window|fenster"),
+        re.compile(r"contact|kontakt"),
+        re.compile(r"co2|voc|air_quality|luft"),
+    ]
+
+    # Sensor-Patterns die im Auto-Modus rausfliegen
+    NOISE_SENSOR_PATTERNS = [
+        re.compile(r"battery|batterie|akku"),
+        re.compile(r"signal|rssi|linkquality"),
+        re.compile(r"update|firmware|version"),
+        re.compile(r"uptime|laufzeit"),
+        re.compile(r"ip_address|mac_address"),
+        re.compile(r"last_seen|zuletzt_gesehen"),
+    ]
+
+    def _heuristic_filter(self, entity_id: str, domain: str) -> bool:
+        """Auto-Modus: Nur verhaltensrelevante Entities durchlassen."""
+        if domain not in self.BEHAVIOR_DOMAINS:
+            return False
+
+        # Nicht-Sensor-Domains sind fast immer relevant
+        if domain != "sensor":
+            return True
+
+        # Sensoren: Relevanz-Check per Name-Pattern
+        eid_lower = entity_id.lower()
+
+        # Noise rausfiltern
+        for pat in self.NOISE_SENSOR_PATTERNS:
+            if pat.search(eid_lower):
+                return False
+
+        # Relevante Sensoren durchlassen
+        for pat in self.RELEVANT_SENSOR_PATTERNS:
+            if pat.search(eid_lower):
+                return True
+
+        # Unbekannte Sensoren: im Zweifel raus (lieber präzise als laut)
+        return False
+
     def register_entity(self, entity_id: str, ha_area: str = "",
                         device_class: str = "", domain: str = "",
                         friendly_name: str = "", unit: str = "",
@@ -232,23 +348,12 @@ class Thalamus:
         if not entity_id:
             return
 
-        # ignore_kontinuum Label → komplett ausschließen (v0.15.0)
-        if labels:
-            for label in labels:
-                if label.lower().strip() in ("ignore_kontinuum", "ignore kontinuum"):
-                    self._ignored_entities.add(entity_id)
-                    self.stats["entities_ignored"] = len(self._ignored_entities)
-                    return
-
         if not domain:
             domain = entity_id.split(".")[0] if "." in entity_id else ""
 
-        if domain in self.IGNORED_DOMAINS:
+        # Filter-Pipeline (v0.15.0)
+        if not self.should_track(entity_id, domain, labels):
             return
-
-        for pat in self.IGNORED_PATTERNS:
-            if pat.search(entity_id):
-                return
 
         # Raum ermitteln
         room = self._resolve_room(entity_id, ha_area, friendly_name, labels)
