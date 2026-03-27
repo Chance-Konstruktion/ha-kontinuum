@@ -4,11 +4,11 @@
 ║  Ein-Klick-Installation über Integrationen → Hinzufügen        ║
 ║  Kein configuration.yaml nötig.                                 ║
 ║                                                                  ║
-║  Options Flow:                                                   ║
-║  - Persönlichkeit ändern                                        ║
-║  - Cortex aktivieren/deaktivieren                               ║
-║  - Bis zu 3 LLM-Agents konfigurieren (Provider/Modell/Key)     ║
-║  - Ollama: Automatische URL-Normalisierung + Modell-Discovery   ║
+║  Options Flow (v0.15.0 – Menu-basiert):                         ║
+║  - Menu: Allgemein | Cortex Agents | Fertig                     ║
+║  - Allgemein: Preset, Track-Mode, Dashboard, Home-Only          ║
+║  - Cortex: Enable + Agents verwalten (ohne Datenverlust)        ║
+║  - Agents bleiben erhalten bis explizit gelöscht                ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -102,37 +102,23 @@ def _normalize_url(url: str, provider: str = "ollama") -> str:
 
 
 async def _fetch_ollama_models(url: str, timeout: int = 5) -> list[str]:
-    """
-    Fragt Ollama nach verfügbaren Modellen ab.
-
-    Returns: Sortierte Liste von Modell-Namen, oder leere Liste bei Fehler.
-    """
+    """Fragt Ollama nach verfügbaren Modellen ab."""
     tags_url = f"{url.rstrip('/')}/api/tags"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(tags_url, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
                 if resp.status != 200:
-                    _LOGGER.debug("Ollama %s returned %d", tags_url, resp.status)
                     return []
                 data = await resp.json()
-                models = []
-                for m in data.get("models", []):
-                    name = m.get("name", "")
-                    if name:
-                        models.append(name)
+                models = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
                 models.sort()
                 return models
-    except (aiohttp.ClientError, TimeoutError, Exception) as e:
-        _LOGGER.debug("Ollama model fetch failed (%s): %s", tags_url, e)
+    except (aiohttp.ClientError, TimeoutError, Exception):
         return []
 
 
 async def _test_ollama_connection(url: str) -> tuple[bool, str]:
-    """
-    Testet die Verbindung zu Ollama.
-
-    Returns: (success, message)
-    """
+    """Testet die Verbindung zu Ollama."""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -208,17 +194,21 @@ class KontinuumConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 # ══════════════════════════════════════════════════════════════════
-# Options Flow (Nachträgliche Konfiguration)
+# Options Flow (Menu-basiert, v0.15.0)
 # ══════════════════════════════════════════════════════════════════
 
 class KontinuumOptionsFlow(config_entries.OptionsFlow):
     """
-    Options Flow – Mehrstufige Konfiguration.
+    Options Flow – Menu-basierte Konfiguration (v0.15.0).
 
-    Schritt 1 (init):          Persönlichkeit + Cortex aktivieren
-    Schritt 2 (agent_1_setup): Provider + URL + Verbindungstest
-    Schritt 3 (agent_1_model): Modell wählen (Dropdown bei Ollama)
-    ... (wiederholt für Agent 2+3)
+    Menu:
+      → Allgemein:     Preset, Track-Mode, Dashboard, Home-Only
+      → Cortex Agents: Enable/Disable + bis zu 4 Agents verwalten
+      → Fertig:        Speichern & neu laden
+
+    Agents werden aus der bestehenden Config geladen und bleiben
+    erhalten bis sie explizit entfernt werden. Kein Datenverlust
+    durch vergessene Checkboxen.
     """
 
     def __init__(self):
@@ -231,24 +221,32 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         self._current_api_key = ""
         self._current_role = ""
         self._discovered_models = []
+        self._editing_slot = 0
+
+    # ── Menu (Hauptnavigation) ────────────────────────────────────
 
     async def async_step_init(self, user_input=None):
-        """Schritt 1: Grundeinstellungen."""
+        """Hauptmenü: Allgemein | Cortex Agents | Fertig."""
+        # Beim ersten Aufruf: bestehende Agents laden
+        if not self._data:
+            self._data = dict(self.config_entry.data)
+            self._agents = dict(self._data.get("cortex_agents", {}))
+
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["general", "cortex", "finish"],
+        )
+
+    # ── Allgemeine Einstellungen ──────────────────────────────────
+
+    async def async_step_general(self, user_input=None):
+        """Allgemein: Preset, Track-Mode, Dashboard, Home-Only."""
         if user_input is not None:
-            self._data = user_input
-            # Wenn Cortex aktiviert → Cortex-Optionen
-            if user_input.get("enable_cortex", False):
-                return await self.async_step_cortex_options()
-            # Sonst direkt speichern
-            return await self._save_and_finish()
+            self._data.update(user_input)
+            return await self.async_step_init()
 
-        current = self.config_entry.data.get("preset", "ausgeglichen")
-        current_dashboard = self.config_entry.data.get("enable_dashboard", True)
-        current_cortex = self.config_entry.data.get("enable_cortex", False)
-        current_home_only = self.config_entry.data.get("home_only_mode", False)
-        current_track_mode = self.config_entry.data.get("track_mode", "standard")
+        current = self._data
         preset_options = {k: v["label"] for k, v in PRESETS.items()}
-
         track_mode_options = {
             "standard": "Standard (all entities, opt-out)",
             "labeled": "Labeled only (opt-in: only 'kontinuum' label)",
@@ -256,115 +254,105 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         }
 
         return self.async_show_form(
-            step_id="init",
+            step_id="general",
             data_schema=vol.Schema({
-                vol.Required("preset", default=current): vol.In(
+                vol.Required("preset", default=current.get("preset", "ausgeglichen")): vol.In(
                     preset_options
                 ),
-                vol.Required("track_mode", default=current_track_mode): vol.In(
+                vol.Required("track_mode", default=current.get("track_mode", "standard")): vol.In(
                     track_mode_options
                 ),
-                vol.Required("enable_dashboard", default=current_dashboard): bool,
-                vol.Required("home_only_mode", default=current_home_only): bool,
-                vol.Required("enable_cortex", default=current_cortex): bool,
+                vol.Required("enable_dashboard", default=current.get("enable_dashboard", True)): bool,
+                vol.Required("home_only_mode", default=current.get("home_only_mode", False)): bool,
             }),
         )
 
-    # ── Cortex Optionen (Sequential, Runden) ─────────────────────
+    # ── Cortex Einstellungen ──────────────────────────────────────
 
-    async def async_step_cortex_options(self, user_input=None):
-        """Cortex-Optionen: Sequential Mode, Diskussionsrunden."""
+    async def async_step_cortex(self, user_input=None):
+        """Cortex: Enable + Optionen + Agent-Übersicht."""
         if user_input is not None:
+            self._data["enable_cortex"] = user_input.get("enable_cortex", False)
             self._data["sequential_mode"] = user_input.get("sequential_mode", False)
             self._data["discussion_rounds"] = user_input.get("discussion_rounds", 2)
-            return await self.async_step_agent_1_setup()
 
-        current_seq = self.config_entry.data.get("sequential_mode", False)
-        current_rounds = self.config_entry.data.get("discussion_rounds", 2)
+            if not self._data["enable_cortex"]:
+                return await self.async_step_init()
+
+            # Cortex aktiv → Agent-Übersicht
+            return await self.async_step_agents_overview()
 
         return self.async_show_form(
-            step_id="cortex_options",
+            step_id="cortex",
             data_schema=vol.Schema({
-                vol.Required("sequential_mode", default=current_seq): bool,
+                vol.Required("enable_cortex", default=self._data.get("enable_cortex", False)): bool,
+                vol.Required("sequential_mode", default=self._data.get("sequential_mode", False)): bool,
                 vol.Required(
-                    "discussion_rounds", default=current_rounds,
+                    "discussion_rounds", default=self._data.get("discussion_rounds", 2),
                 ): vol.In({1: "1 Runde", 2: "2 Runden", 3: "3 Runden"}),
             }),
         )
 
-    # ── Agent 1: Setup (Provider + URL) ──────────────────────────
+    # ── Agent-Übersicht (zeigt konfigurierte Agents) ─────────────
 
-    async def async_step_agent_1_setup(self, user_input=None):
-        """Agent 1: Provider, Rolle und URL wählen."""
-        return await self._handle_agent_setup(
-            user_input, slot=1, next_step="agent_1_model",
-            step_id="agent_1_setup",
+    async def async_step_agents_overview(self, user_input=None):
+        """Zeigt konfigurierte Agents und bietet Edit/Add/Remove."""
+        if user_input is not None:
+            action = user_input.get("action", "back")
+
+            if action == "back":
+                return await self.async_step_init()
+            elif action == "add":
+                # Nächsten freien Slot finden (1-4)
+                for slot in range(1, 5):
+                    if str(slot) not in self._agents:
+                        self._editing_slot = slot
+                        return await self.async_step_agent_setup()
+                # Alle Slots belegt
+                return await self.async_step_agents_overview()
+            elif action.startswith("edit_"):
+                self._editing_slot = int(action.split("_")[1])
+                return await self.async_step_agent_setup()
+            elif action.startswith("remove_"):
+                slot = action.split("_")[1]
+                self._agents.pop(slot, None)
+                return await self.async_step_agents_overview()
+
+        # Aktionen-Dropdown bauen
+        actions = {}
+
+        # Bestehende Agents anzeigen
+        for slot in sorted(self._agents.keys()):
+            agent = self._agents[slot]
+            name = agent.get("name", "custom")
+            provider = PROVIDERS.get(agent.get("provider", ""), {}).get("label", agent.get("provider", "?"))
+            model = agent.get("model", "?")
+            actions[f"edit_{slot}"] = f"✏️ Agent {slot}: {name} ({provider} / {model})"
+
+        # Entfernen-Optionen
+        for slot in sorted(self._agents.keys()):
+            agent = self._agents[slot]
+            actions[f"remove_{slot}"] = f"🗑️ Agent {slot} entfernen ({agent.get('name', 'custom')})"
+
+        # Neuen Agent hinzufügen (wenn Platz)
+        if len(self._agents) < 4:
+            actions["add"] = "➕ Neuen Agent hinzufügen"
+
+        actions["back"] = "↩️ Zurück zum Hauptmenü"
+
+        return self.async_show_form(
+            step_id="agents_overview",
+            data_schema=vol.Schema({
+                vol.Required("action", default="back"): vol.In(actions),
+            }),
         )
 
-    async def async_step_agent_1_model(self, user_input=None):
-        """Agent 1: Modell wählen + Verbindungsstatus."""
-        return await self._handle_agent_model(
-            user_input, slot=1,
-            next_step="agent_2_setup", step_id="agent_1_model",
-            show_add_more=True,
-        )
+    # ── Agent Setup (Provider + URL) ─────────────────────────────
 
-    # ── Agent 2: Setup + Model ───────────────────────────────────
-
-    async def async_step_agent_2_setup(self, user_input=None):
-        """Agent 2: Provider, Rolle und URL wählen."""
-        return await self._handle_agent_setup(
-            user_input, slot=2, next_step="agent_2_model",
-            step_id="agent_2_setup",
-        )
-
-    async def async_step_agent_2_model(self, user_input=None):
-        """Agent 2: Modell wählen."""
-        return await self._handle_agent_model(
-            user_input, slot=2,
-            next_step="agent_3_setup", step_id="agent_2_model",
-            show_add_more=True,
-        )
-
-    # ── Agent 3: Setup + Model ───────────────────────────────────
-
-    async def async_step_agent_3_setup(self, user_input=None):
-        """Agent 3: Provider, Rolle und URL wählen."""
-        return await self._handle_agent_setup(
-            user_input, slot=3, next_step="agent_3_model",
-            step_id="agent_3_setup",
-        )
-
-    async def async_step_agent_3_model(self, user_input=None):
-        """Agent 3: Modell wählen."""
-        return await self._handle_agent_model(
-            user_input, slot=3,
-            next_step="agent_4_setup", step_id="agent_3_model",
-            show_add_more=True,
-        )
-
-    # ── Agent 4: Setup + Model (Coordinator) ─────────────────────
-
-    async def async_step_agent_4_setup(self, user_input=None):
-        """Agent 4: Provider, Rolle und URL wählen."""
-        return await self._handle_agent_setup(
-            user_input, slot=4, next_step="agent_4_model",
-            step_id="agent_4_setup",
-        )
-
-    async def async_step_agent_4_model(self, user_input=None):
-        """Agent 4: Modell wählen."""
-        return await self._handle_agent_model(
-            user_input, slot=4,
-            next_step=None, step_id="agent_4_model",
-            show_add_more=False,
-        )
-
-    # ── Generischer Handler: Agent Setup (Provider + URL) ────────
-
-    async def _handle_agent_setup(self, user_input, slot, next_step, step_id):
-        """Generischer Setup-Schritt: Provider, Rolle, URL, API-Key."""
+    async def async_step_agent_setup(self, user_input=None):
+        """Agent konfigurieren: Provider, Rolle, URL, API-Key."""
         errors = {}
+        slot = self._editing_slot
 
         if user_input is not None:
             provider = user_input.get("provider", "ollama")
@@ -381,63 +369,51 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
                 connected, msg = await _test_ollama_connection(url)
                 if not connected:
                     errors["url"] = "ollama_unreachable"
-                    _LOGGER.warning(
-                        "Ollama nicht erreichbar unter %s: %s", url, msg)
+                    _LOGGER.warning("Ollama nicht erreichbar unter %s: %s", url, msg)
                 else:
-                    # Modelle vorab laden
                     self._discovered_models = await _fetch_ollama_models(url)
 
             if not errors:
-                return await getattr(self, f"async_step_{next_step}")()
+                return await self.async_step_agent_model()
 
         # Bestehende Werte laden
-        existing = self.config_entry.data.get(
-            "cortex_agents", {}
-        ).get(str(slot), {})
-
+        existing = self._agents.get(str(slot), {})
         slot_defaults = {1: "comfort", 2: "energy", 3: "safety", 4: "coordinator"}
-        default_role = existing.get(
-            "name",
-            slot_defaults.get(slot, "custom"),
-        )
-
-        schema_dict = {
-            vol.Required(
-                "role", default=default_role,
-            ): vol.In(AGENT_ROLES),
-            vol.Required(
-                "provider",
-                default=existing.get("provider", "ollama"),
-            ): vol.In(PROVIDER_OPTIONS),
-            vol.Optional(
-                "url",
-                description={"suggested_value": existing.get("url", "")},
-            ): str,
-            vol.Optional(
-                "api_key",
-                description={"suggested_value": existing.get("api_key", "")},
-            ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
-        }
 
         return self.async_show_form(
-            step_id=step_id,
-            data_schema=vol.Schema(schema_dict),
+            step_id="agent_setup",
+            data_schema=vol.Schema({
+                vol.Required(
+                    "role", default=existing.get("name", slot_defaults.get(slot, "custom")),
+                ): vol.In(AGENT_ROLES),
+                vol.Required(
+                    "provider", default=existing.get("provider", "ollama"),
+                ): vol.In(PROVIDER_OPTIONS),
+                vol.Optional(
+                    "url",
+                    description={"suggested_value": existing.get("url", "")},
+                ): str,
+                vol.Optional(
+                    "api_key",
+                    description={"suggested_value": existing.get("api_key", "")},
+                ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+            }),
             errors=errors,
+            description_placeholders={"slot": str(slot)},
         )
 
-    # ── Generischer Handler: Agent Model ─────────────────────────
+    # ── Agent Model ──────────────────────────────────────────────
 
-    async def _handle_agent_model(self, user_input, slot, next_step,
-                                  step_id, show_add_more):
-        """Generischer Modell-Schritt: Modell wählen + System-Prompt."""
+    async def async_step_agent_model(self, user_input=None):
+        """Agent: Modell wählen + System-Prompt."""
+        slot = self._editing_slot
+
         if user_input is not None:
-            # Agent zusammenbauen
             provider = self._current_provider
             provider_info = PROVIDERS.get(provider, {})
             role = self._current_role
 
             model = user_input.get("model", "")
-            # Bei Ollama-Dropdown kann das Model-Feld der Key sein
             if not model:
                 model = provider_info.get("default_model", "")
 
@@ -451,45 +427,33 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
                                   or DEFAULT_PROMPTS.get(role, "")),
             }
 
-            # Weiter oder fertig?
-            if show_add_more and user_input.get("add_more", False):
-                return await getattr(self, f"async_step_{next_step}")()
-            return await self._save_and_finish()
+            # Zurück zur Agent-Übersicht
+            return await self.async_step_agents_overview()
 
         # ── Formular bauen ──
-        existing = self.config_entry.data.get(
-            "cortex_agents", {}
-        ).get(str(slot), {})
+        existing = self._agents.get(str(slot), {})
 
-        # Bei Ollama: Modelle als Dropdown anzeigen
         if self._current_provider == "ollama" and self._discovered_models:
-            # Dropdown mit entdeckten Modellen
             model_options = {m: m for m in self._discovered_models}
             default_model = existing.get("model", "")
             if default_model not in model_options:
-                # Default auf erstes verfügbares Modell
                 default_model = self._discovered_models[0]
 
             schema_dict = {
-                vol.Required(
-                    "model", default=default_model,
-                ): vol.In(model_options),
+                vol.Required("model", default=default_model): vol.In(model_options),
             }
             description_placeholders = {
                 "status": f"Verbunden – {len(self._discovered_models)} Modelle gefunden",
-                "provider": "Ollama",
-                "url": self._current_url,
+                "slot": str(slot),
             }
         else:
-            # Freitextfeld für Cloud-Provider oder wenn keine Modelle gefunden
             provider_info = PROVIDERS.get(self._current_provider, {})
             schema_dict = {
                 vol.Optional(
                     "model",
                     description={
                         "suggested_value": existing.get(
-                            "model",
-                            provider_info.get("default_model", ""),
+                            "model", provider_info.get("default_model", ""),
                         ),
                     },
                 ): str,
@@ -497,17 +461,13 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             if self._current_provider == "ollama":
                 description_placeholders = {
                     "status": "Verbunden – keine Modelle gefunden. Installiere mit: ollama pull llama3.2",
-                    "provider": "Ollama",
-                    "url": self._current_url,
+                    "slot": str(slot),
                 }
             else:
-                provider_label = PROVIDERS.get(
-                    self._current_provider, {},
-                ).get("label", self._current_provider)
+                provider_label = provider_info.get("label", self._current_provider)
                 description_placeholders = {
                     "status": f"Provider: {provider_label}",
-                    "provider": provider_label,
-                    "url": self._current_url,
+                    "slot": str(slot),
                 }
 
         # System-Prompt
@@ -518,24 +478,21 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             },
         )] = str
 
-        # "Weiteren Agent hinzufügen?"
-        if show_add_more:
-            schema_dict[vol.Required("add_more", default=False)] = bool
-
         return self.async_show_form(
-            step_id=step_id,
+            step_id="agent_model",
             data_schema=vol.Schema(schema_dict),
             description_placeholders=description_placeholders,
         )
 
-    # ── Speichern ───────────────────────────────────────────────
+    # ── Fertig (Speichern) ───────────────────────────────────────
+
+    async def async_step_finish(self, user_input=None):
+        """Speichert alle Einstellungen und lädt die Integration neu."""
+        return await self._save_and_finish()
 
     async def _save_and_finish(self):
         """Speichert alle Einstellungen und lädt die Integration neu."""
-        preset_key = self._data.get(
-            "preset",
-            self.config_entry.data.get("preset", "ausgeglichen"),
-        )
+        preset_key = self._data.get("preset", "ausgeglichen")
         preset = PRESETS.get(preset_key, PRESETS["ausgeglichen"])
 
         new_data = {
@@ -550,18 +507,16 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             **{k: v for k, v in preset.items() if k != "label"},
         }
 
-        # Agents speichern (nur wenn Cortex aktiv)
+        # Agents: IMMER aus _agents übernehmen (nie stillschweigend löschen)
         if self._data.get("enable_cortex", False) and self._agents:
             new_data["cortex_agents"] = self._agents
         elif not self._data.get("enable_cortex", False):
-            # Cortex deaktiviert → Agents entfernen
             new_data.pop("cortex_agents", None)
 
         self.hass.config_entries.async_update_entry(
             self.config_entry, data=new_data
         )
 
-        # Integration neu laden damit neue Entitäten erstellt werden
         await self.hass.config_entries.async_reload(self.config_entry.entry_id)
 
         return self.async_create_entry(title="", data={})
