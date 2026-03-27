@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.19.0 – Config Flow Redesign, Entity-Filter-Pipeline, Home-Only & Hilfsmodule
+
+### Config Flow – Menü-basierte Navigation
+- **Menü statt Durchklicken** – Options Flow nutzt `async_show_menu()` mit Kategorien: Allgemein, Cortex, Speichern
+- **Agents bleiben erhalten** – Bestehende Agents werden beim Öffnen geladen und nur bei expliziter Aktion geändert
+- **Agent-Übersicht** – Alle konfigurierten Agents auf einen Blick mit Bearbeiten/Entfernen/Hinzufügen
+- **Kein versehentliches Löschen** – Vergessene Checkboxen löschen keine Agent-Daten mehr
+- **Generische Agent-Steps** – `agent_setup` und `agent_model` mit Slot-Parameter statt 8 Einzel-Steps
+
+### Entity-Filter-Pipeline
+- **Mehrstufige Pipeline** – Labels → Hard Filter → Track Mode → Heuristik
+- **3 Track Modes** – `standard` (Opt-out), `labeled` (Opt-in per `kontinuum`-Label), `auto` (Label + Heuristik)
+- **`ignore_kontinuum` Label** – Entities mit diesem Label werden nie getrackt (höchste Priorität)
+- **`kontinuum` Label** – Entities werden immer getrackt, auch in ignorierten Domains
+- **Dynamischer Label-Refresh** – Labels alle 5 Minuten aktualisiert, kein Neustart nötig
+- **Heuristik-Filter** – Erkennt verhaltensrelevante Sensoren (Bewegung, Tür, Fenster, Helligkeit etc.)
+
+### Home-Only Modus
+- **Pausiert bei Abwesenheit** – Lernen und Vorhersagen stoppen wenn niemand zuhause ist
+- **Konfigurierbar** – Ein/Aus in den allgemeinen Einstellungen
+
+### Hilfsmodule (Aux Modules)
+- **Formatio Reticularis** – Burst-Filter unterdrückt Ereignis-Stürme per Cooldown
+- **Nucleus Accumbens** – Belohnungssignal bei Nutzer-Feedback (Accept/Override)
+- **Locus Coeruleus** – Arousal-Level aus Ereignisdichte (EMA)
+- **Entorhinaler Cortex** – Raum-Transitions-Map mit automatischem Pruning
+- **Persistenz** – Alle Hilfsmodule werden in eigenen gzip-JSON-Dateien gespeichert
+
+### Übersetzungen
+- **strings.json** und **de.json** an neue Menü-Struktur angepasst
+- **Slot-parametrisierte Agent-Steps** – `{slot}` Platzhalter statt duplizierte Strings
+
+---
+
 ## v0.18.0 – Betriebsmodi, Confirm-Modus, LLM-Retry & Sequential Agents
 
 ### Betriebsmodi (Shadow / Confirm / Active)

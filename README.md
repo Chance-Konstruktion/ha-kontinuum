@@ -5,7 +5,7 @@
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.18.0-blue)
+![Version](https://img.shields.io/badge/version-0.19.0-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [English version](README_EN.md)
@@ -91,6 +91,15 @@ Hypothalamus   Spatial     Basalganglien  Amygdala
 | **Amygdala** | Risikobewertung -- kann Veto einlegen bevor etwas Unerwünschtes passiert |
 | **Präfrontaler Kortex** | Entscheidung -- wägt Vorhersagen ab, bewertet Nutzen gegen Risiko |
 
+### Hilfsmodule (automatisch aktiv)
+
+| Modul | Funktion |
+|-------|----------|
+| **Formatio Reticularis** | Burst-Filter -- unterdrückt Ereignis-Stürme (z.B. beim Hochfahren) per Cooldown |
+| **Nucleus Accumbens** | Belohnungssignal -- verstärkt/bestraft Aktionen basierend auf Nutzer-Feedback |
+| **Locus Coeruleus** | Arousal -- misst Ereignisdichte (EMA) und signalisiert Aufmerksamkeitslevel |
+| **Entorhinaler Cortex** | Raumübergänge -- lernt Transitions-Map zwischen Räumen, pruned selten genutzte Pfade |
+
 ### Cortex -- Bewusstes Denken (optional, LLM-Agents)
 
 > **KONTINUUM funktioniert vollständig ohne LLM.** Der Cortex ist ein optionales Upgrade für komplexe Entscheidungen. Das Kernlernen (Muster, Routinen, Vorhersagen) läuft immer lokal und ohne Cloud.
@@ -158,20 +167,59 @@ Nachträglich änderbar: Integrationen --> KONTINUUM --> Konfigurieren
 
 ---
 
+## Entity-Filter-Pipeline
+
+KONTINUUM filtert Entities über eine mehrstufige Pipeline:
+
+```
+Labels (höchste Priorität) --> Hard Filter --> Track Mode --> Heuristik
+```
+
+### Track Modes
+
+In den Einstellungen wählst du, wie KONTINUUM Entities auswählt:
+
+| Modus | Beschreibung |
+|-------|-------------|
+| **Standard** | Alle relevanten Entities werden getrackt (Opt-out per Label) |
+| **Labeled** | Nur Entities mit dem Label `kontinuum` werden getrackt (Opt-in) |
+| **Auto** | Kombination: Label-Entities + heuristische Auswahl (Verhaltens-Domains + relevante Sensormuster) |
+
+### Label-Steuerung
+
+| Label | Wirkung |
+|-------|---------|
+| `kontinuum` | Entity wird **immer** getrackt (auch in Hard-Filter-Domains) |
+| `ignore_kontinuum` | Entity wird **nie** getrackt (höchste Priorität) |
+
+Labels werden alle 5 Minuten dynamisch aktualisiert -- **kein Neustart nötig**.
+
+### Home-Only Modus
+
+Wenn aktiviert, pausiert KONTINUUM das Lernen und Vorhersagen wenn niemand zuhause ist. Spart Ressourcen und vermeidet Rauschen durch leere Räume.
+
+Aktivierbar unter: Integrationen --> KONTINUUM --> Konfigurieren --> Allgemeine Einstellungen
+
+---
+
 ## Cortex (LLM-Agents) einrichten
 
 > Optional -- KONTINUUM funktioniert vollständig ohne diesen Schritt.
 
 1. Integrationen --> KONTINUUM --> Konfigurieren
-2. **Enable Cortex** aktivieren
-3. Agent konfigurieren:
+2. Im **Menü** "Cortex Agents (LLM)" wählen
+3. **Enable Cortex** aktivieren
+4. In der **Agent-Übersicht**: "Neuen Agent hinzufügen" wählen
+5. Agent konfigurieren:
    - **Rolle** wählen (Comfort / Energy / Safety / Coordinator / Custom)
    - **Provider** wählen (Ollama, OpenAI, Claude, Gemini, Grok)
    - **URL** eingeben -- bei Ollama reicht z.B. `localhost` oder `192.168.1.100`
-4. Im nächsten Schritt: **Modell auswählen**
+6. Im nächsten Schritt: **Modell auswählen**
    - Bei Ollama werden alle installierten Modelle als Dropdown angezeigt
    - Bei Cloud-Providern wird das Default-Modell vorgeschlagen
-5. Optional: Weitere Agents hinzufügen (bis zu 4)
+7. Optional: Weitere Agents hinzufügen (bis zu 4)
+
+> **Agents bleiben erhalten** bis du sie explizit in der Agent-Übersicht entfernst. Kein versehentliches Löschen mehr.
 
 **Tipp:** Der 4. Agent-Slot ist ideal für den **Coordinator**, der als "Chef" über die anderen 3 Worker-Agents entscheidet.
 
@@ -342,6 +390,10 @@ action:
 - **Adaptive Kontext-Buckets** -- wächst von 6 auf 96 (Zeit x Modus x Energie x Tagestyp)
 - **Persistenz** -- Gehirn wird in `brain.json.gz` komprimiert gespeichert (RPi-SD-schonend)
 - **3 Betriebsmodi** -- Shadow (beobachten), Confirm (Bestätigung), Active (autonomes Schalten)
+- **Entity-Filter-Pipeline** -- Labels > Hard Filter > Track Mode > Heuristik (3 Modi: standard/labeled/auto)
+- **Home-Only Modus** -- Pausiert wenn niemand zuhause ist
+- **Dynamische Labels** -- `kontinuum` / `ignore_kontinuum` Labels ohne Neustart wirksam (Refresh alle 5 Min)
+- **Menü-basierter Config Flow** -- Kategorien statt lineares Durchklicken, Agents persistent
 - **Label-Support** -- HA-Labels als Raum-Hinweis nutzbar
 - **Saubere Deinstallation** -- Entfernt brain, Helfer und Entities automatisch
 - **Cortex Bridge** -- LLM-Ergebnisse fließen ins Gehirn zurück

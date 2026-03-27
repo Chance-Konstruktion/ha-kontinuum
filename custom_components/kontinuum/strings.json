@@ -24,25 +24,41 @@
     "step": {
       "init": {
         "title": "KONTINUUM Settings",
-        "description": "Change personality, tracking mode, and enable Cortex for LLM-powered multi-agent decisions.",
+        "description": "Choose what to configure.",
+        "menu_options": {
+          "general": "General Settings",
+          "cortex": "Cortex Agents (LLM)",
+          "finish": "Save & Restart"
+        }
+      },
+      "general": {
+        "title": "General Settings",
+        "description": "Personality, tracking mode, and general options.",
         "data": {
           "preset": "Personality",
           "track_mode": "Entity Tracking Mode",
           "enable_dashboard": "Enable Dashboard",
-          "home_only_mode": "Home-Only Mode (pause when nobody is home)",
-          "enable_cortex": "Enable Cortex (LLM Agents)"
+          "home_only_mode": "Home-Only Mode (pause when nobody is home)"
         }
       },
-      "cortex_options": {
-        "title": "Cortex Options",
-        "description": "Sequential mode queries agents one-by-one instead of in parallel – recommended for single GPU/Ollama setups. Discussion rounds control how many times agents debate before reaching consensus.",
+      "cortex": {
+        "title": "Cortex (LLM Agents)",
+        "description": "Enable Cortex for LLM-powered multi-agent decisions. Sequential mode queries agents one-by-one (recommended for single GPU).",
         "data": {
+          "enable_cortex": "Enable Cortex",
           "sequential_mode": "Sequential Mode (recommended for 1 GPU)",
           "discussion_rounds": "Discussion Rounds"
         }
       },
-      "agent_1_setup": {
-        "title": "Cortex – Agent 1 (Connection)",
+      "agents_overview": {
+        "title": "Cortex – Agent Overview",
+        "description": "Manage your LLM agents. Agents are preserved until you explicitly remove them.",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "agent_setup": {
+        "title": "Cortex – Agent {slot} (Connection)",
         "description": "Choose a role and provider. For Ollama just enter the host (e.g. 'localhost' or '192.168.1.100') – http:// and port 11434 are added automatically.",
         "data": {
           "role": "Role",
@@ -51,69 +67,12 @@
           "api_key": "API Key (Cloud only)"
         }
       },
-      "agent_1_model": {
-        "title": "Cortex – Agent 1 (Model)",
+      "agent_model": {
+        "title": "Cortex – Agent {slot} (Model)",
         "description": "{status}",
         "data": {
           "model": "Model",
-          "system_prompt": "System Prompt (leave empty for default)",
-          "add_more": "Add another agent"
-        }
-      },
-      "agent_2_setup": {
-        "title": "Cortex – Agent 2 (Connection)",
-        "description": "Configure the second agent. Different agents discuss and find consensus together.",
-        "data": {
-          "role": "Role",
-          "provider": "Provider",
-          "url": "URL / Host",
-          "api_key": "API Key"
-        }
-      },
-      "agent_2_model": {
-        "title": "Cortex – Agent 2 (Model)",
-        "description": "{status}",
-        "data": {
-          "model": "Model",
-          "system_prompt": "System Prompt",
-          "add_more": "Add a third agent"
-        }
-      },
-      "agent_3_setup": {
-        "title": "Cortex – Agent 3 (Connection)",
-        "description": "Configure the third and final agent. KONTINUUM (Prefrontal) acts as leader and makes the final decision.",
-        "data": {
-          "role": "Role",
-          "provider": "Provider",
-          "url": "URL / Host",
-          "api_key": "API Key"
-        }
-      },
-      "agent_3_model": {
-        "title": "Cortex – Agent 3 (Model)",
-        "description": "{status}",
-        "data": {
-          "model": "Model",
-          "system_prompt": "System Prompt",
-          "add_more": "Add a coordinator agent"
-        }
-      },
-      "agent_4_setup": {
-        "title": "Cortex – Agent 4 / Coordinator (Connection)",
-        "description": "The coordinator sees all other agents' proposals and makes the final decision via LLM instead of algorithmic consensus.",
-        "data": {
-          "role": "Role",
-          "provider": "Provider",
-          "url": "URL / Host",
-          "api_key": "API Key"
-        }
-      },
-      "agent_4_model": {
-        "title": "Cortex – Agent 4 / Coordinator (Model)",
-        "description": "{status}",
-        "data": {
-          "model": "Model",
-          "system_prompt": "System Prompt"
+          "system_prompt": "System Prompt (leave empty for default)"
         }
       }
     },

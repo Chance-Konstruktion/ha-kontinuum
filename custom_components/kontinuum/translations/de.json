@@ -24,25 +24,41 @@
     "step": {
       "init": {
         "title": "KONTINUUM Einstellungen",
-        "description": "\u00c4ndere Pers\u00f6nlichkeit, Tracking-Modus und aktiviere Cortex f\u00fcr LLM-gest\u00fctzte Multi-Agent-Entscheidungen.",
+        "description": "W\u00e4hle was du konfigurieren m\u00f6chtest.",
+        "menu_options": {
+          "general": "Allgemeine Einstellungen",
+          "cortex": "Cortex Agents (LLM)",
+          "finish": "Speichern & Neustarten"
+        }
+      },
+      "general": {
+        "title": "Allgemeine Einstellungen",
+        "description": "Pers\u00f6nlichkeit, Tracking-Modus und allgemeine Optionen.",
         "data": {
           "preset": "Pers\u00f6nlichkeit",
           "track_mode": "Entity-Tracking-Modus",
           "enable_dashboard": "Dashboard aktivieren",
-          "home_only_mode": "Home-Only Modus (pausiert wenn niemand zuhause)",
-          "enable_cortex": "Cortex aktivieren (LLM-Agents)"
+          "home_only_mode": "Home-Only Modus (pausiert wenn niemand zuhause)"
         }
       },
-      "cortex_options": {
-        "title": "Cortex Optionen",
-        "description": "Sequential Mode fragt die Agents nacheinander statt parallel \u2013 empfohlen bei einer GPU/Ollama-Instanz. Diskussionsrunden bestimmen, wie oft die Agents debattieren bevor ein Konsens entsteht.",
+      "cortex": {
+        "title": "Cortex (LLM-Agents)",
+        "description": "Aktiviere Cortex f\u00fcr LLM-gest\u00fctzte Multi-Agent-Entscheidungen. Sequential Mode fragt Agents nacheinander (empfohlen bei einer GPU).",
         "data": {
+          "enable_cortex": "Cortex aktivieren",
           "sequential_mode": "Sequential Mode (empfohlen bei 1 GPU)",
           "discussion_rounds": "Diskussionsrunden"
         }
       },
-      "agent_1_setup": {
-        "title": "Cortex \u2013 Agent 1 (Verbindung)",
+      "agents_overview": {
+        "title": "Cortex \u2013 Agent-\u00dcbersicht",
+        "description": "Verwalte deine LLM-Agents. Agents bleiben erhalten bis du sie explizit entfernst.",
+        "data": {
+          "action": "Aktion"
+        }
+      },
+      "agent_setup": {
+        "title": "Cortex \u2013 Agent {slot} (Verbindung)",
         "description": "W\u00e4hle Rolle und Provider. F\u00fcr Ollama einfach den Host eingeben (z.B. 'localhost' oder '192.168.1.100').",
         "data": {
           "role": "Rolle",
@@ -51,69 +67,12 @@
           "api_key": "API-Key (nur Cloud)"
         }
       },
-      "agent_1_model": {
-        "title": "Cortex \u2013 Agent 1 (Modell)",
+      "agent_model": {
+        "title": "Cortex \u2013 Agent {slot} (Modell)",
         "description": "{status}",
         "data": {
           "model": "Modell",
-          "system_prompt": "System-Prompt (leer = Standard)",
-          "add_more": "Weiteren Agent hinzuf\u00fcgen"
-        }
-      },
-      "agent_2_setup": {
-        "title": "Cortex \u2013 Agent 2 (Verbindung)",
-        "description": "Konfiguriere den zweiten Agent. Verschiedene Agents diskutieren und finden gemeinsam einen Konsens.",
-        "data": {
-          "role": "Rolle",
-          "provider": "Provider",
-          "url": "URL / Host",
-          "api_key": "API-Key"
-        }
-      },
-      "agent_2_model": {
-        "title": "Cortex \u2013 Agent 2 (Modell)",
-        "description": "{status}",
-        "data": {
-          "model": "Modell",
-          "system_prompt": "System-Prompt",
-          "add_more": "Dritten Agent hinzuf\u00fcgen"
-        }
-      },
-      "agent_3_setup": {
-        "title": "Cortex \u2013 Agent 3 (Verbindung)",
-        "description": "Konfiguriere den dritten Agent.",
-        "data": {
-          "role": "Rolle",
-          "provider": "Provider",
-          "url": "URL / Host",
-          "api_key": "API-Key"
-        }
-      },
-      "agent_3_model": {
-        "title": "Cortex \u2013 Agent 3 (Modell)",
-        "description": "{status}",
-        "data": {
-          "model": "Modell",
-          "system_prompt": "System-Prompt",
-          "add_more": "Coordinator-Agent hinzuf\u00fcgen"
-        }
-      },
-      "agent_4_setup": {
-        "title": "Cortex \u2013 Agent 4 / Coordinator (Verbindung)",
-        "description": "Der Coordinator sieht alle Vorschl\u00e4ge der anderen Agents und trifft per LLM die finale Entscheidung.",
-        "data": {
-          "role": "Rolle",
-          "provider": "Provider",
-          "url": "URL / Host",
-          "api_key": "API-Key"
-        }
-      },
-      "agent_4_model": {
-        "title": "Cortex \u2013 Agent 4 / Coordinator (Modell)",
-        "description": "{status}",
-        "data": {
-          "model": "Modell",
-          "system_prompt": "System-Prompt"
+          "system_prompt": "System-Prompt (leer = Standard)"
         }
       }
     },
