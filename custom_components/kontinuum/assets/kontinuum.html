@@ -245,6 +245,14 @@
           <path d="M250,210 C210,180 175,130 155,90" class="np on"/>
           <path d="M250,210 C290,180 325,130 345,90" class="np on"/>
           <path d="M205,285 C250,310 320,330 365,350" class="np"/>
+          <!-- Connections: ACC to Prefrontal + Thalamus -->
+          <path d="M235,100 C240,140 245,170 250,210" class="np on"/>
+          <!-- Entorhinal to Hippocampus -->
+          <path d="M195,305 C200,300 205,296 210,292" class="np on"/>
+          <!-- Locus Coeruleus to Thalamus (arousal modulation) -->
+          <path d="M258,340 C255,300 252,260 250,220" class="np on"/>
+          <!-- Accumbens to Basalganglien -->
+          <path d="M285,225 C290,215 294,207 298,200" class="np on"/>
 
           <!-- ═══ BRAIN REGIONS (anatomically positioned) ═══ -->
 
@@ -264,7 +272,7 @@
                    C265,55 258,85 255,115 C252,85 242,55 235,38Z"
                 fill="#a78bfa" stroke="#a78bfa" filter="url(#gs)"
                 data-m="motor" data-t="Motorischer Kortex"
-                data-d="PLATZHALTER – Phase 4: Service-Call-Orchestrierung mit Sequenzen und Delays."/>
+                data-d="Zukunft: Service-Call-Orchestrierung mit Sequenzen und Delays."/>
           <text class="bl" x="248" y="52">Motor</text>
 
           <!-- SPATIAL CORTEX (Parietal lobe) – posterior-superior -->
@@ -284,7 +292,7 @@
                    C342,265 335,248 332,228 C330,208 335,188 345,172 C352,168 360,168 368,172Z"
                 fill="#64748b" stroke="#64748b" filter="url(#gs)"
                 data-m="occipital" data-t="Visueller Kortex"
-                data-d="PLATZHALTER – Zukunft: Kamera-basierte Erkennung (optional, nicht für Raspi4)."/>
+                data-d="Zukunft: Kamera-basierte Erkennung (optional, nicht für Raspi4)."/>
           <text class="bl" x="355" y="222">Visuell</text>
 
           <!-- TEMPORAL LOBE (houses Hippocampus, Amygdala) -->
@@ -351,14 +359,46 @@
                 data-d="Routinen-Kompilierung: Alle 6h werden häufigste Muster zu festen Regeln kompiliert."/>
           <text class="bl on" x="370" y="356">Cerebellum</text>
 
-          <!-- BRAINSTEM (placeholder) -->
-          <path id="r-brainstem" class="br"
+          <!-- BRAINSTEM / RETICULAR FORMATION – aktiv (Burst-Filter) -->
+          <path id="r-reticular" class="br on"
                 d="M244,310 C242,328 240,350 239,375 C238,395 240,408 245,415
                    C250,415 255,408 256,395 C257,375 255,350 253,328 C252,318 248,312 244,310Z"
-                fill="#64748b" stroke="#64748b" filter="url(#gs)"
-                data-m="brainstem" data-t="Hirnstamm"
-                data-d="PLATZHALTER – Phase 4: Notfall-Bypass bei Rauch, Wasser, Einbruch. Umgeht alle Module."/>
-          <text class="bl" x="248" y="388">Stamm</text>
+                fill="#94a3b8" stroke="#94a3b8" filter="url(#gs)"
+                data-m="reticular" data-t="Formatio Reticularis"
+                data-d="Burst-Filter: Unterdrückt Ereignis-Stürme per Cooldown. Schützt das Gehirn vor Überlastung."/>
+          <text class="bl on" x="248" y="380">Reticular</text>
+
+          <!-- LOCUS COERULEUS – kleiner Kern im Hirnstamm -->
+          <ellipse id="r-locus" class="br on" cx="260" cy="345" rx="10" ry="8"
+                   fill="#7c3aed" stroke="#7c3aed" filter="url(#gs)"
+                   data-m="locus" data-t="Locus Coeruleus"
+                   data-d="Arousal: Misst Ereignisdichte (EMA). Hohes Arousal = mehr Aufmerksamkeit, System reagiert schneller."/>
+          <text class="bl on" x="260" y="348" style="font-size:5px">LC</text>
+
+          <!-- ENTORHINAL CORTEX – medial temporal, nahe Hippocampus -->
+          <path id="r-entorhinal" class="br on"
+                d="M165,295 C175,288 190,286 200,290 C210,294 215,304 210,312
+                   C205,320 192,322 180,318 C168,314 162,304 165,295Z"
+                fill="#a3e635" stroke="#a3e635" filter="url(#gs)"
+                data-m="entorhinal" data-t="Entorhinaler Cortex"
+                data-d="Raumübergänge: Lernt eine Transitions-Map zwischen Räumen. Pruned selten genutzte Pfade automatisch."/>
+          <text class="bl on" x="188" y="306" style="font-size:5px">Entorh.</text>
+
+          <!-- NUCLEUS ACCUMBENS – ventral, nahe Basalganglien -->
+          <ellipse id="r-accumbens" class="br on" cx="278" cy="222" rx="14" ry="10"
+                   fill="#fb923c" stroke="#fb923c" filter="url(#gs)"
+                   data-m="accumbens" data-t="Nucleus Accumbens"
+                   data-d="Belohnungssignal: Verstärkt gute Aktionen (+1), bestraft Overrides (-1). Moduliert Q-Value-Ranking."/>
+          <text class="bl on" x="278" y="225" style="font-size:5px">NAcc</text>
+
+          <!-- ANTERIOR CINGULATE CORTEX – medial frontal -->
+          <path id="r-acc" class="br on"
+                d="M230,32 C236,45 240,65 240,85 C240,105 238,120 235,130
+                   C228,125 222,110 220,90 C218,70 222,48 230,32Z"
+                fill="#f472b6" stroke="#f472b6" filter="url(#gs)"
+                data-m="acc" data-t="Anteriorer Cingulärer Cortex"
+                data-d="Konfliktmonitor: Erkennt widersprechende Module, passt Entscheidungsschwellen dynamisch an. Ruft bei Unsicherheit den Cortex."/>
+          <text class="bl on" x="230" y="78" style="font-size:5px">ACC</text>
 
         </svg>
       </div>
@@ -387,8 +427,13 @@
           <div class="ml" id="m-cerebellum"><div class="ml-n"><span class="dot" style="background:var(--teal)"></span> Cerebellum</div><div class="ml-d" id="md-cerebellum">—</div></div>
           <div class="ml" id="m-prefrontal"><div class="ml-n"><span class="dot" style="background:var(--cyan)"></span> Prefrontal</div><div class="ml-d" id="md-prefrontal">—</div></div>
           <div class="ml" id="m-basalganglien"><div class="ml-n"><span class="dot" style="background:#f97316"></span> Basalganglien</div><div class="ml-d" id="md-basalganglien">—</div></div>
-          <div class="ml off"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Motorischer Kortex</div><div class="ml-d">Phase 4</div></div>
-          <div class="ml off"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Hirnstamm</div><div class="ml-d">Phase 4</div></div>
+          <div class="ml" id="m-acc"><div class="ml-n"><span class="dot" style="background:#f472b6"></span> Ant. Cingulat (ACC)</div><div class="ml-d" id="md-acc">—</div></div>
+          <div class="ml" id="m-reticular"><div class="ml-n"><span class="dot" style="background:#94a3b8"></span> Formatio Reticularis</div><div class="ml-d" id="md-reticular">—</div></div>
+          <div class="ml" id="m-accumbens"><div class="ml-n"><span class="dot" style="background:#fb923c"></span> Nucleus Accumbens</div><div class="ml-d" id="md-accumbens">—</div></div>
+          <div class="ml" id="m-locus"><div class="ml-n"><span class="dot" style="background:#7c3aed"></span> Locus Coeruleus</div><div class="ml-d" id="md-locus">—</div></div>
+          <div class="ml" id="m-entorhinal"><div class="ml-n"><span class="dot" style="background:#a3e635"></span> Entorhinaler Cortex</div><div class="ml-d" id="md-entorhinal">—</div></div>
+          <div class="ml" id="m-sleep"><div class="ml-n"><span class="dot" style="background:#818cf8"></span> Sleep Consolidation</div><div class="ml-d" id="md-sleep">—</div></div>
+          <div class="ml" id="m-metaplasticity"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Metaplastizität</div><div class="ml-d" id="md-metaplasticity">—</div></div>
         </div>
       </div>
     </div>
@@ -875,6 +920,44 @@ function updateDashboard(d) {
         fire('basalganglien');
       }
     }
+    // ── Neue Module ──
+    if (a.anterior_cingulate) {
+      const ac = a.anterior_cingulate;
+      document.getElementById('md-acc').textContent =
+        'conflict: ' + (ac.conflict_level || 0) + ' · errors: ' + (ac.total_errors || 0) + ' · threshold: ' + (ac.confidence_threshold || 0.5);
+      if ((ac.conflict_level || 0) > 0.3) fire('acc');
+    }
+    if (a.reticular) {
+      document.getElementById('md-reticular').textContent =
+        'filtered: ' + (a.reticular.filtered_events || 0) + ' · cooldowns: ' + (a.reticular.total_cooldowns || 0);
+    }
+    if (a.locus_coeruleus) {
+      const lc = a.locus_coeruleus;
+      document.getElementById('md-locus').textContent =
+        'arousal: ' + (lc.arousal || 0).toFixed ? (lc.arousal || 0).toFixed(2) : (lc.arousal || 0) + ' · events: ' + (lc.total_events || 0);
+      if ((lc.arousal || 0) > 0.6) fire('locus');
+    }
+    if (a.entorhinal) {
+      const ec = a.entorhinal;
+      document.getElementById('md-entorhinal').textContent =
+        'transitions: ' + (Object.keys(ec.transitions || {}).length) + ' · rooms: ' + (Object.keys(ec.room_counts || {}).length);
+    }
+    if (a.sleep_consolidation) {
+      const sc = a.sleep_consolidation;
+      document.getElementById('md-sleep').textContent =
+        'total: ' + (sc.total_consolidations || 0) + ' · pruned: ' + (sc.last_patterns_pruned || 0) + ' · reinforced: ' + (sc.last_patterns_reinforced || 0);
+    }
+    if (a.metaplasticity) {
+      document.getElementById('md-metaplasticity').textContent =
+        'modules: ' + (a.metaplasticity.modules_tracked || 0) + ' · last: ' + (a.metaplasticity.last_update || 'nie');
+    }
+    // Accumbens (über basal_ganglia Nachbar anzeigen)
+    const accData = a.sleep_consolidation; // Accumbens Daten kommen separat
+    // Accumbens hat kein eigenes Status-Attribut noch – zeige Placeholder
+    if (!document.getElementById('md-accumbens').dataset.set) {
+      document.getElementById('md-accumbens').textContent = 'aktiv · moduliert Q-Ranking';
+      document.getElementById('md-accumbens').dataset.set = '1';
+    }
   }
 
   // Debug-Panel aktualisieren (wenn aktiv)
@@ -1051,6 +1134,16 @@ function updateCortexStatus() {
   if (a.spatial) parts.push(`  Spatial: Raum ${a.spatial.current_room||'?'}, ${a.spatial.transitions_emitted||0} Transitions`);
   if (a.insula) parts.push(`  Insula: Modus ${a.insula.current_mode||'?'}, ${a.insula.mode_changes||0} Wechsel`);
 
+  // Neue Module
+  parts.push('');
+  parts.push(`<span class="ag">NEUROMODULATION</span>`);
+  if (a.anterior_cingulate) parts.push(`  ACC: Konflikt ${a.anterior_cingulate.conflict_level||0}, Fehlerrate ${a.anterior_cingulate.error_rate||0}, Schwelle ${a.anterior_cingulate.confidence_threshold||0.5}`);
+  if (a.reticular) parts.push(`  Reticular: ${a.reticular.filtered_events||0} gefiltert`);
+  if (a.locus_coeruleus) parts.push(`  Locus Coeruleus: Arousal ${ typeof (a.locus_coeruleus.arousal) === 'number' ? a.locus_coeruleus.arousal.toFixed(2) : '?'}`);
+  if (a.entorhinal) parts.push(`  Entorhinal: ${Object.keys(a.entorhinal.transitions||{}).length} Transitions`);
+  if (a.sleep_consolidation) parts.push(`  Sleep: ${a.sleep_consolidation.total_consolidations||0} Konsolidierungen, ${a.sleep_consolidation.last_patterns_pruned||0} pruned`);
+  if (a.metaplasticity) parts.push(`  Metaplastizität: ${a.metaplasticity.modules_tracked||0} Module, letztes Update: ${a.metaplasticity.last_update||'nie'}`);
+
   dbgCortex.innerHTML = parts.join('\n');
 }
 
@@ -1108,7 +1201,8 @@ function animateBrainRegions() {
   const currentEvents = (a.hippocampus && a.hippocampus.total_events) || 0;
   if (currentEvents > lastEventCount) {
     // Neue Events → relevante Module feuern
-    fire('thalamus');
+    fire('reticular');
+    setTimeout(() => fire('thalamus'), 100);
     setTimeout(() => fire('hippocampus'), 200);
     if (a.cerebellum && (a.cerebellum.total_fired || 0) > 0) {
       setTimeout(() => fire('cerebellum'), 400);
@@ -1119,6 +1213,8 @@ function animateBrainRegions() {
     if (a.basal_ganglia && (a.basal_ganglia.total_updates || 0) > 0) {
       setTimeout(() => fire('basalganglien'), 500);
     }
+    setTimeout(() => fire('locus'), 150);
+    setTimeout(() => fire('entorhinal'), 350);
     lastEventCount = currentEvents;
   }
 }

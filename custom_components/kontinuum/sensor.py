@@ -56,6 +56,8 @@ async def async_setup_entry(
         KontinuumActivitySensor(brain, entry, "prefrontal", "mdi:head-cog"),
         KontinuumActivitySensor(brain, entry, "spatial", "mdi:map-marker-radius"),
         KontinuumActivitySensor(brain, entry, "basalganglia", "mdi:arrow-decision"),
+        KontinuumActivitySensor(brain, entry, "acc", "mdi:head-sync"),
+        KontinuumActivitySensor(brain, entry, "sleepconsolidation", "mdi:power-sleep"),
     ]
 
     # ── Cortex Agent-Sensoren (1 pro konfiguriertem Agent) ────
@@ -174,6 +176,31 @@ class KontinuumStatusSensor(KontinuumSensorBase):
             },
             "basal_ganglia": self._brain["basal_ganglia"].stats,
         }
+        # Aux-Module Statistiken
+        sleep_con = self._brain.get("sleep_consolidation")
+        if sleep_con:
+            attrs["sleep_consolidation"] = sleep_con.to_dict()
+        acc_mod = self._brain.get("acc")
+        if acc_mod:
+            attrs["anterior_cingulate"] = acc_mod.stats
+        reticular = self._brain.get("reticular")
+        if reticular:
+            attrs["reticular"] = reticular.to_dict()
+        locus_mod = self._brain.get("locus")
+        if locus_mod:
+            attrs["locus_coeruleus"] = locus_mod.to_dict()
+        entorhinal = self._brain.get("entorhinal")
+        if entorhinal:
+            attrs["entorhinal"] = entorhinal.to_dict()
+        meta = self._brain.get("metaplasticity")
+        if meta:
+            attrs["metaplasticity"] = {
+                "last_update": meta.data.get("last_update"),
+                "modules_tracked": len(meta.data.get("module_params", {})),
+            }
+        consolidation = self._brain.get("_last_consolidation")
+        if consolidation:
+            attrs["last_consolidation"] = consolidation
         # Cortex-Info (wenn aktiv)
         if cortex.enabled:
             attrs["cortex"] = {
@@ -500,6 +527,11 @@ _ACTIVITY_GETTERS = {
     ),
     "basalganglia": lambda brain: min(1.0,
         brain["basal_ganglia"].total_habits / 20.0),
+    "acc": lambda brain:
+        brain["acc"].conflict_level if brain.get("acc") else 0.0,
+    "sleepconsolidation": lambda brain: min(1.0,
+        brain["sleep_consolidation"].total_consolidations / 10.0)
+        if brain.get("sleep_consolidation") else 0.0,
 }
 
 

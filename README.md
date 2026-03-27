@@ -5,7 +5,7 @@
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.19.0-blue)
+![Version](https://img.shields.io/badge/version-0.20.0-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [English version](README_EN.md)
@@ -68,13 +68,22 @@ Nachdem diese Sequenz häufig beobachtet wurde, erkennt KONTINUUM das Muster. Er
 ## Architektur: Inspiriert vom menschlichen Gehirn
 
 ```
+              ACC (Konfliktmonitor)
+               |
 Thalamus --> Hippocampus --> Cerebellum --> PFC --> Aktion
     |             |              |           |
 Hypothalamus   Spatial     Basalganglien  Amygdala
     |          Cortex      (Belohnung)
-  Insula <-------+
+  Insula <-------+              |
+                  |         Nuc.Accumbens
+        Entorhinaler Cortex
                   |
             Cortex (optional, LLM-Agents)
+
+[Formatio Reticularis] --> Burst-Filter (Eingang)
+[Locus Coeruleus]      --> Arousal-Signal
+[Sleep Consolidation]  --> Nachts: Replay & Konsolidierung
+[Metaplastizität]      --> Lernraten-Anpassung (24h)
 ```
 
 ### Kernmodule (immer aktiv, kein LLM nötig)
@@ -99,6 +108,9 @@ Hypothalamus   Spatial     Basalganglien  Amygdala
 | **Nucleus Accumbens** | Belohnungssignal -- verstärkt/bestraft Aktionen basierend auf Nutzer-Feedback |
 | **Locus Coeruleus** | Arousal -- misst Ereignisdichte (EMA) und signalisiert Aufmerksamkeitslevel |
 | **Entorhinaler Cortex** | Raumübergänge -- lernt Transitions-Map zwischen Räumen, pruned selten genutzte Pfade |
+| **Anteriorer Cingulärer Cortex (ACC)** | Konfliktmonitor -- erkennt widersprechende Module, passt Entscheidungsschwellen dynamisch an |
+| **Sleep Consolidation** | Hippocampaler Replay -- konsolidiert Muster in ruhigen Phasen (schwache vergessen, starke verstärken) |
+| **Metaplastizität** | Meta-Lernen -- passt Lernraten aller Module automatisch an (alle 24h) |
 
 ### Cortex -- Bewusstes Denken (optional, LLM-Agents)
 
@@ -247,7 +259,7 @@ KONTINUUM enthält ein interaktives Gehirn-Visualisierungs-Dashboard. Wenn bei d
 
 ### Was zeigt das Dashboard?
 
-- **SVG-Gehirn-Karte** mit allen 9 Modulen -- animierte Aktivierung bei Events
+- **SVG-Gehirn-Karte** mit 16 Modulen -- animierte Aktivierung bei Events, neue Areale farblich kodiert
 - **Sensorik-Panel** -- Last Event, Prediction, Accuracy, Energy in Echtzeit
 - **Kontext-Panel** -- aktueller Raum, Modus, Cerebellum-Status
 - **Modul-Details** -- Jedes Gehirnmodul zeigt seine Statistiken (Entities, Patterns, Decisions, etc.)

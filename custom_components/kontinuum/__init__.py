@@ -49,12 +49,15 @@ from .reticular import ReticularFormation
 from .nucleus_accumbens import NucleusAccumbens
 from .locus_coeruleus import LocusCoeruleus
 from .entorhinal_cortex import EntorhinalCortex
+from .sleep_consolidation import SleepConsolidation
+from .anterior_cingulate import AnteriorCingulateCortex
+from .metaplasticity import MetaPlasticity
 
 from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "kontinuum"
-VERSION = "0.18.0"
+VERSION = "0.20.0"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
@@ -71,6 +74,8 @@ AUX_MODULE_FILES = {
     "accumbens": "accumbens.json.gz",
     "locus": "locus.json.gz",
     "entorhinal": "entorhinal.json.gz",
+    "sleep_consolidation": "sleep_consolidation.json.gz",
+    "acc": "anterior_cingulate.json.gz",
 }
 
 
@@ -294,6 +299,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         accumbens = NucleusAccumbens()
         locus = LocusCoeruleus()
         entorhinal = EntorhinalCortex()
+        sleep_consolidation = SleepConsolidation()
+        acc = AnteriorCingulateCortex()
+        metaplasticity = MetaPlasticity(hass)
+
+        # Locus Coeruleus → Reticular Formation Verbindung (Arousal moduliert Burst-Filter)
+        reticular.set_arousal_source(locus)
 
         # Optional: Context-Profile für erweiterte Semantik/Thresholds
         profile_path = hass.config.path("kontinuum_context_profile.json")
@@ -336,6 +347,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "accumbens": accumbens,
             "locus": locus,
             "entorhinal": entorhinal,
+            "sleep_consolidation": sleep_consolidation,
+            "acc": acc,
+            "metaplasticity": metaplasticity,
             "preset": preset_key,
             "_scenes_enabled": False,
             "_scene_config": _default_scene_config(),
@@ -355,6 +369,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         brain_path = os.path.join(data_dir, BRAIN_FILE)
         await hass.async_add_executor_job(_load_brain, brain, brain_path)
         await hass.async_add_executor_job(_load_aux_modules, hass, brain)
+
+        # ── MetaPlasticity laden und starten ──────────────────
+        await metaplasticity.async_load()
+        await metaplasticity.async_start(interval_hours=24)
 
         # ── Cortex aus Config Entry konfigurieren ────────────────
         entry_agents = entry.data.get("cortex_agents", {})
@@ -418,6 +436,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if not reticular.should_process(entity_id, domain):
                     return
                 locus.observe_event()
+                sleep_consolidation.observe_event()
 
                 # Sonnenstand tracken (v0.12.0) – immer, auch im Home-Only
                 if entity_id == "sun.sun":
@@ -523,7 +542,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if predictions:
                     predictions = _rank_with_basal_ganglia(
                         predictions, basal_ganglia, bucket,
-                        thalamus, accumbens, room, insula.current_mode)
+                        thalamus, accumbens, room, insula.current_mode,
+                        locus.get_arousal())
+
+                # ACC: Konflikte zwischen Modulen beobachten
+                acc_proposals = []
+                if predictions:
+                    top = predictions[0] if predictions else None
+                    if top:
+                        acc_proposals.append({
+                            "source": "hippocampus", "action": top[0],
+                            "confidence": top[1],
+                        })
+                    # Amygdala-Veto als konkurrierender Vorschlag
+                    if amygdala and hasattr(amygdala, "last_risk_score"):
+                        risk = getattr(amygdala, "last_risk_score", 0.0)
+                        if risk > 0.5:
+                            acc_proposals.append({
+                                "source": "amygdala", "action": "veto",
+                                "confidence": risk, "veto": True,
+                            })
+                acc.observe_decision(acc_proposals)
 
                 # PFC entscheidet (mit Q-Value Boost aus Basalganglien)
                 decision = prefrontal.evaluate(
@@ -539,6 +578,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 # Letztes Signal + Vorhersage im Brain speichern (für Cortex-Kontext)
                 brain["_last_signal"] = signal
                 brain["_last_predictions"] = predictions
+                brain["_last_event_ts"] = time.time()
 
                 # Sensoren updaten (native Entitäten via Dispatcher)
                 async_dispatcher_send(
@@ -566,6 +606,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     if now_ts - entorhinal.last_prune_ts > 86400:
                         entorhinal.prune_old_transitions(0.05)
                     brain["_last_save"] = now_ts
+
+                # ── Sleep Consolidation: In ruhigen Phasen konsolidieren ──
+                last_event_ts = brain.get("_last_event_ts", 0.0)
+                if sleep_consolidation.should_consolidate(last_event_ts):
+                    consolidation_stats = sleep_consolidation.consolidate(
+                        hippocampus, cerebellum, basal_ganglia)
+                    brain["_last_consolidation"] = consolidation_stats
+                    _LOGGER.info("Sleep Consolidation: %s", consolidation_stats)
 
                 # ignore_kontinuum Labels periodisch refreshen (v0.15.0)
                 if now_ts - brain.get("_last_label_refresh", 0) > 300:
@@ -599,6 +647,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         async def on_shutdown(event):
             _LOGGER.info("KONTINUUM wird heruntergefahren – speichere Gehirn...")
             await cortex.close()
+            await metaplasticity.async_stop()
+            await metaplasticity.async_save()
             await hass.async_add_executor_job(_save_brain, brain, brain_path)
             await hass.async_add_executor_job(_save_aux_modules, hass, brain)
 
@@ -742,16 +792,20 @@ async def async_remove_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 # ══════════════════════════════════════════════════════════════════
 
 def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
-                             accumbens=None, room="unknown", mode="active"):
+                             accumbens=None, room="unknown", mode="active",
+                             arousal=0.2):
     """
     Basalganglien-Ranking: Sortiert Predictions nach Go/NoGo-Pathway.
     Go (positive Q-Values) → nach oben
     NoGo (negative Q-Values) → nach unten
+    Arousal (Locus Coeruleus) moduliert Confidence: hoch = reaktiver.
     Predictions: [(token_id, prob, conf, source, n_obs), ...]
     """
     ranked = []
     hour = datetime.now(timezone.utc).hour
     state_key = f"{room}|{mode}|{hour}"
+    # Locus Coeruleus Arousal: hohes Arousal (+5% Confidence), niedriges (-3%)
+    arousal_boost = (arousal - 0.3) * 0.15  # Range: -0.045 bis +0.105
     for prediction in predictions:
         token_id, prob, conf, source = prediction[:4]
         n_obs = prediction[4] if len(prediction) > 4 else 0
@@ -761,8 +815,8 @@ def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
         if accumbens and thalamus:
             action_key = thalamus.decode_token(token_id)
             reward_boost = accumbens.get_bias(state_key, action_key) * 0.1
-        # Confidence durch Basalganglien + Accumbens modifizieren
-        bg_conf = conf + priority * 0.1 + reward_boost  # Max ±0.3 Einfluss
+        # Confidence durch Basalganglien + Accumbens + Arousal modifizieren
+        bg_conf = conf + priority * 0.1 + reward_boost + arousal_boost
         bg_conf = max(0.05, min(1.0, bg_conf))
         ranked.append((token_id, prob, bg_conf, source, n_obs))
     # Re-sort by modified confidence * probability
@@ -877,6 +931,8 @@ def _execute_decision(hass, brain, decision):
             success = (actual_state == desired_state) if desired_state else True
             cerebellum.record_outcome(
                 f"{decision.token_id}_{decision.token_id}", success)
+            # ACC: Outcome-Feedback für Schwellen-Anpassung
+            acc.observe_outcome(success)
             _LOGGER.debug(
                 "Outcome-Check: %s → gewünscht=%s, ist=%s, Erfolg=%s",
                 entity_id, desired_state, actual_state, success,

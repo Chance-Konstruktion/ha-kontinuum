@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.20.0 – Denken verbessert: Sleep Consolidation, ACC, MetaPlasticity + Dashboard
+
+### Sleep Consolidation (Hippocampaler Replay)
+- **Konsolidierung in ruhigen Phasen** – Nach 30 Min Stille werden Muster "wiedergespielt"
+- **Schwache Muster vergessen** – Muster unter 1.5 Count werden beschleunigt vergessen, unter 0.3 gelöscht
+- **Starke Muster verstärken** – Muster über 5.0 Count werden leicht verstärkt (Replay-Effekt)
+- **Cerebellum Re-Extraction** – Regeln werden bei Konsolidierung neu extrahiert
+- **Q-Value Smoothing** – Extreme Basalganglien-Werte leicht in Richtung Mittelwert gezogen
+- **Cooldown 1h** – Max 1 Konsolidierung pro Stunde, min 50 Events nötig
+
+### Anterior Cingulate Cortex (ACC) – Konfliktmonitor
+- **Erkennt widersprechende Module** – z.B. Hippocampus will handeln, Amygdala will Veto
+- **Dynamische Schwellen** – Bei vielen Fehlern wird vorsichtiger, bei Erfolg mutiger
+- **Cognitive Control Signal** – Kombination aus Konflikt-Level und Fehlerrate
+- **Cortex-Eskalation** – Bei hoher Unsicherheit wird LLM-Beratung empfohlen
+- **EMA-basiert** – Sanfte Anpassung ohne Sprünge
+
+### MetaPlasticity (einverdrahtet)
+- **War toter Code, jetzt aktiv** – Passt Lernraten aller Module alle 24h an
+- **Sammelt Metriken** – Error-Rate, Success-Rate, Confidence pro Modul
+- **Automatische Anpassung** – Hohe Fehler → schneller lernen, hoher Erfolg → stabilisieren
+- **Persistenz** – Eigene .json.gz Datei
+
+### Dashboard – Alle neuen Areale
+- **6 neue Gehirn-Regionen** in der SVG-Karte: ACC (rosa), Formatio Reticularis (grau-blau), Locus Coeruleus (violett), Entorhinaler Cortex (grün), Nucleus Accumbens (orange), Sleep Consolidation (Status)
+- **Neue Neuralverbindungen** – ACC↔Prefrontal, Entorhinal↔Hippocampus, LC↔Thalamus, NAcc↔Basalganglien
+- **Modul-Panel erweitert** – Alle neuen Module mit Live-Statistiken
+- **Debug-Panel** – Neuromodulation-Sektion zeigt ACC, Reticular, LC, Entorhinal, Sleep, Metaplastizität
+- **Brain-Animation** – Reticular und Locus feuern bei Events mit zeitversetzter Kaskade
+
+### Sensoren
+- **Neue Activity-Sensoren** – `sensor.kontinuum_acc_activity`, `sensor.kontinuum_sleepconsolidation_activity`
+- **Status-Sensor erweitert** – Zeigt alle Aux-Module: Reticular, LC, Entorhinal, ACC, Sleep, Metaplastizität
+
+---
+
 ## v0.19.0 – Config Flow Redesign, Entity-Filter-Pipeline, Home-Only & Hilfsmodule
 
 ### Config Flow – Menü-basierte Navigation
