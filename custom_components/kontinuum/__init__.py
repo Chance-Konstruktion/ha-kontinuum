@@ -45,6 +45,10 @@ from .cerebellum import Cerebellum
 from .prefrontal_cortex import PrefrontalCortex, MODE_SHADOW, MODE_CONFIRM, MODE_ACTIVE, VALID_MODES
 from .basal_ganglia import BasalGanglia
 from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
+from .reticular import ReticularFormation
+from .nucleus_accumbens import NucleusAccumbens
+from .locus_coeruleus import LocusCoeruleus
+from .entorhinal_cortex import EntorhinalCortex
 
 from .config_flow import PRESETS
 
@@ -60,6 +64,14 @@ PLATFORMS = [Platform.SENSOR]
 SIGNAL_SENSORS_UPDATE = f"{DOMAIN}_sensors_update"
 SIGNAL_PERSONS_UPDATE = f"{DOMAIN}_persons_update"
 SIGNAL_CORTEX_UPDATE = f"{DOMAIN}_cortex_update"
+
+# Aux-Module Persistenz-Dateien
+AUX_MODULE_FILES = {
+    "reticular": "reticular.json.gz",
+    "accumbens": "accumbens.json.gz",
+    "locus": "locus.json.gz",
+    "entorhinal": "entorhinal.json.gz",
+}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -278,6 +290,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         basal_ganglia = BasalGanglia()
         prefrontal = PrefrontalCortex(amygdala)
         cortex = Cortex()
+        reticular = ReticularFormation()
+        accumbens = NucleusAccumbens()
+        locus = LocusCoeruleus()
+        entorhinal = EntorhinalCortex()
 
         # Optional: Context-Profile für erweiterte Semantik/Thresholds
         profile_path = hass.config.path("kontinuum_context_profile.json")
@@ -316,6 +332,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "basal_ganglia": basal_ganglia,
             "prefrontal": prefrontal,
             "cortex": cortex,
+            "reticular": reticular,
+            "accumbens": accumbens,
+            "locus": locus,
+            "entorhinal": entorhinal,
             "preset": preset_key,
             "_scenes_enabled": False,
             "_scene_config": _default_scene_config(),
@@ -334,6 +354,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         # ── Gehirn laden ──────────────────────────────────────
         brain_path = os.path.join(data_dir, BRAIN_FILE)
         await hass.async_add_executor_job(_load_brain, brain, brain_path)
+        await hass.async_add_executor_job(_load_aux_modules, hass, brain)
 
         # ── Cortex aus Config Entry konfigurieren ────────────────
         entry_agents = entry.data.get("cortex_agents", {})
@@ -392,6 +413,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if entity_id in thalamus._ignored_entities:
                     return
 
+                # ── Reticular Formation: Burst-Filter ──────────
+                domain = entity_id.split(".")[0] if "." in entity_id else ""
+                if not reticular.should_process(entity_id, domain):
+                    return
+                locus.observe_event()
+
                 # Sonnenstand tracken (v0.12.0) – immer, auch im Home-Only
                 if entity_id == "sun.sun":
                     elevation = new_state_obj.attributes.get("elevation", 0)
@@ -421,11 +448,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if was_override:
                     # Basalganglien: Negatives Feedback (NoGo-Pathway)
                     basal_ganglia.process_outcome(entity_id, positive=False)
+                    # Accumbens: Negatives Reward-Signal
+                    state_key = f"{room}|{insula.current_mode}|{datetime.now(timezone.utc).hour}"
+                    accumbens.reinforce(state_key, entity_id, -1.0)
                 # Implizite Positives → Basalganglien: Go-Pathway
                 accepted = prefrontal.check_implicit_positives(amygdala)
                 if accepted:
                     for acc_eid in accepted:
                         basal_ganglia.process_outcome(acc_eid, positive=True)
+                        # Accumbens: Positives Reward-Signal
+                        state_key = f"{room}|{insula.current_mode}|{datetime.now(timezone.utc).hour}"
+                        accumbens.reinforce(state_key, acc_eid, 1.0)
                 basal_ganglia.cleanup_pending()
 
                 # ── Hypothalamus (Energie/Klima) ──────────────
@@ -440,6 +473,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     tokens = spatial.absorb(room, semantic, new_state, entity_id)
                     for tok in tokens:
                         _inject_token(hass, brain, tok, now)
+                        # Entorhinal: Raum-Transitionen tracken
+                        if tok.get("semantic") == "spatial" and tok.get("state") == "entered":
+                            prev_room = brain.get("_entorhinal_last_room")
+                            next_room = tok.get("room")
+                            if prev_room and next_room:
+                                entorhinal.observe_transition(prev_room, next_room)
+                            brain["_entorhinal_last_room"] = next_room
 
                     # Insula mit räumlichem Signal füttern
                     mode_result = insula.process(semantic, new_state, room)
@@ -482,7 +522,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 predictions = hippocampus.predict(ctx)
                 if predictions:
                     predictions = _rank_with_basal_ganglia(
-                        predictions, basal_ganglia, bucket)
+                        predictions, basal_ganglia, bucket,
+                        thalamus, accumbens, room, insula.current_mode)
 
                 # PFC entscheidet (mit Q-Value Boost aus Basalganglien)
                 decision = prefrontal.evaluate(
@@ -520,6 +561,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
 
                 if now_ts - brain["_last_save"] > SAVE_INTERVAL:
                     hass.async_add_executor_job(_save_brain, brain, brain_path)
+                    hass.async_add_executor_job(_save_aux_modules, hass, brain)
+                    # Entorhinal: Alte Transitionen prunen (täglich)
+                    if now_ts - entorhinal.last_prune_ts > 86400:
+                        entorhinal.prune_old_transitions(0.05)
                     brain["_last_save"] = now_ts
 
                 # ignore_kontinuum Labels periodisch refreshen (v0.15.0)
@@ -555,6 +600,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             _LOGGER.info("KONTINUUM wird heruntergefahren – speichere Gehirn...")
             await cortex.close()
             await hass.async_add_executor_job(_save_brain, brain, brain_path)
+            await hass.async_add_executor_job(_save_aux_modules, hass, brain)
 
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_shutdown)
 
@@ -695,7 +741,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 # TOKEN INJECTION
 # ══════════════════════════════════════════════════════════════════
 
-def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket):
+def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
+                             accumbens=None, room="unknown", mode="active"):
     """
     Basalganglien-Ranking: Sortiert Predictions nach Go/NoGo-Pathway.
     Go (positive Q-Values) → nach oben
@@ -703,12 +750,19 @@ def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket):
     Predictions: [(token_id, prob, conf, source, n_obs), ...]
     """
     ranked = []
+    hour = datetime.now(timezone.utc).hour
+    state_key = f"{room}|{mode}|{hour}"
     for prediction in predictions:
         token_id, prob, conf, source = prediction[:4]
         n_obs = prediction[4] if len(prediction) > 4 else 0
         priority = basal_ganglia.get_action_priority(token_id, bucket)
-        # Confidence durch Basalganglien modifizieren
-        bg_conf = conf + priority * 0.1  # Max ±0.2 Einfluss
+        # Accumbens Reward-Boost
+        reward_boost = 0.0
+        if accumbens and thalamus:
+            action_key = thalamus.decode_token(token_id)
+            reward_boost = accumbens.get_bias(state_key, action_key) * 0.1
+        # Confidence durch Basalganglien + Accumbens modifizieren
+        bg_conf = conf + priority * 0.1 + reward_boost  # Max ±0.3 Einfluss
         bg_conf = max(0.05, min(1.0, bg_conf))
         ranked.append((token_id, prob, bg_conf, source, n_obs))
     # Re-sort by modified confidence * probability
@@ -1714,6 +1768,44 @@ def _save_brain(brain, path=None):
         _LOGGER.debug("Gehirn gespeichert (%d KB): %s", len(raw) // 1024, path)
     except Exception as e:
         _LOGGER.error("Fehler beim Speichern: %s", e)
+
+
+def _save_aux_modules(hass, brain):
+    """Speichert Aux-Module (Reticular, Accumbens, Locus, Entorhinal) in eigene .json.gz."""
+    for key, fname in AUX_MODULE_FILES.items():
+        module = brain.get(key)
+        if not module:
+            continue
+        path = hass.config.path(fname)
+        tmp = path + ".tmp"
+        try:
+            with gzip.open(tmp, "wt", encoding="utf-8") as f:
+                json.dump(module.to_dict(), f)
+            try:
+                os.replace(tmp, path)
+            except Exception as replace_err:
+                _LOGGER.warning("Aux-Modul %s replace fehlgeschlagen: %s", key, replace_err)
+                continue
+        except Exception as err:
+            _LOGGER.warning("Aux-Modul %s konnte nicht gespeichert werden: %s", key, err)
+
+
+def _load_aux_modules(hass, brain):
+    """Lädt Aux-Module aus eigenen .json.gz Dateien."""
+    for key, fname in AUX_MODULE_FILES.items():
+        module = brain.get(key)
+        if not module:
+            continue
+        path = hass.config.path(fname)
+        if not os.path.exists(path):
+            continue
+        try:
+            with gzip.open(path, "rt", encoding="utf-8") as f:
+                data = json.load(f)
+            module.from_dict(data)
+            _LOGGER.debug("Aux-Modul %s geladen", key)
+        except Exception as err:
+            _LOGGER.warning("Aux-Modul %s konnte nicht geladen werden: %s", key, err)
 
 
 def _load_brain(brain, path):
