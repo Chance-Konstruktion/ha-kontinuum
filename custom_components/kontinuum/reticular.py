@@ -15,6 +15,12 @@ class ReticularFormation:
         self.event_times = defaultdict(lambda: deque(maxlen=30))
         self.cooldown_until = {}
         self.filtered_events = 0
+        self.total_cooldowns = 0
+        self._arousal_ref = None  # Reference to LocusCoeruleus
+
+    def set_arousal_source(self, locus_coeruleus):
+        """Verbindet den Locus Coeruleus für arousal-moduliertes Filtern."""
+        self._arousal_ref = locus_coeruleus
 
     def should_process(self, entity_id: str, domain: str = "") -> bool:
         now = time.time()
@@ -30,11 +36,20 @@ class ReticularFormation:
         domain_factor = 1
         if domain == "sensor":
             domain_factor = 0
-        threshold = self.BURST_LIMIT + domain_factor
 
-        if len(recent) >= threshold:
+        # Arousal-Modulation: Hohes Arousal → strengerer Filter (weniger Rauschen)
+        # Niedriges Arousal → lockerer (alles ist interessant wenn wenig passiert)
+        burst_limit = self.BURST_LIMIT + domain_factor
+        if self._arousal_ref:
+            arousal = self._arousal_ref.get_arousal()
+            # Arousal 0.0 → limit * 1.5 (locker), Arousal 1.0 → limit * 0.6 (streng)
+            burst_limit = int(burst_limit * (1.5 - 0.9 * arousal))
+            burst_limit = max(3, burst_limit)  # Minimum 3
+
+        if len(recent) >= burst_limit:
             self.cooldown_until[entity_id] = now + self.COOLDOWN_SECONDS
             self.filtered_events += 1
+            self.total_cooldowns += 1
             return False
 
         return True
@@ -56,6 +71,7 @@ class ReticularFormation:
             "event_times": {eid: list(times) for eid, times in self.event_times.items()},
             "cooldown_until": self.cooldown_until,
             "filtered_events": self.filtered_events,
+            "total_cooldowns": self.total_cooldowns,
         }
 
     def from_dict(self, data: dict):
@@ -64,3 +80,4 @@ class ReticularFormation:
             self.event_times[eid] = deque(times[-30:], maxlen=30)
         self.cooldown_until = data.get("cooldown_until", {})
         self.filtered_events = data.get("filtered_events", 0)
+        self.total_cooldowns = data.get("total_cooldowns", 0)

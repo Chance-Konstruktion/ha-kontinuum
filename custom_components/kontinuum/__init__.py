@@ -303,6 +303,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         acc = AnteriorCingulateCortex()
         metaplasticity = MetaPlasticity(hass)
 
+        # Locus Coeruleus → Reticular Formation Verbindung (Arousal moduliert Burst-Filter)
+        reticular.set_arousal_source(locus)
+
         # Optional: Context-Profile für erweiterte Semantik/Thresholds
         profile_path = hass.config.path("kontinuum_context_profile.json")
         await hass.async_add_executor_job(thalamus.load_custom_profiles, profile_path)
@@ -539,7 +542,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if predictions:
                     predictions = _rank_with_basal_ganglia(
                         predictions, basal_ganglia, bucket,
-                        thalamus, accumbens, room, insula.current_mode)
+                        thalamus, accumbens, room, insula.current_mode,
+                        locus.get_arousal())
 
                 # ACC: Konflikte zwischen Modulen beobachten
                 acc_proposals = []
@@ -788,16 +792,20 @@ async def async_remove_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 # ══════════════════════════════════════════════════════════════════
 
 def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
-                             accumbens=None, room="unknown", mode="active"):
+                             accumbens=None, room="unknown", mode="active",
+                             arousal=0.2):
     """
     Basalganglien-Ranking: Sortiert Predictions nach Go/NoGo-Pathway.
     Go (positive Q-Values) → nach oben
     NoGo (negative Q-Values) → nach unten
+    Arousal (Locus Coeruleus) moduliert Confidence: hoch = reaktiver.
     Predictions: [(token_id, prob, conf, source, n_obs), ...]
     """
     ranked = []
     hour = datetime.now(timezone.utc).hour
     state_key = f"{room}|{mode}|{hour}"
+    # Locus Coeruleus Arousal: hohes Arousal (+5% Confidence), niedriges (-3%)
+    arousal_boost = (arousal - 0.3) * 0.15  # Range: -0.045 bis +0.105
     for prediction in predictions:
         token_id, prob, conf, source = prediction[:4]
         n_obs = prediction[4] if len(prediction) > 4 else 0
@@ -807,8 +815,8 @@ def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
         if accumbens and thalamus:
             action_key = thalamus.decode_token(token_id)
             reward_boost = accumbens.get_bias(state_key, action_key) * 0.1
-        # Confidence durch Basalganglien + Accumbens modifizieren
-        bg_conf = conf + priority * 0.1 + reward_boost  # Max ±0.3 Einfluss
+        # Confidence durch Basalganglien + Accumbens + Arousal modifizieren
+        bg_conf = conf + priority * 0.1 + reward_boost + arousal_boost
         bg_conf = max(0.05, min(1.0, bg_conf))
         ranked.append((token_id, prob, bg_conf, source, n_obs))
     # Re-sort by modified confidence * probability
