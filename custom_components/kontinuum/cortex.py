@@ -26,6 +26,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime, timezone
 
 import aiohttp
 
@@ -533,7 +534,16 @@ class Cortex:
         pred_conf = 0
         predictions = brain.get("_last_predictions")
         if not predictions:
-            predictions = hippocampus.predict()
+            try:
+                # Kontextvektor bauen für Fallback-Prediction
+                ctx = (
+                    thalamus.encode_time_context(datetime.now(timezone.utc))
+                    + hypothalamus.get_context_vector()
+                    + insula.get_mode_context()
+                )
+                predictions = hippocampus.predict(ctx)
+            except Exception:
+                predictions = []
         if predictions:
             pred_token = thalamus.decode_token(predictions[0][0])
             pred_conf = predictions[0][2] if len(predictions[0]) > 2 else 0
