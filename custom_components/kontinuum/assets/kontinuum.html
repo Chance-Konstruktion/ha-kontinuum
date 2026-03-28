@@ -171,6 +171,7 @@
         <div class="sc"><div class="sc-l">Vorhersage</div><div class="sc-v" style="color:var(--purple)" id="v-pred">—</div><div class="sc-d" id="d-pred">—</div></div>
         <div class="sc"><div class="sc-l">Genauigkeit</div><div class="sc-v" style="color:var(--cyan)" id="v-acc">—</div><div class="sc-d" id="d-acc">—</div></div>
         <div class="sc"><div class="sc-l">Energie</div><div class="sc-v" style="color:var(--amber)" id="v-nrg">—</div><div class="sc-d" id="d-nrg">—</div></div>
+        <div class="sc"><div class="sc-l">Surprise</div><div class="sc-v" style="color:var(--pink)" id="v-surprise">—</div><div class="sc-d" id="d-surprise">—</div></div>
       </div>
       <div class="pnl" style="margin-top:10px">
         <div class="pnl-t">Kontext</div>
@@ -958,6 +959,26 @@ function updateDashboard(d) {
       document.getElementById('md-accumbens').textContent = 'aktiv · moduliert Q-Ranking';
       document.getElementById('md-accumbens').dataset.set = '1';
     }
+
+    // ── Predictive Processing (Surprise) ──
+    if (a.predictive_processing) {
+      const pp = a.predictive_processing;
+      const surp = pp.current_surprise || 0;
+      const avg = pp.average_surprise || 0;
+      const weight = pp.learn_weight || 1;
+      const ratio = pp.surprise_ratio || 0;
+
+      // Surprise-Wert als Balken-Text
+      const bar = surp > 0.6 ? '⚡' : surp > 0.3 ? '◉' : '○';
+      document.getElementById('v-surprise').textContent = bar + ' ' + (surp * 100).toFixed(0) + '%';
+      document.getElementById('v-surprise').style.color =
+        surp > 0.6 ? 'var(--red)' : surp > 0.3 ? 'var(--amber)' : 'var(--green)';
+      document.getElementById('d-surprise').textContent =
+        'Ø ' + (avg * 100).toFixed(0) + '% · weight: ' + weight.toFixed(1) + 'x · surprises: ' + (ratio * 100).toFixed(0) + '%';
+
+      // Surprise > 0.6 → ACC Region feuern lassen
+      if (surp > 0.6) fire('acc');
+    }
   }
 
   // Debug-Panel aktualisieren (wenn aktiv)
@@ -1142,6 +1163,10 @@ function updateCortexStatus() {
   if (a.locus_coeruleus) parts.push(`  Locus Coeruleus: Arousal ${ typeof (a.locus_coeruleus.arousal) === 'number' ? a.locus_coeruleus.arousal.toFixed(2) : '?'}`);
   if (a.entorhinal) parts.push(`  Entorhinal: ${Object.keys(a.entorhinal.transitions||{}).length} Transitions`);
   if (a.sleep_consolidation) parts.push(`  Sleep: ${a.sleep_consolidation.total_consolidations||0} Konsolidierungen, ${a.sleep_consolidation.last_patterns_pruned||0} pruned`);
+  if (a.predictive_processing) {
+    const pp = a.predictive_processing;
+    parts.push(`  Predictive: surprise ${pp.current_surprise||0}, baseline ${pp.baseline_surprise||0}, weight ${pp.learn_weight||1}x, ratio ${((pp.surprise_ratio||0)*100).toFixed(0)}%`);
+  }
   if (a.metaplasticity) parts.push(`  Metaplastizität: ${a.metaplasticity.modules_tracked||0} Module, letztes Update: ${a.metaplasticity.last_update||'nie'}`);
 
   dbgCortex.innerHTML = parts.join('\n');

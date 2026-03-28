@@ -181,15 +181,15 @@ class Hippocampus:
         neighbors.append(((time_b * self.MODE_GROUPS + mode_b) * self.ENERGY_LEVELS + energy_b) * self.DAY_TYPES + other_d)
         return neighbors
     
-    def learn(self, token_id: int, ctx: list, timestamp):
-        """Lernt aus einem neuen Event."""
+    def learn(self, token_id: int, ctx: list, timestamp, learn_weight: float = 1.0):
+        """Lernt aus einem neuen Event. learn_weight moduliert die Lernstärke (Predictive Processing)."""
         self.total_events += 1
-        
+
         current_day = int(time.time() / 86400)
         if current_day > self.last_decay_day:
             self._apply_decay(current_day - self.last_decay_day)
             self.last_decay_day = current_day
-        
+
         if self.last_event_time:
             try:
                 duration = (timestamp - self.last_event_time).total_seconds()
@@ -203,11 +203,13 @@ class Hippocampus:
         self._validate_shadow(token_id, timestamp)
         
         seq = list(self.buffer)
+        # learn_weight: Surprise-moduliert (0.2 = erwartet, 2.5 = Überraschung)
+        weight = max(0.1, min(3.0, learn_weight))
         for n in self.NGRAM_SIZES:
             if len(seq) >= n:
                 ngram = tuple(seq[-n:])
-                self.transitions[bucket][ngram][token_id] += 1.0
-                self.totals[bucket][ngram] += 1.0
+                self.transitions[bucket][ngram][token_id] += weight
+                self.totals[bucket][ngram] += weight
         
         if len(self.transitions[bucket]) > self.MAX_NGRAMS_PER_BUCKET:
             self._evict_bucket(bucket)

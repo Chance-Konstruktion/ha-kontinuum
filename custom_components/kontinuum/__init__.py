@@ -52,6 +52,7 @@ from .entorhinal_cortex import EntorhinalCortex
 from .sleep_consolidation import SleepConsolidation
 from .anterior_cingulate import AnteriorCingulateCortex
 from .metaplasticity import MetaPlasticity
+from .predictive_processing import PredictiveProcessing
 
 from .config_flow import PRESETS
 
@@ -76,6 +77,7 @@ AUX_MODULE_FILES = {
     "entorhinal": "entorhinal.json.gz",
     "sleep_consolidation": "sleep_consolidation.json.gz",
     "acc": "anterior_cingulate.json.gz",
+    "predictive": "predictive_processing.json.gz",
 }
 
 
@@ -301,6 +303,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         entorhinal = EntorhinalCortex()
         sleep_consolidation = SleepConsolidation()
         acc = AnteriorCingulateCortex()
+        predictive = PredictiveProcessing()
         metaplasticity = MetaPlasticity(hass)
 
         # Locus Coeruleus → Reticular Formation Verbindung (Arousal moduliert Burst-Filter)
@@ -349,6 +352,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "entorhinal": entorhinal,
             "sleep_consolidation": sleep_consolidation,
             "acc": acc,
+            "predictive": predictive,
             "metaplasticity": metaplasticity,
             "preset": preset_key,
             "_scenes_enabled": False,
@@ -530,8 +534,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 mode_ctx = insula.get_mode_context()
                 ctx = time_ctx + hypo_ctx + mode_ctx
 
-                # Hippocampus lernt
-                hippocampus.learn(token_id, ctx, now)
+                # ── Predictive Processing: Surprise berechnen VOR dem Lernen ──
+                # Was hat der Hippocampus erwartet? Was kam wirklich?
+                pre_predictions = hippocampus.predict(ctx)
+                surprise = predictive.compute_surprise(token_id, pre_predictions)
+                learn_weight = predictive.get_learn_weight()
+
+                # Hippocampus lernt (gewichtet durch Surprise)
+                hippocampus.learn(token_id, ctx, now, learn_weight=learn_weight)
 
                 # Basalganglien: Passives Lernen (beobachtete Muster)
                 bucket = hippocampus._context_bucket(ctx)

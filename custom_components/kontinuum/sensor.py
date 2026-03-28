@@ -192,6 +192,9 @@ class KontinuumStatusSensor(KontinuumSensorBase):
         entorhinal = self._brain.get("entorhinal")
         if entorhinal:
             attrs["entorhinal"] = entorhinal.to_dict()
+        predictive = self._brain.get("predictive")
+        if predictive:
+            attrs["predictive_processing"] = predictive.stats
         meta = self._brain.get("metaplasticity")
         if meta:
             attrs["metaplasticity"] = {
