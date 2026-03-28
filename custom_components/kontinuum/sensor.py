@@ -201,6 +201,9 @@ class KontinuumStatusSensor(KontinuumSensorBase):
                 "last_update": meta.data.get("last_update"),
                 "modules_tracked": len(meta.data.get("module_params", {})),
             }
+        neuro = self._brain.get("neurorhythms")
+        if neuro:
+            attrs["neurorhythms"] = neuro.stats
         consolidation = self._brain.get("_last_consolidation")
         if consolidation:
             attrs["last_consolidation"] = consolidation

@@ -172,6 +172,8 @@
         <div class="sc"><div class="sc-l">Genauigkeit</div><div class="sc-v" style="color:var(--cyan)" id="v-acc">—</div><div class="sc-d" id="d-acc">—</div></div>
         <div class="sc"><div class="sc-l">Energie</div><div class="sc-v" style="color:var(--amber)" id="v-nrg">—</div><div class="sc-d" id="d-nrg">—</div></div>
         <div class="sc"><div class="sc-l">Surprise</div><div class="sc-v" style="color:var(--pink)" id="v-surprise">—</div><div class="sc-d" id="d-surprise">—</div></div>
+        <div class="sc"><div class="sc-l">Circadian</div><div class="sc-v" style="color:var(--amber)" id="v-circadian">—</div><div class="sc-d" id="d-circadian">—</div></div>
+        <div class="sc"><div class="sc-l">Dopamin</div><div class="sc-v" style="color:var(--green)" id="v-dopamine">—</div><div class="sc-d" id="d-dopamine">—</div></div>
       </div>
       <div class="pnl" style="margin-top:10px">
         <div class="pnl-t">Kontext</div>
@@ -435,6 +437,7 @@
           <div class="ml" id="m-entorhinal"><div class="ml-n"><span class="dot" style="background:#a3e635"></span> Entorhinaler Cortex</div><div class="ml-d" id="md-entorhinal">—</div></div>
           <div class="ml" id="m-sleep"><div class="ml-n"><span class="dot" style="background:#818cf8"></span> Sleep Consolidation</div><div class="ml-d" id="md-sleep">—</div></div>
           <div class="ml" id="m-metaplasticity"><div class="ml-n"><span class="dot" style="background:#64748b"></span> Metaplastizität</div><div class="ml-d" id="md-metaplasticity">—</div></div>
+          <div class="ml" id="m-neurorhythms"><div class="ml-n"><span class="dot" style="background:#f59e0b"></span> Neurorhythmen</div><div class="ml-d" id="md-neurorhythms">—</div></div>
         </div>
       </div>
     </div>
@@ -943,11 +946,6 @@ function updateDashboard(d) {
       document.getElementById('md-entorhinal').textContent =
         'transitions: ' + (Object.keys(ec.transitions || {}).length) + ' · rooms: ' + (Object.keys(ec.room_counts || {}).length);
     }
-    if (a.sleep_consolidation) {
-      const sc = a.sleep_consolidation;
-      document.getElementById('md-sleep').textContent =
-        'total: ' + (sc.total_consolidations || 0) + ' · pruned: ' + (sc.last_patterns_pruned || 0) + ' · reinforced: ' + (sc.last_patterns_reinforced || 0);
-    }
     if (a.metaplasticity) {
       document.getElementById('md-metaplasticity').textContent =
         'modules: ' + (a.metaplasticity.modules_tracked || 0) + ' · last: ' + (a.metaplasticity.last_update || 'nie');
@@ -978,6 +976,51 @@ function updateDashboard(d) {
 
       // Surprise > 0.6 → ACC Region feuern lassen
       if (surp > 0.6) fire('acc');
+    }
+
+    // ── Neurorhythms (Circadian, Dopamin, Homeostasis) ──
+    if (a.neurorhythms) {
+      const nr = a.neurorhythms;
+      const circ = nr.circadian_multiplier || 1.0;
+      const dopa = nr.dopamine_level || 0;
+      const bursts = nr.total_bursts || 0;
+      const strongest = nr.strongest_burst || 0;
+      const burstActive = nr.burst_active || false;
+
+      // Circadian indicator: ☀️ morgens, 🌙 nachts
+      const circIcon = circ > 1.0 ? '☀' : circ > 0.7 ? '◐' : '☾';
+      document.getElementById('v-circadian').textContent = circIcon + ' ' + circ.toFixed(2) + 'x';
+      document.getElementById('v-circadian').style.color =
+        circ > 1.0 ? 'var(--amber)' : circ > 0.7 ? 'var(--blue)' : 'var(--purple)';
+      document.getElementById('d-circadian').textContent =
+        'Lernrate-Modulation · Homeostasis: ' + (nr.homeostasis_factor || 1.0).toFixed(2);
+
+      // Dopamine indicator
+      const dopaIcon = burstActive ? '⚡' : dopa > 0.5 ? '▲' : '●';
+      document.getElementById('v-dopamine').textContent = dopaIcon + ' ' + (dopa * 100).toFixed(0) + '%';
+      document.getElementById('v-dopamine').style.color =
+        burstActive ? 'var(--red)' : dopa > 0.5 ? 'var(--green)' : 'var(--cyan)';
+      document.getElementById('d-dopamine').textContent =
+        'Bursts: ' + bursts + ' · stärkster: ' + strongest.toFixed(1) + 'x';
+
+      // Module panel
+      document.getElementById('md-neurorhythms').textContent =
+        'circadian: ' + circ.toFixed(2) + 'x · dopamin: ' + (dopa * 100).toFixed(0) + '% · bursts: ' + bursts +
+        ' · load: ' + (nr.synaptic_load || 0).toFixed(0);
+
+      // Dopamin-Burst → visuelles Feuer-Event
+      if (burstActive) fire('nacc');
+    }
+
+    // ── Sleep Consolidation: Dream Replay Stats ──
+    if (a.sleep_consolidation) {
+      const sc = a.sleep_consolidation;
+      document.getElementById('md-sleep').textContent =
+        'total: ' + (sc.total_consolidations || 0) +
+        ' · pruned: ' + (sc.last_patterns_pruned || 0) +
+        ' · reinforced: ' + (sc.last_patterns_reinforced || 0) +
+        ' · dreams: ' + (sc.total_dream_connections || 0) +
+        ' · SHY: ' + (sc.last_homeostasis_factor || 1.0).toFixed(2);
     }
   }
 
@@ -1162,7 +1205,8 @@ function updateCortexStatus() {
   if (a.reticular) parts.push(`  Reticular: ${a.reticular.filtered_events||0} gefiltert`);
   if (a.locus_coeruleus) parts.push(`  Locus Coeruleus: Arousal ${ typeof (a.locus_coeruleus.arousal) === 'number' ? a.locus_coeruleus.arousal.toFixed(2) : '?'}`);
   if (a.entorhinal) parts.push(`  Entorhinal: ${Object.keys(a.entorhinal.transitions||{}).length} Transitions`);
-  if (a.sleep_consolidation) parts.push(`  Sleep: ${a.sleep_consolidation.total_consolidations||0} Konsolidierungen, ${a.sleep_consolidation.last_patterns_pruned||0} pruned`);
+  if (a.sleep_consolidation) parts.push(`  Sleep: ${a.sleep_consolidation.total_consolidations||0} Konsolidierungen, ${a.sleep_consolidation.last_patterns_pruned||0} pruned, ${a.sleep_consolidation.total_dream_connections||0} dreams`);
+  if (a.neurorhythms) parts.push(`  Neurorhythmen: circadian=${(a.neurorhythms.circadian_multiplier||1).toFixed(2)}x, dopamin=${((a.neurorhythms.dopamine_level||0)*100).toFixed(0)}%, bursts=${a.neurorhythms.total_bursts||0}`);
   if (a.predictive_processing) {
     const pp = a.predictive_processing;
     parts.push(`  Predictive: surprise ${pp.current_surprise||0}, baseline ${pp.baseline_surprise||0}, weight ${pp.learn_weight||1}x, ratio ${((pp.surprise_ratio||0)*100).toFixed(0)}%`);
