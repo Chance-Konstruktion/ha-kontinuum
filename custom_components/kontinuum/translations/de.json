@@ -33,9 +33,10 @@
       },
       "general": {
         "title": "Allgemeine Einstellungen",
-        "description": "Pers\u00f6nlichkeit, Tracking-Modus und allgemeine Optionen.",
+        "description": "Pers\u00f6nlichkeit, Betriebsmodus, Tracking und allgemeine Optionen.",
         "data": {
           "preset": "Pers\u00f6nlichkeit",
+          "operation_mode": "Betriebsmodus",
           "track_mode": "Entity-Tracking-Modus",
           "enable_dashboard": "Dashboard aktivieren",
           "home_only_mode": "Home-Only Modus (pausiert wenn niemand zuhause)"
