@@ -5,11 +5,18 @@ Biologisches Vorbild: Im Schlaf (oder bei Abwesenheit) werden Muster
 des Tages "wiedergespielt" und konsolidiert. Starke Muster werden
 verstärkt, schwache vergessen, neue Cerebellum-Regeln extrahiert.
 
+Neu in v0.20.0:
+- Dream Replay: Kreative Rekombination von Mustern über Kontexte hinweg
+  (biologisch: REM-Schlaf verknüpft entfernte Erinnerungen)
+- Synaptic Homeostasis (SHY): Proportionale Herunterskalierung aller
+  Gewichte nach intensiven Lernphasen (verhindert Sättigung)
+
 Läuft in ruhigen Phasen (wenige Events) oder nachts automatisch.
 Extrem ressourcenschonend: max 1x pro Stunde, nur wenn nötig.
 """
 
 import logging
+import random
 import time
 from datetime import datetime, timezone
 
@@ -24,6 +31,7 @@ MIN_EVENTS_FOR_CONSOLIDATION = 50
 COOLDOWN_SECONDS = 3600      # Max 1x pro Stunde
 DECAY_BOOST_FACTOR = 1.5     # Schwache Muster stärker vergessen
 REINFORCE_FACTOR = 1.08      # Starke Muster leicht verstärken
+DREAM_CROSS_CONTEXT_PAIRS = 10  # Anzahl der Cross-Context-Paare pro Dream Replay
 
 
 class SleepConsolidation:
@@ -36,6 +44,9 @@ class SleepConsolidation:
         self.last_patterns_pruned = 0
         self.last_patterns_reinforced = 0
         self.last_rules_extracted = 0
+        self.last_dream_connections = 0
+        self.last_homeostasis_factor = 1.0
+        self.total_dream_connections = 0
 
     def observe_event(self):
         """Zählt Events seit letzter Konsolidierung."""
@@ -59,12 +70,14 @@ class SleepConsolidation:
 
         return True
 
-    def consolidate(self, hippocampus, cerebellum, basal_ganglia=None):
+    def consolidate(self, hippocampus, cerebellum, basal_ganglia=None, neurorhythms=None):
         """
         Führt die Konsolidierung durch:
         1. Hippocampus: Schwache Muster stärker vergessen, starke verstärken
-        2. Cerebellum: Regeln neu extrahieren aus aktuellem Wissen
-        3. Basalganglien: Q-Values leicht in Richtung Mittelwert ziehen
+        2. Dream Replay: Kreative Rekombination von Mustern über Kontexte
+        3. Cerebellum: Regeln neu extrahieren aus aktuellem Wissen
+        4. Basalganglien: Q-Values leicht in Richtung Mittelwert ziehen
+        5. Synaptic Homeostasis: Alle Gewichte proportional herunterskalieren
 
         Returns dict mit Statistiken.
         """
@@ -81,6 +94,8 @@ class SleepConsolidation:
             "patterns_reinforced": 0,
             "rules_extracted": 0,
             "q_values_smoothed": 0,
+            "dream_connections": 0,
+            "homeostasis_factor": 1.0,
         }
 
         # ── Phase 1: Hippocampus Replay ──
@@ -149,10 +164,89 @@ class SleepConsolidation:
 
             stats["q_values_smoothed"] = smoothed
 
+        # ── Phase 4: Dream Replay (kreative Rekombination) ──
+        # Biologisches Vorbild: REM-Schlaf verknüpft Muster aus verschiedenen
+        # Kontexten. "Was wenn Muster aus dem Wohnzimmer auch im Büro gilt?"
+        # → Stärkt Generalisierung, entdeckt verborgene Zusammenhänge.
+        dream_connections = 0
+        if hippocampus and hasattr(hippocampus, "transitions"):
+            try:
+                buckets = list(hippocampus.transitions.keys())
+                if len(buckets) >= 2:
+                    pairs_tried = 0
+                    for _ in range(DREAM_CROSS_CONTEXT_PAIRS):
+                        b1, b2 = random.sample(buckets, 2)
+                        ngrams_1 = hippocampus.transitions.get(b1, {})
+                        ngrams_2 = hippocampus.transitions.get(b2, {})
+                        if not ngrams_1 or not ngrams_2:
+                            continue
+
+                        # Finde gemeinsame starke Token in beiden Kontexten
+                        # (Token die in verschiedenen Kontexten auftreten = generalisierbar)
+                        tokens_1 = {}
+                        for ngram, token_counts in ngrams_1.items():
+                            for tok, cnt in token_counts.items():
+                                if cnt > 3.0:  # Nur starke Muster
+                                    tokens_1[tok] = tokens_1.get(tok, 0) + cnt
+
+                        for ngram, token_counts in ngrams_2.items():
+                            for tok, cnt in token_counts.items():
+                                if cnt > 3.0 and tok in tokens_1:
+                                    # Gemeinsames starkes Token! → leicht Cross-Verstärken
+                                    boost = min(0.5, (tokens_1[tok] + cnt) * 0.02)
+                                    token_counts[tok] = cnt + boost
+                                    # Auch im anderen Kontext leicht boosten
+                                    for ng1, tc1 in ngrams_1.items():
+                                        if tok in tc1:
+                                            tc1[tok] = tc1[tok] + boost * 0.5
+                                            break
+                                    dream_connections += 1
+
+                        pairs_tried += 1
+                        if pairs_tried >= DREAM_CROSS_CONTEXT_PAIRS:
+                            break
+
+            except Exception:
+                _LOGGER.debug("Dream replay failed", exc_info=True)
+
+        stats["dream_connections"] = dream_connections
+        self.last_dream_connections = dream_connections
+        self.total_dream_connections += dream_connections
+
+        # ── Phase 5: Synaptic Homeostasis (SHY) ──
+        # Proportionale Herunterskalierung aller Gewichte nach intensivem Lernen.
+        # Verhindert Sättigung, erhält Signal-Rausch-Verhältnis.
+        homeostasis_factor = 1.0
+        if neurorhythms:
+            homeostasis_factor = neurorhythms.compute_homeostasis_factor()
+            if homeostasis_factor < 0.99:
+                # Hippocampus-Gewichte skalieren
+                if hippocampus and hasattr(hippocampus, "transitions"):
+                    for bucket_dict in hippocampus.transitions.values():
+                        for ngram, token_counts in bucket_dict.items():
+                            for tok in token_counts:
+                                token_counts[tok] *= homeostasis_factor
+                    # Auch Totals skalieren
+                    if hasattr(hippocampus, "totals"):
+                        for bucket_dict in hippocampus.totals.values():
+                            for ngram in bucket_dict:
+                                bucket_dict[ngram] *= homeostasis_factor
+
+                _LOGGER.info(
+                    "Synaptic Homeostasis: factor=%.3f (alle Gewichte skaliert)",
+                    homeostasis_factor,
+                )
+            neurorhythms.reset_homeostasis()
+
+        stats["homeostasis_factor"] = round(homeostasis_factor, 3)
+        self.last_homeostasis_factor = homeostasis_factor
+
         _LOGGER.info(
-            "Sleep consolidation complete: pruned=%d, reinforced=%d, rules=%d, q_smooth=%d",
+            "Sleep consolidation complete: pruned=%d, reinforced=%d, rules=%d, "
+            "q_smooth=%d, dreams=%d, homeostasis=%.3f",
             stats["patterns_pruned"], stats["patterns_reinforced"],
             stats["rules_extracted"], stats["q_values_smoothed"],
+            stats["dream_connections"], homeostasis_factor,
         )
 
         return stats
@@ -165,6 +259,9 @@ class SleepConsolidation:
             "last_patterns_pruned": self.last_patterns_pruned,
             "last_patterns_reinforced": self.last_patterns_reinforced,
             "last_rules_extracted": self.last_rules_extracted,
+            "last_dream_connections": self.last_dream_connections,
+            "last_homeostasis_factor": self.last_homeostasis_factor,
+            "total_dream_connections": self.total_dream_connections,
         }
 
     def from_dict(self, data: dict):
@@ -174,3 +271,6 @@ class SleepConsolidation:
         self.last_patterns_pruned = data.get("last_patterns_pruned", 0)
         self.last_patterns_reinforced = data.get("last_patterns_reinforced", 0)
         self.last_rules_extracted = data.get("last_rules_extracted", 0)
+        self.last_dream_connections = data.get("last_dream_connections", 0)
+        self.last_homeostasis_factor = data.get("last_homeostasis_factor", 1.0)
+        self.total_dream_connections = data.get("total_dream_connections", 0)

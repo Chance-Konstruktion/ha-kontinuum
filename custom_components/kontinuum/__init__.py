@@ -52,6 +52,8 @@ from .entorhinal_cortex import EntorhinalCortex
 from .sleep_consolidation import SleepConsolidation
 from .anterior_cingulate import AnteriorCingulateCortex
 from .metaplasticity import MetaPlasticity
+from .predictive_processing import PredictiveProcessing
+from .neurorhythms import Neurorhythms
 
 from .config_flow import PRESETS
 
@@ -76,6 +78,8 @@ AUX_MODULE_FILES = {
     "entorhinal": "entorhinal.json.gz",
     "sleep_consolidation": "sleep_consolidation.json.gz",
     "acc": "anterior_cingulate.json.gz",
+    "predictive": "predictive_processing.json.gz",
+    "neurorhythms": "neurorhythms.json.gz",
 }
 
 
@@ -301,6 +305,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         entorhinal = EntorhinalCortex()
         sleep_consolidation = SleepConsolidation()
         acc = AnteriorCingulateCortex()
+        predictive = PredictiveProcessing()
+        neurorhythms = Neurorhythms()
         metaplasticity = MetaPlasticity(hass)
 
         # Locus Coeruleus → Reticular Formation Verbindung (Arousal moduliert Burst-Filter)
@@ -349,6 +355,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "entorhinal": entorhinal,
             "sleep_consolidation": sleep_consolidation,
             "acc": acc,
+            "predictive": predictive,
+            "neurorhythms": neurorhythms,
             "metaplasticity": metaplasticity,
             "preset": preset_key,
             "_scenes_enabled": False,
@@ -470,6 +478,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     # Accumbens: Negatives Reward-Signal
                     state_key = f"{room}|{insula.current_mode}|{datetime.now(timezone.utc).hour}"
                     accumbens.reinforce(state_key, entity_id, -1.0)
+                    # Neurorhythms: Dopamin-Dip (unerwartet negativ)
+                    neurorhythms.register_outcome(token_id, positive=False)
                 # Implizite Positives → Basalganglien: Go-Pathway
                 accepted = prefrontal.check_implicit_positives(amygdala)
                 if accepted:
@@ -478,6 +488,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                         # Accumbens: Positives Reward-Signal
                         state_key = f"{room}|{insula.current_mode}|{datetime.now(timezone.utc).hour}"
                         accumbens.reinforce(state_key, acc_eid, 1.0)
+                    # Neurorhythms: Dopamin-Burst möglich (unerwartet positiv)
+                    neurorhythms.register_outcome(token_id, positive=True)
                 basal_ganglia.cleanup_pending()
 
                 # ── Hypothalamus (Energie/Klima) ──────────────
@@ -530,8 +542,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 mode_ctx = insula.get_mode_context()
                 ctx = time_ctx + hypo_ctx + mode_ctx
 
-                # Hippocampus lernt
-                hippocampus.learn(token_id, ctx, now)
+                # ── Predictive Processing: Surprise berechnen VOR dem Lernen ──
+                # Was hat der Hippocampus erwartet? Was kam wirklich?
+                pre_predictions = hippocampus.predict(ctx)
+                surprise = predictive.compute_surprise(token_id, pre_predictions)
+                learn_weight = predictive.get_learn_weight()
+
+                # ── Neurorhythms: Surprise registrieren + Lernrate modulieren ──
+                neurorhythms.register_surprise(token_id, surprise)
+                learn_weight = neurorhythms.modulate_learning(learn_weight)
+
+                # Hippocampus lernt (gewichtet durch Surprise + Rhythmen)
+                hippocampus.learn(token_id, ctx, now, learn_weight=learn_weight)
 
                 # Basalganglien: Passives Lernen (beobachtete Muster)
                 bucket = hippocampus._context_bucket(ctx)
@@ -611,7 +633,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 last_event_ts = brain.get("_last_event_ts", 0.0)
                 if sleep_consolidation.should_consolidate(last_event_ts):
                     consolidation_stats = sleep_consolidation.consolidate(
-                        hippocampus, cerebellum, basal_ganglia)
+                        hippocampus, cerebellum, basal_ganglia,
+                        neurorhythms=neurorhythms)
                     brain["_last_consolidation"] = consolidation_stats
                     _LOGGER.info("Sleep Consolidation: %s", consolidation_stats)
 
@@ -933,6 +956,8 @@ def _execute_decision(hass, brain, decision):
                 f"{decision.token_id}_{decision.token_id}", success)
             # ACC: Outcome-Feedback für Schwellen-Anpassung
             acc.observe_outcome(success)
+            # Neurorhythms: Dopamin-Burst bei Erfolg autonomer Aktion
+            neurorhythms.register_outcome(decision.token_id, positive=success)
             _LOGGER.debug(
                 "Outcome-Check: %s → gewünscht=%s, ist=%s, Erfolg=%s",
                 entity_id, desired_state, actual_state, success,

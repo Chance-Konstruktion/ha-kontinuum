@@ -192,12 +192,18 @@ class KontinuumStatusSensor(KontinuumSensorBase):
         entorhinal = self._brain.get("entorhinal")
         if entorhinal:
             attrs["entorhinal"] = entorhinal.to_dict()
+        predictive = self._brain.get("predictive")
+        if predictive:
+            attrs["predictive_processing"] = predictive.stats
         meta = self._brain.get("metaplasticity")
         if meta:
             attrs["metaplasticity"] = {
                 "last_update": meta.data.get("last_update"),
                 "modules_tracked": len(meta.data.get("module_params", {})),
             }
+        neuro = self._brain.get("neurorhythms")
+        if neuro:
+            attrs["neurorhythms"] = neuro.stats
         consolidation = self._brain.get("_last_consolidation")
         if consolidation:
             attrs["last_consolidation"] = consolidation
