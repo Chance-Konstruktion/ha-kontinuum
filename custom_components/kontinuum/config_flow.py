@@ -240,7 +240,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
     # ── Allgemeine Einstellungen ──────────────────────────────────
 
     async def async_step_general(self, user_input=None):
-        """Allgemein: Preset, Track-Mode, Dashboard, Home-Only."""
+        """Allgemein: Preset, Track-Mode, Betriebsmodus, Dashboard, Home-Only."""
         if user_input is not None:
             self._data.update(user_input)
             return await self.async_step_init()
@@ -252,12 +252,20 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             "labeled": "Labeled only (opt-in: only 'kontinuum' label)",
             "auto": "Automatic (smart heuristic filter)",
         }
+        operation_mode_options = {
+            "shadow": "👁️ Shadow – Nur beobachten, keine Aktionen",
+            "confirm": "✋ Confirm – Fragt vor jeder Aktion",
+            "active": "⚡ Active – Handelt selbstständig",
+        }
 
         return self.async_show_form(
             step_id="general",
             data_schema=vol.Schema({
                 vol.Required("preset", default=current.get("preset", "ausgeglichen")): vol.In(
                     preset_options
+                ),
+                vol.Required("operation_mode", default=current.get("operation_mode", "shadow")): vol.In(
+                    operation_mode_options
                 ),
                 vol.Required("track_mode", default=current.get("track_mode", "standard")): vol.In(
                     track_mode_options
@@ -495,9 +503,12 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         preset_key = self._data.get("preset", "ausgeglichen")
         preset = PRESETS.get(preset_key, PRESETS["ausgeglichen"])
 
+        op_mode = self._data.get("operation_mode", "shadow")
         new_data = {
             **self.config_entry.data,
             "preset": preset_key,
+            "operation_mode": op_mode,
+            "shadow_mode": op_mode == "shadow",
             "track_mode": self._data.get("track_mode", "standard"),
             "enable_dashboard": self._data.get("enable_dashboard", True),
             "home_only_mode": self._data.get("home_only_mode", False),

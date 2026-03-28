@@ -33,9 +33,10 @@
       },
       "general": {
         "title": "General Settings",
-        "description": "Personality, tracking mode, and general options.",
+        "description": "Personality, operation mode, tracking and general options.",
         "data": {
           "preset": "Personality",
+          "operation_mode": "Operation Mode",
           "track_mode": "Entity Tracking Mode",
           "enable_dashboard": "Enable Dashboard",
           "home_only_mode": "Home-Only Mode (pause when nobody is home)"
