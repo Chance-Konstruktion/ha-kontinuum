@@ -87,8 +87,8 @@ class PrefrontalCortex:
     OVERRIDE_WINDOW = 60
     IMPLICIT_POSITIVE_DELAY = 300
     # Minimum Beobachtungen bevor ein Pattern handeln darf
-    MIN_OBS_SUGGEST = 20   # n >= 20 für Vorschläge
-    MIN_OBS_EXECUTE = 100  # n >= 100 für autonome Aktionen
+    MIN_OBS_SUGGEST = 15   # n >= 15 für Vorschläge
+    MIN_OBS_EXECUTE = 30   # n >= 30 für autonome Aktionen
     
     def __init__(self, amygdala):
         self.amygdala = amygdala
@@ -168,19 +168,23 @@ class PrefrontalCortex:
                 candidates = thalamus.resolve_entities(token)
                 d.entity_id = candidates[0] if candidates else ""
 
-                # Stage bestimmen – v0.18.0 Betriebsmodus-Gating:
+                # Stage bestimmen – v0.21.0 Betriebsmodus-Gating:
                 # 1. Zu wenig Beobachtungen → OBSERVE (immer)
                 # 2. Shadow-Modus → OBSERVE (immer)
-                # 3. Confirm-Modus → CONFIRM statt EXECUTE
-                # 4. Active-Modus → EXECUTE wenn freigeschaltet
+                # 3. Active-Modus → alle ACTIONABLE_SEMANTICS sind automatisch frei
+                # 4. Confirm-Modus → CONFIRM statt EXECUTE
+                # 5. activated_semantics erweitert die Auto-Freigabe
                 if n_obs < self.MIN_OBS_SUGGEST:
                     d.stage = Decision.OBSERVE
                     d.reasons = d.reasons + [f"n={n_obs} < {self.MIN_OBS_SUGGEST} (zu wenig Daten)"]
                 elif self.operation_mode == MODE_SHADOW:
                     d.stage = Decision.OBSERVE
-                elif (semantic in self.activated_semantics
-                      and utility >= self.UTILITY_THRESHOLD_EXECUTE
-                      and n_obs >= self.MIN_OBS_EXECUTE):
+                elif (utility >= self.UTILITY_THRESHOLD_EXECUTE
+                      and n_obs >= self.MIN_OBS_EXECUTE
+                      and (self.operation_mode in (MODE_ACTIVE, MODE_CONFIRM)
+                           or semantic in self.activated_semantics)):
+                    # Active/Confirm: Alle actionable Semantiken dürfen feuern
+                    # Shadow + activated_semantics: Nur explizit aktivierte
                     if self.operation_mode == MODE_CONFIRM:
                         d.stage = Decision.CONFIRM
                     else:

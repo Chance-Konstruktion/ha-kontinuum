@@ -54,6 +54,7 @@ class Cerebellum:
     def __init__(self):
         self.rules = {}  # "trigger_target" → CerebellumRule
         self._recent_buffer = deque(maxlen=15)  # Letzte Token für Sequenz-Check
+        self.stats = {"total_fired": 0}
 
     def compile_rules(self, hippocampus):
         """

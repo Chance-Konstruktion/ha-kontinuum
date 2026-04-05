@@ -34,6 +34,7 @@ from homeassistant.const import EVENT_STATE_CHANGED, EVENT_HOMEASSISTANT_STOP, P
 from homeassistant.core import HomeAssistant, callback
 from homeassistant import config_entries
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+import homeassistant.helpers.config_validation as cv
 
 from .thalamus import Thalamus
 from .hippocampus import Hippocampus
@@ -66,6 +67,7 @@ BRAIN_FILE = "brain.json.gz"
 BRAIN_FILE_LEGACY = "brain.json"
 SAVE_INTERVAL = 600
 PLATFORMS = [Platform.SENSOR]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 SIGNAL_SENSORS_UPDATE = f"{DOMAIN}_sensors_update"
 SIGNAL_PERSONS_UPDATE = f"{DOMAIN}_persons_update"
 SIGNAL_CORTEX_UPDATE = f"{DOMAIN}_cortex_update"
@@ -559,8 +561,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 bucket = hippocampus._context_bucket(ctx)
                 basal_ganglia.process_observation(token_id, bucket)
 
+                # ── Cerebellum: Routine-Check (schnelle Reflexe) ──
+                fired_rule = cerebellum.check(token_id)
+                if fired_rule:
+                    cerebellum.mark_fired(fired_rule)
+                    cerebellum.stats["total_fired"] = cerebellum.stats.get("total_fired", 0) + 1
+                    _LOGGER.info(
+                        "Cerebellum REFLEX: rule trigger=%d → target=%d (conf=%.0f%%, order=%d)",
+                        fired_rule.trigger, fired_rule.target,
+                        fired_rule.confidence * 100, fired_rule.ngram_order,
+                    )
+
                 # Predictions + Basalganglien-Ranking
                 predictions = hippocampus.predict(ctx)
+
+                # Cerebellum-Regel als Top-Prediction injizieren (hohe Konfidenz)
+                if fired_rule and fired_rule.confidence >= 0.7:
+                    # Reflex-Prediction vor Hippocampus-Predictions einfügen
+                    reflex_pred = (
+                        fired_rule.target,
+                        fired_rule.confidence,
+                        fired_rule.confidence,
+                        "cerebellum",
+                        fired_rule.successes + 50,  # Bonus n_obs für Reflex
+                    )
+                    predictions = [reflex_pred] + (predictions or [])
+
                 if predictions:
                     predictions = _rank_with_basal_ganglia(
                         predictions, basal_ganglia, bucket,
@@ -883,7 +909,7 @@ def _process_decision(hass, brain, decision):
         _execute_decision(hass, brain, decision)
 
     elif decision.stage == "CONFIRM":
-        # v0.18.0: Bestätigung anfordern statt direkt ausführen
+        # v0.21.0: Bestätigung anfordern mit Event + Notification
         service_call = prefrontal.get_service_call(decision)
         if service_call and decision.entity_id:
             confirm_id = prefrontal.queue_confirm(decision)
@@ -892,15 +918,27 @@ def _process_decision(hass, brain, decision):
                 decision.token, decision.entity_id, confirm_id,
                 decision.confidence * 100,
             )
+            # Event feuern (für Automationen nutzbar)
+            hass.bus.async_fire("kontinuum_confirm_requested", {
+                "confirm_id": confirm_id,
+                "token": decision.token,
+                "entity_id": decision.entity_id,
+                "confidence": round(decision.confidence, 3),
+                "risk": round(decision.risk, 3),
+                "action": f"{service_call['domain']}.{service_call['service']}",
+            })
+            # Actionable Notification (mobile_app + persistent)
+            parts = decision.token.split(".")
+            action_label = parts[2] if len(parts) == 3 else decision.token
             _notify(hass,
-                "KONTINUUM – Bestätigung erforderlich",
-                f"KONTINUUM möchte **{decision.token}** ausführen.\n"
-                f"Entity: {decision.entity_id}\n"
+                "KONTINUUM – Bestätigung",
+                f"**{decision.entity_id}** → {action_label}\n"
                 f"Confidence: {decision.confidence:.0%} | "
                 f"Risiko: {decision.risk:.2f}\n\n"
-                f"**Bestätigen:** `kontinuum.confirm_action` mit "
-                f"`confirm_id: {confirm_id}`\n"
-                f"**Ablehnen:** Ignorieren (verfällt nach 10 Min)",
+                f"Service aufrufen:\n"
+                f"`kontinuum.confirm_action` → `confirm_id: {confirm_id}`\n"
+                f"`kontinuum.confirm_action` → `confirm_all: true`\n\n"
+                f"Verfällt nach 10 Min.",
                 "kontinuum_confirm",
             )
 
