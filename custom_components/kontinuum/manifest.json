@@ -1,13 +1,13 @@
 {
   "domain": "kontinuum",
   "name": "KONTINUUM - Neuroinspired Home Intelligence",
-  "version": "0.20.0",
+  "codeowners": ["@Chance-Konstruktion"],
+  "config_flow": true,
+  "dependencies": [],
   "documentation": "https://github.com/Chance-Konstruktion/ha-kontinuum",
+  "integration_type": "hub",
+  "iot_class": "local_push",
   "issue_tracker": "https://github.com/Chance-Konstruktion/ha-kontinuum/issues",
   "requirements": [],
-  "dependencies": [],
-  "codeowners": ["@Chance-Konstruktion"],
-  "iot_class": "local_push",
-  "integration_type": "hub",
-  "config_flow": true
+  "version": "0.20.0"
 }

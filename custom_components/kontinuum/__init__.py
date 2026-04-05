@@ -34,6 +34,7 @@ from homeassistant.const import EVENT_STATE_CHANGED, EVENT_HOMEASSISTANT_STOP, P
 from homeassistant.core import HomeAssistant, callback
 from homeassistant import config_entries
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+import homeassistant.helpers.config_validation as cv
 
 from .thalamus import Thalamus
 from .hippocampus import Hippocampus
@@ -66,6 +67,7 @@ BRAIN_FILE = "brain.json.gz"
 BRAIN_FILE_LEGACY = "brain.json"
 SAVE_INTERVAL = 600
 PLATFORMS = [Platform.SENSOR]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 SIGNAL_SENSORS_UPDATE = f"{DOMAIN}_sensors_update"
 SIGNAL_PERSONS_UPDATE = f"{DOMAIN}_persons_update"
 SIGNAL_CORTEX_UPDATE = f"{DOMAIN}_cortex_update"
