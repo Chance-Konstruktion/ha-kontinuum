@@ -1,0 +1,84 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "KONTINUUM Setup",
+        "description": "KONTINUUM learns your home's patterns and predicts what happens next. Choose a personality that determines how fast the system learns and acts.",
+        "data": {
+          "preset": "Personality"
+        }
+      },
+      "dashboard": {
+        "title": "Dashboard",
+        "description": "KONTINUUM includes a brain visualization dashboard. If enabled, it will be auto-installed and accessible via the sidebar.",
+        "data": {
+          "enable_dashboard": "Enable Dashboard"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "KONTINUUM is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "KONTINUUM Settings",
+        "description": "Choose what to configure.",
+        "menu_options": {
+          "general": "General Settings",
+          "cortex": "Cortex Agents (LLM)",
+          "finish": "Save & Restart"
+        }
+      },
+      "general": {
+        "title": "General Settings",
+        "description": "Personality, operation mode, tracking and general options.",
+        "data": {
+          "preset": "Personality",
+          "operation_mode": "Operation Mode",
+          "track_mode": "Entity Tracking Mode",
+          "enable_dashboard": "Enable Dashboard",
+          "home_only_mode": "Home-Only Mode (pause when nobody is home)"
+        }
+      },
+      "cortex": {
+        "title": "Cortex (LLM Agents)",
+        "description": "Enable Cortex for LLM-powered multi-agent decisions. Sequential mode queries agents one-by-one (recommended for single GPU).",
+        "data": {
+          "enable_cortex": "Enable Cortex",
+          "sequential_mode": "Sequential Mode (recommended for 1 GPU)",
+          "discussion_rounds": "Discussion Rounds"
+        }
+      },
+      "agents_overview": {
+        "title": "Cortex \u2013 Agent Overview",
+        "description": "Manage your LLM agents. Agents are preserved until you explicitly remove them.",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "agent_setup": {
+        "title": "Cortex \u2013 Agent {slot} (Connection)",
+        "description": "Choose a role and provider. For Ollama just enter the host (e.g. 'localhost' or '192.168.1.100') \u2013 http:// and port 11434 are added automatically.",
+        "data": {
+          "role": "Role",
+          "provider": "Provider",
+          "url": "URL / Host (leave empty for default)",
+          "api_key": "API Key (Cloud only)"
+        }
+      },
+      "agent_model": {
+        "title": "Cortex \u2013 Agent {slot} (Model)",
+        "description": "{status}",
+        "data": {
+          "model": "Model",
+          "system_prompt": "System Prompt (leave empty for default)"
+        }
+      }
+    },
+    "error": {
+      "ollama_unreachable": "Cannot reach Ollama at this address. Check if Ollama is running and the URL is correct."
+    }
+  }
+}
