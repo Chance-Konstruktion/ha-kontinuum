@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.21.0 – Neurorhythmen, Active-Modus Fix, Cerebellum feuert, HACS-ready
+
+### Neurorhythmen (neurorhythms.py)
+- **Circadiane Modulation** – Lernrate variiert über 24h: 0.5x nachts bis 1.3x morgens (Cosinus-Kurve, Peak 8:00)
+- **Phasische Dopamin-Bursts** – Unerwartet positive Outcomes (surprise > 0.5) lösen 3-8x Lernverstärkung aus
+- **Synaptic Homeostasis (SHY)** – Proportionale Herunterskalierung aller Gewichte bei Überlernung (0.85-0.98x)
+- **Dopamin-Dip bei Override** – Wenn User eine Aktion korrigiert, sinkt die Lernrate
+- **Dashboard** – Circadian-Indikator (☀/◐/☾), Dopamin-Level, Burst-Statistiken
+
+### Dream Replay (Sleep Consolidation erweitert)
+- **Kreative Cross-Context-Rekombination** – Starke Muster aus verschiedenen Kontexten werden verknüpft (wie REM-Schlaf)
+- **SHY-Integration** – Nach intensivem Lernen werden alle Hippocampus-Gewichte proportional skaliert
+- **Neue Stats** – Dream-Connections, Homeostasis-Faktor im Dashboard und Status-Sensor
+
+### Active/Confirm-Modus Fix (kritisch)
+- **Active-Modus funktioniert jetzt** – Alle ACTIONABLE_SEMANTICS automatisch freigeschaltet (vorher: `activated_semantics` war leer → EXECUTE nie erreicht)
+- **Confirm-Modus funktioniert jetzt** – Feuert `kontinuum_confirm_requested` Event (für HA-Automationen nutzbar)
+- **MIN_OBS_EXECUTE** von 100 auf 30 gesenkt (realistischer für Smart Home)
+
+### Cerebellum feuert Regeln
+- **`cerebellum.check()` war nie aufgerufen** – 47 gelernte Regeln waren totes Wissen, jetzt werden sie bei jedem Event geprüft
+- **Reflex-Predictions** – Gefeuerte Regeln werden als Top-Prediction mit höchster Priorität injiziert
+- **`stats.total_fired`** – Neuer Counter für Dashboard und Status-Sensor
+
+### HACS-Vorbereitung
+- **GitHub Actions** – HACS Validate + hassfest Workflows (SHA-gepinnt)
+- **Englische Übersetzung** – `translations/en.json` für internationales Publikum
+- **manifest.json** – `issue_tracker` ergänzt, Keys alphabetisch sortiert
+- **CONFIG_SCHEMA** – `cv.config_entry_only_config_schema` für hassfest-Kompatibilität
+- **services.yaml** – 5 fehlende Services ergänzt (set_mode, confirm_action, reject_action, cortex_sequential, brain_review)
+- **Codex-Überbleibsel entfernt** – 6 nicht verwendete Dateien die hassfest blockierten
+
+### Predictive Processing (aus vorheriger Session)
+- **Surprise-Based Learning** – Events die erwartet werden, werden kaum gelernt; Überraschungen maximal
+- **70% Prediction Error + 30% Novelty** – Zwei Komponenten bestimmen den Surprise-Wert
+- **Lerngewicht 0.2x-2.5x** – Moduliert Hippocampus-Lernen basierend auf Surprise
+- **Dashboard** – Surprise-Indikator (○/◉/⚡) mit Farbkodierung
+
+---
+
 ## v0.20.0 – Denken verbessert: Sleep Consolidation, ACC, MetaPlasticity + Dashboard
 
 ### Sleep Consolidation (Hippocampaler Replay)
