@@ -188,3 +188,78 @@ remove_agent:
         number:
           min: 1
           max: 4
+
+set_mode:
+  name: Betriebsmodus setzen
+  description: >
+    Setzt den Betriebsmodus von KONTINUUM.
+    Shadow = nur beobachten, Confirm = fragt vor jeder Aktion,
+    Active = handelt selbstständig.
+  fields:
+    mode:
+      name: Modus
+      description: Betriebsmodus (shadow, confirm, active)
+      required: true
+      example: active
+      selector:
+        select:
+          options:
+            - shadow
+            - confirm
+            - active
+
+confirm_action:
+  name: Aktion bestätigen
+  description: >
+    Bestätigt eine wartende Aktion im Confirm-Modus.
+    Entweder eine spezifische confirm_id oder confirm_all für alle wartenden.
+  fields:
+    confirm_id:
+      name: Confirm ID
+      description: ID der zu bestätigenden Aktion (z.B. c_1234567890_42)
+      required: false
+      example: "c_1234567890_42"
+      selector:
+        text:
+    confirm_all:
+      name: Alle bestätigen
+      description: Alle wartenden Aktionen bestätigen
+      required: false
+      default: false
+      selector:
+        boolean:
+
+reject_action:
+  name: Aktion ablehnen
+  description: >
+    Lehnt eine wartende Aktion im Confirm-Modus ab und
+    gibt negatives Feedback an das Lernsystem.
+  fields:
+    confirm_id:
+      name: Confirm ID
+      description: ID der abzulehnenden Aktion
+      required: true
+      example: "c_1234567890_42"
+      selector:
+        text:
+
+cortex_sequential:
+  name: Cortex Sequential Modus
+  description: >
+    Schaltet den Sequential-Modus des Cortex ein oder aus.
+    Sequential = Agents werden nacheinander statt parallel befragt.
+  fields:
+    enabled:
+      name: Aktiviert
+      description: Sequential-Modus ein/aus
+      required: true
+      example: true
+      selector:
+        boolean:
+
+brain_review:
+  name: Brain Review
+  description: >
+    Startet einen vollständigen Brain Review durch den Cortex.
+    Die LLM-Agents analysieren das gesamte Lernverhalten und geben
+    Optimierungsvorschläge als Notification aus.
