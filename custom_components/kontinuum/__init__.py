@@ -565,7 +565,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 fired_rule = cerebellum.check(token_id)
                 if fired_rule:
                     cerebellum.mark_fired(fired_rule)
-                    cerebellum.stats["total_fired"] = cerebellum.stats.get("total_fired", 0) + 1
+                    cerebellum._total_fired += 1
                     _LOGGER.info(
                         "Cerebellum REFLEX: rule trigger=%d → target=%d (conf=%.0f%%, order=%d)",
                         fired_rule.trigger, fired_rule.target,
