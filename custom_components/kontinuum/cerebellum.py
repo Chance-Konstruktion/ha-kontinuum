@@ -54,7 +54,7 @@ class Cerebellum:
     def __init__(self):
         self.rules = {}  # "trigger_target" → CerebellumRule
         self._recent_buffer = deque(maxlen=15)  # Letzte Token für Sequenz-Check
-        self.stats = {"total_fired": 0}
+        self._total_fired = 0
 
     def compile_rules(self, hippocampus):
         """
@@ -215,7 +215,7 @@ class Cerebellum:
     
     @property
     def stats(self) -> dict:
-        total_fires = sum(r.successes + r.failures for r in self.rules.values())
+        total_fires = self._total_fired
         total_success = sum(r.successes for r in self.rules.values())
         n_by_order = {1: 0, 2: 0, 3: 0, 4: 0}
         for r in self.rules.values():
