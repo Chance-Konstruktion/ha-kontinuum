@@ -249,13 +249,17 @@ class Hippocampus:
 
         results = []
         for token_id, data in scores.items():
-            conf = min(data["prob"] * data["weight"] * 2, 1.0)
-            if conf >= 0.15:
+            # Konfidenz: prob × weight + Bonus für viele Beobachtungen
+            n_obs = data["n_obs"]
+            obs_bonus = min(n_obs / 100.0, 0.3)  # Bis zu +0.3 für >100 Beobachtungen
+            conf = min(data["prob"] * data["weight"] * 2 + obs_bonus, 1.0)
+            if conf >= 0.20:  # Höhere Schwelle = weniger Rauschen
                 results.append((token_id, round(data["prob"], 4),
                                 round(conf, 4), data["source"],
                                 data["n_obs"]))
 
-        results.sort(key=lambda x: x[1] * x[2], reverse=True)
+        # Sortierung: Konfidenz × Wahrscheinlichkeit (stärkere Gewichtung auf Konfidenz)
+        results.sort(key=lambda x: x[2] * 0.7 + x[1] * 0.3, reverse=True)
 
         for tok_id, prob, conf, src, _n in results[:3]:
             if conf >= 0.3:

@@ -138,17 +138,20 @@ class Cerebellum:
             "Cerebellum: %d Routinen kompiliert (1=%d, 2=%d, 3=%d, 4=%d)",
             len(self.rules), n_by_order[1], n_by_order[2], n_by_order[3], n_by_order[4],
         )
-    
+
     def check(self, token_id: int):
         """
         Prüft ob ein Token eine Routine triggert.
 
         v0.13.0: Unterstützt Sequenz-Matching für 2-gram und 3-gram Regeln.
+        v0.21.0: Fuzzy-Matching – erlaubt 1 Token Abweichung bei längeren
+        Sequenzen. Kürzere Sequenzen (1-gram, 2-gram) werden bevorzugt
+        wenn exakte Matches fehlen.
         """
         self._recent_buffer.append(token_id)
         now = time.time()
         best_rule = None
-        best_order = 0
+        best_score = -1  # Scoring: höher = besserer Match
 
         for key, rule in self.rules.items():
             if rule.trigger != token_id:
@@ -156,20 +159,36 @@ class Cerebellum:
             if (now - rule.last_fired) < self.RULE_COOLDOWN:
                 continue
 
-            # Sequenz-Match für N-gram > 1
-            if rule.ngram_order > 1:
+            if rule.ngram_order == 1:
+                # 1-gram: Trigger allein reicht → exakter Match
+                score = 1.0 * rule.confidence
+            else:
                 seq = rule.trigger_sequence
                 buf = list(self._recent_buffer)
                 if len(buf) < len(seq):
                     continue
-                # Prüfe ob die letzten N Token mit der Sequenz übereinstimmen
-                if tuple(buf[-len(seq):]) != seq:
-                    continue
 
-            # Höhere N-grams bevorzugen (kontextreicher)
-            if rule.ngram_order > best_order:
+                recent = tuple(buf[-len(seq):])
+
+                # Exakter Match → volle Punktzahl
+                if recent == seq:
+                    score = rule.ngram_order * rule.confidence
+                else:
+                    # Fuzzy-Match: Wie viele Tokens stimmen überein?
+                    matches = sum(1 for a, b in zip(recent, seq) if a == b)
+                    match_ratio = matches / len(seq)
+
+                    # Mindestens 50% Übereinstimmung + letztes Token muss stimmen
+                    # (letztes Token = trigger, stimmt schon per Definition)
+                    if match_ratio < 0.5:
+                        continue
+
+                    # Fuzzy-Score: Abzug für jede Abweichung
+                    score = rule.ngram_order * rule.confidence * match_ratio * 0.8
+
+            if score > best_score:
                 best_rule = rule
-                best_order = rule.ngram_order
+                best_score = score
 
         return best_rule
     
