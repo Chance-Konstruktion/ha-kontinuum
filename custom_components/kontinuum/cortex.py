@@ -728,12 +728,30 @@ class Cortex:
 
         decision = await coordinator.think("\n".join(lines), self._session)
 
+        action = decision.get("action")
+        entity = decision.get("entity_id")
+        reason = decision.get("reason", "")
+
+        # Fallback: Wenn Coordinator leer antwortet, besten Vorschlag nehmen
+        if not action or not reason:
+            valid = [p for p in proposals if p.get("action") and not p.get("veto")]
+            if valid:
+                best = max(valid, key=lambda p: p.get("priority", 0))
+                action = action or best.get("action")
+                entity = entity or best.get("entity_id")
+                reason = reason or (
+                    f"Fallback: {best.get('agent', '?')} "
+                    f"(Prio {best.get('priority', 0)}): {best.get('reason', '?')}"
+                )
+                _LOGGER.info(
+                    "Cortex Coordinator-Fallback: %s → %s (Coordinator war leer)",
+                    action, entity,
+                )
+
         result = {
-            "consensus_action": decision.get("action"),
-            "consensus_entity": decision.get("entity_id"),
-            "consensus_reason": (
-                f"Coordinator: {decision.get('reason', '?')}"
-            ),
+            "consensus_action": action,
+            "consensus_entity": entity,
+            "consensus_reason": f"Coordinator: {reason}" if reason else "Coordinator: keine Entscheidung",
             "vetoed": False,
         }
 
