@@ -157,7 +157,8 @@ DEFAULT_PROMPTS = {
 # LLM Provider – Pure HTTP, keine SDKs
 # ══════════════════════════════════════════════════════════════════
 
-async def _call_ollama(session, url, model, system_prompt, user_msg):
+async def _call_ollama(session, url, model, system_prompt, user_msg,
+                      keep_alive=None, timeout=30):
     """Ollama /api/chat endpoint."""
     payload = {
         "model": model,
@@ -168,33 +169,18 @@ async def _call_ollama(session, url, model, system_prompt, user_msg):
         "stream": False,
         "format": "json",
     }
+    # keep_alive=0 → Modell sofort aus VRAM entladen nach Antwort
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
     async with session.post(
-        f"{url.rstrip('/')}/api/chat", json=payload, timeout=aiohttp.ClientTimeout(total=30)
+        f"{url.rstrip('/')}/api/chat", json=payload,
+        timeout=aiohttp.ClientTimeout(total=timeout)
     ) as resp:
         if resp.status != 200:
             text = await resp.text()
             raise RuntimeError(f"Ollama {resp.status}: {text[:200]}")
         data = await resp.json()
         return data["message"]["content"]
-
-
-async def _unload_ollama(session, url, model):
-    """Entlädt ein Ollama-Modell aus dem GPU-Speicher (keep_alive=0)."""
-    try:
-        payload = {
-            "model": model,
-            "keep_alive": 0,
-        }
-        async with session.post(
-            f"{url.rstrip('/')}/api/generate", json=payload,
-            timeout=aiohttp.ClientTimeout(total=10)
-        ) as resp:
-            if resp.status == 200:
-                _LOGGER.debug("Ollama Modell %s aus VRAM entladen", model)
-            else:
-                _LOGGER.debug("Ollama unload %s: Status %d", model, resp.status)
-    except Exception as e:
-        _LOGGER.debug("Ollama unload %s fehlgeschlagen: %s", model, e)
 
 
 async def _call_openai(session, url, api_key, model, system_prompt, user_msg):
@@ -269,11 +255,12 @@ async def _call_gemini(session, url, api_key, model, system_prompt, user_msg):
 # ══════════════════════════════════════════════════════════════════
 
 async def _call_llm(session, provider, url, api_key, model,
-                    system_prompt, user_msg):
+                    system_prompt, user_msg, keep_alive=None, timeout=30):
     """Dispatcht den LLM-Call an den richtigen Provider (mit Retry)."""
     async def _do_call():
         if provider == "ollama":
-            return await _call_ollama(session, url, model, system_prompt, user_msg)
+            return await _call_ollama(session, url, model, system_prompt, user_msg,
+                                      keep_alive=keep_alive, timeout=timeout)
         elif provider in ("openai", "grok"):
             return await _call_openai(session, url, api_key, model,
                                       system_prompt, user_msg)
@@ -309,10 +296,14 @@ class CortexAgent:
         self.last_call_time = 0
 
     async def think(self, user_msg: str,
-                    session: aiohttp.ClientSession) -> dict:
+                    session: aiohttp.ClientSession,
+                    keep_alive=None, timeout=30) -> dict:
         """
         Ruft das LLM mit einer beliebigen Nachricht auf.
         Returns: Parsed JSON-Response oder Error-Dict.
+
+        keep_alive: Ollama keep_alive Parameter (0 = sofort aus VRAM entladen)
+        timeout: Request-Timeout in Sekunden
         """
         self.last_call_time = time.time()
         self.total_calls += 1
@@ -321,6 +312,7 @@ class CortexAgent:
             raw = await _call_llm(
                 session, self.provider, self.url, self.api_key,
                 self.model, self.system_prompt, user_msg,
+                keep_alive=keep_alive, timeout=timeout,
             )
 
             # Parse JSON response
@@ -463,13 +455,13 @@ class Cortex:
 
         if self.sequential_mode:
             # v0.18.0: Sequentiell – für Single-GPU/Ollama-Instanzen
-            # v0.21.0: Nach jedem Agent VRAM freigeben (Ollama keep_alive=0)
+            # v0.21.0: keep_alive=0 im Chat-Payload → VRAM sofort frei nach Antwort
             proposals = []
             for agent in active_agents:
-                result = await agent.think(context_msg, self._session)
+                ka = 0 if agent.provider == "ollama" else None
+                result = await agent.think(context_msg, self._session,
+                                           keep_alive=ka)
                 proposals.append(result)
-                if agent.provider == "ollama":
-                    await _unload_ollama(self._session, agent.url, agent.model)
         else:
             tasks = [
                 agent.think(context_msg, self._session)
@@ -498,10 +490,10 @@ class Cortex:
             if self.sequential_mode:
                 revisions = []
                 for agent in active_agents:
-                    result = await agent.think(discussion_msg, self._session)
+                    ka = 0 if agent.provider == "ollama" else None
+                    result = await agent.think(discussion_msg, self._session,
+                                               keep_alive=ka)
                     revisions.append(result)
-                    if agent.provider == "ollama":
-                        await _unload_ollama(self._session, agent.url, agent.model)
             else:
                 tasks = [
                     agent.think(discussion_msg, self._session)
@@ -522,9 +514,6 @@ class Cortex:
             consensus = await self._coordinator_decide(
                 coordinator, context, final_proposals
             )
-            # VRAM freigeben nach Coordinator
-            if coordinator.provider == "ollama":
-                await _unload_ollama(self._session, coordinator.url, coordinator.model)
         else:
             # Algorithmischer Konsens (Prefrontal = Leader)
             consensus = self._resolve_consensus(final_proposals)
@@ -753,7 +742,12 @@ class Cortex:
             '{"action": "...", "entity_id": "...", "reason": "...", "priority": 0-100}',
         ])
 
-        decision = await coordinator.think("\n".join(lines), self._session)
+        # Coordinator: keep_alive=0 (VRAM freigeben) + 90s Timeout (großer Prompt)
+        ka = 0 if coordinator.provider == "ollama" else None
+        decision = await coordinator.think(
+            "\n".join(lines), self._session,
+            keep_alive=ka, timeout=90,
+        )
 
         action = decision.get("action")
         entity = decision.get("entity_id")
