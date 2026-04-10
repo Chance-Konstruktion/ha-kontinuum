@@ -178,6 +178,25 @@ async def _call_ollama(session, url, model, system_prompt, user_msg):
         return data["message"]["content"]
 
 
+async def _unload_ollama(session, url, model):
+    """Entlädt ein Ollama-Modell aus dem GPU-Speicher (keep_alive=0)."""
+    try:
+        payload = {
+            "model": model,
+            "keep_alive": 0,
+        }
+        async with session.post(
+            f"{url.rstrip('/')}/api/generate", json=payload,
+            timeout=aiohttp.ClientTimeout(total=10)
+        ) as resp:
+            if resp.status == 200:
+                _LOGGER.debug("Ollama Modell %s aus VRAM entladen", model)
+            else:
+                _LOGGER.debug("Ollama unload %s: Status %d", model, resp.status)
+    except Exception as e:
+        _LOGGER.debug("Ollama unload %s fehlgeschlagen: %s", model, e)
+
+
 async def _call_openai(session, url, api_key, model, system_prompt, user_msg):
     """OpenAI-kompatible API (auch für Grok, da xAI OpenAI-Format nutzt)."""
     payload = {
@@ -444,10 +463,13 @@ class Cortex:
 
         if self.sequential_mode:
             # v0.18.0: Sequentiell – für Single-GPU/Ollama-Instanzen
+            # v0.21.0: Nach jedem Agent VRAM freigeben (Ollama keep_alive=0)
             proposals = []
             for agent in active_agents:
                 result = await agent.think(context_msg, self._session)
                 proposals.append(result)
+                if agent.provider == "ollama":
+                    await _unload_ollama(self._session, agent.url, agent.model)
         else:
             tasks = [
                 agent.think(context_msg, self._session)
@@ -478,6 +500,8 @@ class Cortex:
                 for agent in active_agents:
                     result = await agent.think(discussion_msg, self._session)
                     revisions.append(result)
+                    if agent.provider == "ollama":
+                        await _unload_ollama(self._session, agent.url, agent.model)
             else:
                 tasks = [
                     agent.think(discussion_msg, self._session)
@@ -498,6 +522,9 @@ class Cortex:
             consensus = await self._coordinator_decide(
                 coordinator, context, final_proposals
             )
+            # VRAM freigeben nach Coordinator
+            if coordinator.provider == "ollama":
+                await _unload_ollama(self._session, coordinator.url, coordinator.model)
         else:
             # Algorithmischer Konsens (Prefrontal = Leader)
             consensus = self._resolve_consensus(final_proposals)
