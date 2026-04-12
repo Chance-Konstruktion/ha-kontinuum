@@ -562,7 +562,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 basal_ganglia.process_observation(token_id, bucket)
 
                 # ── Cerebellum: Routine-Check (schnelle Reflexe) ──
-                fired_rule = cerebellum.check(token_id)
+                # v0.22.0: aktueller Bucket wird mit übergeben, damit Regeln
+                # aus passendem Kontext bevorzugt werden.
+                cerebellum.set_context(bucket)
+                fired_rule = cerebellum.check(token_id, current_bucket=bucket)
                 if fired_rule:
                     cerebellum.mark_fired(fired_rule)
                     cerebellum._total_fired += 1
@@ -621,7 +624,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                         basal_ganglia.register_action(
                             decision.entity_id, decision.token_id,
                             bucket, decision.token)
-                    _process_decision(hass, brain, decision)
+                    # Kontext für Confirm-UI / Begründung mitgeben
+                    decision_ctx = {
+                        "bucket_id": bucket,
+                        "mode": insula.current_mode,
+                        "time_bucket": _time_bucket_label(now),
+                        "fired_rule": fired_rule,
+                        "thalamus": thalamus,
+                    }
+                    _process_decision(hass, brain, decision, decision_ctx)
 
                 # Letztes Signal + Vorhersage im Brain speichern (für Cortex-Kontext)
                 brain["_last_signal"] = signal
@@ -900,7 +911,73 @@ def _inject_token(hass, brain, token_info, timestamp):
 # DECISION PROCESSING
 # ══════════════════════════════════════════════════════════════════
 
-def _process_decision(hass, brain, decision):
+def _time_bucket_label(now) -> str:
+    """Gibt einen menschenlesbaren Tageszeit-Bucket zurück (für Reasoning)."""
+    h = now.hour if hasattr(now, "hour") else datetime.now(timezone.utc).hour
+    if 5 <= h < 10:
+        return "morgens"
+    if 10 <= h < 17:
+        return "tagsüber"
+    if 17 <= h < 22:
+        return "abends"
+    return "nachts"
+
+
+def _build_decision_reasoning(decision, ctx: dict) -> str:
+    """Erzeugt einen menschenlesbaren Begründungstext für eine Entscheidung.
+
+    v0.22.0: Speist sich aus
+    - Cerebellum-Regel (gefeuerter Reflex) – "weil du zuletzt X gemacht hast"
+    - Hippocampus-Confidence – "Muster mit n Beobachtungen, X% Konfidenz"
+    - Insula-Modus / Tageszeit – "im Modus 'sleeping', abends"
+    - Amygdala-Reasons – Risikohinweise
+    """
+    if not ctx:
+        ctx = {}
+    bits = []
+    src = decision.source or "?"
+    fired_rule = ctx.get("fired_rule")
+    thalamus = ctx.get("thalamus")
+
+    if src == "cerebellum" and fired_rule and thalamus is not None:
+        try:
+            seq_tokens = [thalamus.decode_token(t)
+                          for t in (fired_rule.trigger_sequence or [])]
+            seq_label = " → ".join(seq_tokens) if seq_tokens else "Reflex"
+            bits.append(
+                f"Reflex aus gelernter Routine ({fired_rule.ngram_order}-gram): "
+                f"{seq_label} → {decision.token}"
+            )
+            bits.append(
+                f"Konfidenz {fired_rule.confidence:.0%}, "
+                f"erfolgreich {fired_rule.successes}× / fehlgeschlagen {fired_rule.failures}×"
+            )
+        except Exception:  # pragma: no cover
+            bits.append(f"Cerebellum-Reflex (conf {decision.confidence:.0%})")
+    else:
+        bits.append(
+            f"Vorhersage aus {src} – Konfidenz {decision.confidence:.0%}, "
+            f"basierend auf {decision.n_obs} Beobachtungen"
+        )
+
+    mode = ctx.get("mode")
+    tb = ctx.get("time_bucket")
+    if mode or tb:
+        ctx_label = ", ".join(filter(None, [
+            f"Modus '{mode}'" if mode else None,
+            tb,
+        ]))
+        bits.append(f"Kontext: {ctx_label}")
+
+    if decision.risk and decision.risk > 0.05:
+        bits.append(f"Restrisiko {decision.risk:.2f} (Amygdala)")
+    if decision.reasons:
+        bits.append("Hinweise: " + "; ".join(decision.reasons[:3]))
+
+    return " · ".join(bits)
+
+
+def _process_decision(hass, brain, decision, decision_ctx=None):
     """Verarbeitet eine PFC-Entscheidung."""
     prefrontal = brain["prefrontal"]
     cerebellum = brain["cerebellum"]
@@ -910,9 +987,20 @@ def _process_decision(hass, brain, decision):
 
     elif decision.stage == "CONFIRM":
         # v0.21.0: Bestätigung anfordern mit Event + Notification
+        # v0.22.0: Speichert Begründung + Kontext für die Dashboard-UI
         service_call = prefrontal.get_service_call(decision)
         if service_call and decision.entity_id:
-            confirm_id = prefrontal.queue_confirm(decision)
+            reasoning = _build_decision_reasoning(decision, decision_ctx or {})
+            queue_ctx = {
+                "bucket_id": (decision_ctx or {}).get("bucket_id", 0),
+                "mode": (decision_ctx or {}).get("mode"),
+                "time_bucket": (decision_ctx or {}).get("time_bucket"),
+            }
+            fr = (decision_ctx or {}).get("fired_rule")
+            if fr is not None:
+                queue_ctx["rule_order"] = getattr(fr, "ngram_order", 1)
+            confirm_id = prefrontal.queue_confirm(
+                decision, reasoning=reasoning, context=queue_ctx)
             _LOGGER.info(
                 "KONTINUUM CONFIRM: %s → %s (ID: %s, conf=%.0f%%)",
                 decision.token, decision.entity_id, confirm_id,
@@ -926,6 +1014,8 @@ def _process_decision(hass, brain, decision):
                 "confidence": round(decision.confidence, 3),
                 "risk": round(decision.risk, 3),
                 "action": f"{service_call['domain']}.{service_call['service']}",
+                "reasoning": reasoning,
+                "source": decision.source,
             })
             # Actionable Notification (mobile_app + persistent)
             parts = decision.token.split(".")
@@ -935,7 +1025,8 @@ def _process_decision(hass, brain, decision):
                 f"**{decision.entity_id}** → {action_label}\n"
                 f"Confidence: {decision.confidence:.0%} | "
                 f"Risiko: {decision.risk:.2f}\n\n"
-                f"Service aufrufen:\n"
+                f"_{reasoning}_\n\n"
+                f"Im Dashboard bestätigen oder per Service:\n"
                 f"`kontinuum.confirm_action` → `confirm_id: {confirm_id}`\n"
                 f"`kontinuum.confirm_action` → `confirm_all: true`\n\n"
                 f"Verfällt nach 10 Min.",
@@ -1561,19 +1652,28 @@ def _register_services(hass, brain):
         """
         Lehnt eine wartende Aktion ab.
         Service: kontinuum.reject_action mit data: {confirm_id: "c_..."}
+
+        v0.22.0: Speist negatives Feedback in die Basalganglien (RPE)
+        und Amygdala (Risiko-Lernen) – damit Reinforcement Learning
+        auch im Confirm-Modus tatsächlich passiert.
         """
         prefrontal = brain["prefrontal"]
-        confirm_id = call.data.get("confirm_id", "")
-        decision = prefrontal.get_pending_confirm(confirm_id)
-        if decision:
-            # Negatives Feedback lernen
-            parts = decision.token.split(".")
-            semantic = parts[1] if len(parts) == 3 else ""
-            if semantic:
-                prefrontal.learn_from_feedback(semantic, positive=False)
-            _LOGGER.info("KONTINUUM: Aktion abgelehnt: %s", decision.token)
+        result = prefrontal.reject_pending(
+            call.data.get("confirm_id", ""),
+            basal_ganglia=brain["basal_ganglia"],
+            amygdala=brain["amygdala"],
+        )
+        if result:
+            _LOGGER.info(
+                "KONTINUUM: Aktion abgelehnt: %s (%s) – negatives Feedback an BG/Amygdala",
+                result.get("token"), result.get("entity_id"),
+            )
+            hass.bus.async_fire("kontinuum_confirm_rejected", result)
         else:
-            _LOGGER.warning("KONTINUUM: confirm_id '%s' nicht gefunden", confirm_id)
+            _LOGGER.warning(
+                "KONTINUUM: confirm_id '%s' nicht gefunden",
+                call.data.get("confirm_id", ""),
+            )
 
     async def handle_cortex_remove_agent(call):
         """Entfernt einen Cortex-Agent. Data: {slot: 1-4}"""

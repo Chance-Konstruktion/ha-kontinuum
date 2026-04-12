@@ -1,5 +1,57 @@
 # Changelog
 
+## v0.22.0 – Confirm-UI, kontextbewusstes Cerebellum, Reject-RPE, Chunking
+
+### 🔴 Confirm-Modus UI/UX (kritisch)
+- **Pro Aktion ein "Ausführen / Ablehnen"-Button im Dashboard** – die wartenden
+  Bestätigungen erscheinen jetzt prominent oberhalb des Debug-Panels mit
+  per-Aktion-Schaltflächen. Vorher gab es nur "Alle bestätigen", deshalb stand
+  `prefrontal.total_executions` permanent bei 0.
+- **Begründungstext sichtbar** – jede wartende Aktion zeigt jetzt *warum*
+  KONTINUUM handeln will: gefeuerte Cerebellum-Regel inkl. n-gram-Sequenz,
+  Hippocampus-Confidence + Beobachtungszahl, aktueller Insula-Modus,
+  Tageszeit-Bucket, Amygdala-Hinweise. Reasoning landet auch in der
+  Notification und im `kontinuum_confirm_requested`-Event.
+- **Reichhaltige Sensor-Attribute** – neue `pending_confirms_list` am
+  `sensor.kontinuum_prefrontal` mit allen Details (id, room, semantic, action,
+  conf/util/risk, n_obs, source, reasoning, context, age_s, expires_in_s).
+- **Neuer Service-Pfad `reject_action`** liefert jetzt echtes RPE statt nur
+  ein Utility-Weight-Decrement (siehe nächster Punkt).
+
+### Reinforcement Learning aktiv im Confirm-Modus
+- **`reject_action` speist negatives Feedback in die Basalganglien** – das
+  Q-Value der abgelehnten Aktion sinkt, NoGo-Pathway wird gestärkt. Vorher
+  blieb `basal_ganglia.total_updates` bei 0, weil Rejects nirgendwo gelernt
+  wurden.
+- **`PrefrontalCortex.reject_pending()`** vereinheitlicht den Reject-Pfad
+  (Amygdala-Risiko-Lernen, BG-RPE, PFC-Utility, Feedback-Log, Event).
+- Neues Event `kontinuum_confirm_rejected` für Automationen.
+
+### Kontextbewusstes Cerebellum
+- **Regeln tragen jetzt `context_buckets`** – beim Kompilieren wird notiert
+  in welchen Hippocampus-Buckets (Tageszeit × Modus × Hypothalamus) eine
+  Routine signifikant beobachtet wurde. Damit lernt das Cerebellum
+  `(token, context) → token` statt rein sequenziell.
+- **`check()` moduliert mit Kontext** – Regeln aus dem aktuellen Bucket
+  bekommen +20% Score, fremde Buckets -25%. Eine "Licht aus"-Regel um
+  23 Uhr feuert weiter im Schlafkontext, aber nicht mehr morgens um 10.
+- **`set_context(bucket)`** als API für den Setup-Loop.
+- **`rules_context_aware`** in den Stats und im `kontinuum.rules` Sensor.
+
+### Hierarchisches Chunking
+- **`CerebellumChunk` + `_detect_chunks()`** – wiederkehrende Regelketten
+  (rule_a.target == rule_b.trigger) werden als zusammenhängende
+  Mehrschritt-Prozeduren erkannt (greedy, max 5 Schritte). Erster Schritt
+  von Vorhersage zu Absichtserkennung – die Basis für "Filmabend starten"
+  als ein Token.
+- **Persistenz** – Chunks landen in `to_dict`/`from_dict` und in
+  `cerebellum.stats.top_chunks` für Dashboard und Brain-Export.
+
+### Aufgeräumt
+- `prefrontal.total_executions` jetzt im `kontinuum.rules` Sensor sichtbar.
+
+---
+
 ## v0.21.0 – Neurorhythmen, Active-Modus Fix, Cerebellum feuert, HACS-ready
 
 ### Neurorhythmen (neurorhythms.py)
