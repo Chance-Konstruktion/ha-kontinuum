@@ -343,12 +343,19 @@ class PrefrontalCortex:
         _LOGGER.info("Betriebsmodus: %s → %s", old, mode)
         return True
 
-    def queue_confirm(self, decision: Decision) -> str:
-        """Speichert eine Entscheidung zur Bestätigung. Returns: confirm_id."""
+    def queue_confirm(self, decision: Decision, reasoning: str = "",
+                      context: dict = None) -> str:
+        """Speichert eine Entscheidung zur Bestätigung. Returns: confirm_id.
+
+        v0.22.0: Speichert zusätzlich Begründung + Kontext für die UI,
+        damit der Nutzer im Confirm-Modus sieht *warum* das System handeln will.
+        """
         confirm_id = f"c_{int(time.time())}_{decision.token_id}"
         self._pending_confirms[confirm_id] = {
             "decision": decision,
             "timestamp": time.time(),
+            "reasoning": reasoning or "",
+            "context": context or {},
         }
         self.total_confirms += 1
         # Alte Confirms aufräumen (> 10 min)
@@ -360,22 +367,110 @@ class PrefrontalCortex:
         return confirm_id
 
     def get_pending_confirm(self, confirm_id: str):
-        """Gibt eine wartende Bestätigungs-Entscheidung zurück."""
+        """Gibt eine wartende Bestätigungs-Entscheidung zurück (und entfernt sie)."""
         entry = self._pending_confirms.pop(confirm_id, None)
         if entry:
             return entry["decision"]
         return None
 
+    def peek_pending_confirm(self, confirm_id: str) -> dict:
+        """Liefert den vollständigen Pending-Eintrag (Decision + reasoning) ohne ihn zu entfernen."""
+        return self._pending_confirms.get(confirm_id)
+
     def get_all_pending_confirms(self) -> list:
-        """Gibt alle wartenden Bestätigungen zurück."""
+        """Gibt alle wartenden Bestätigungen mit vollständigem Kontext zurück.
+
+        v0.22.0: Liefert reasoning, source, semantic, action_label und Begründungen
+        damit das Dashboard nachvollziehbar darstellen kann *warum* gehandelt wird.
+        """
         now = time.time()
-        return [
-            {"id": k, "token": v["decision"].token,
-             "entity_id": v["decision"].entity_id,
-             "confidence": v["decision"].confidence,
-             "age_s": int(now - v["timestamp"])}
-            for k, v in self._pending_confirms.items()
-        ]
+        result = []
+        for cid, entry in self._pending_confirms.items():
+            d = entry["decision"]
+            parts = d.token.split(".")
+            room = parts[0] if len(parts) == 3 else ""
+            semantic = parts[1] if len(parts) == 3 else ""
+            action_label = parts[2] if len(parts) == 3 else d.token
+            ctx = entry.get("context") or {}
+            result.append({
+                "id": cid,
+                "token": d.token,
+                "entity_id": d.entity_id,
+                "room": room,
+                "semantic": semantic,
+                "action": action_label,
+                "confidence": round(d.confidence, 3),
+                "utility": round(d.utility, 3),
+                "risk": round(d.risk, 3),
+                "n_obs": d.n_obs,
+                "source": d.source,
+                "reasons": list(d.reasons or []),
+                "reasoning": entry.get("reasoning", ""),
+                "context": {
+                    "mode": ctx.get("mode"),
+                    "time_bucket": ctx.get("time_bucket"),
+                    "bucket_id": ctx.get("bucket_id"),
+                    "rule_key": ctx.get("rule_key"),
+                    "rule_order": ctx.get("rule_order"),
+                },
+                "age_s": int(now - entry["timestamp"]),
+                "expires_in_s": max(0, 600 - int(now - entry["timestamp"])),
+            })
+        # Älteste zuerst (am dringendsten zu beantworten)
+        result.sort(key=lambda r: -r["age_s"])
+        return result
+
+    def reject_pending(self, confirm_id: str, basal_ganglia=None,
+                       amygdala=None) -> dict:
+        """Lehnt eine wartende Bestätigung ab und liefert negatives Feedback.
+
+        v0.22.0: Vereinheitlicht den Reject-Pfad – BG bekommt RPE,
+        Amygdala lernt das Risiko, PFC verringert utility_weight der Semantik.
+        Returns: dict mit token/entity oder None wenn nicht gefunden.
+        """
+        entry = self._pending_confirms.pop(confirm_id, None)
+        if not entry:
+            return None
+        decision = entry["decision"]
+        parts = decision.token.split(".")
+        semantic = parts[1] if len(parts) == 3 else ""
+
+        if semantic:
+            self.learn_from_feedback(semantic, positive=False)
+        if amygdala and decision.token:
+            try:
+                amygdala.learn_from_feedback(decision.token, "negative")
+            except Exception:  # pragma: no cover – defensiv
+                pass
+        if basal_ganglia and decision.entity_id:
+            # Falls eine pending action im BG existiert: negativ abschließen.
+            # Sonst: synthetisches negatives Outcome registrieren.
+            try:
+                if decision.entity_id not in basal_ganglia.pending_actions:
+                    basal_ganglia.register_action(
+                        decision.entity_id, decision.token_id,
+                        entry.get("context", {}).get("bucket_id", 0),
+                        decision.token,
+                    )
+                basal_ganglia.process_outcome(decision.entity_id, positive=False)
+            except Exception:  # pragma: no cover – defensiv
+                pass
+
+        self._feedback_log.append({
+            "time": time.time(),
+            "entity_id": decision.entity_id,
+            "token": decision.token,
+            "feedback": "rejected",
+        })
+        if len(self._feedback_log) > 100:
+            self._feedback_log = self._feedback_log[-100:]
+
+        return {
+            "id": confirm_id,
+            "token": decision.token,
+            "entity_id": decision.entity_id,
+            "semantic": semantic,
+        }
 
     def to_dict(self) -> dict:
         return {

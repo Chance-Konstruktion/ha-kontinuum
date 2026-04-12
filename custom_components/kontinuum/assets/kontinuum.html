@@ -149,6 +149,52 @@
   .dbg-out .sep{border-top:1px solid var(--border);margin:8px 0}
   .dbg-hist{margin-top:14px}
   .dbg-hist-t{font-family:'Orbitron',sans-serif;font-size:.55rem;letter-spacing:2px;color:var(--t2);text-transform:uppercase;margin-bottom:8px}
+
+  /* Pending Confirms (v0.22.0) */
+  .pending-pnl{border-color:var(--amber);background:linear-gradient(180deg,rgba(245,158,11,.06),var(--panel))}
+  .pending-t{display:flex;align-items:center;justify-content:space-between;color:var(--amber)}
+  .pending-count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;
+    padding:0 6px;border-radius:11px;background:var(--amber);color:#0b0b1a;font-family:'JetBrains Mono',monospace;
+    font-size:.62rem;font-weight:700}
+  .pending-list{display:flex;flex-direction:column;gap:10px;margin:12px 0}
+  .pending-card{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start;
+    padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:rgba(5,5,16,.6);
+    transition:border-color .2s}
+  .pending-card:hover{border-color:var(--amber)}
+  .pending-info{min-width:0}
+  .pending-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin-bottom:6px}
+  .pending-entity{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--cyan);
+    word-break:break-all}
+  .pending-action{font-family:'Orbitron',sans-serif;font-size:.62rem;letter-spacing:1.5px;
+    text-transform:uppercase;color:var(--amber);padding:2px 8px;border:1px solid var(--amber);
+    border-radius:4px}
+  .pending-meta{display:flex;flex-wrap:wrap;gap:10px;font-family:'JetBrains Mono',monospace;
+    font-size:.55rem;color:var(--t3);margin-bottom:6px}
+  .pending-meta b{color:var(--t1);font-weight:600}
+  .pending-why{font-size:.62rem;color:var(--t2);line-height:1.55;
+    border-left:2px solid var(--cyan);padding:4px 0 4px 10px;margin-top:6px;
+    background:rgba(74,158,255,.04);border-radius:0 4px 4px 0}
+  .pending-why-t{font-family:'Orbitron',sans-serif;font-size:.5rem;letter-spacing:1.5px;
+    color:var(--cyan);text-transform:uppercase;margin-bottom:3px}
+  .pending-btns{display:flex;flex-direction:column;gap:6px;min-width:120px}
+  .pending-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:rgba(5,5,16,.6);
+    color:var(--t1);font-family:'JetBrains Mono',monospace;font-size:.6rem;cursor:pointer;
+    transition:all .15s;letter-spacing:.5px}
+  .pending-btn:hover{transform:translateY(-1px)}
+  .pending-btn:active{transform:scale(.97)}
+  .pending-btn-go{border-color:var(--green);color:var(--green)}
+  .pending-btn-go:hover{background:rgba(34,197,94,.12);box-shadow:0 0 12px rgba(34,197,94,.25)}
+  .pending-btn-no{border-color:var(--red);color:var(--red)}
+  .pending-btn-no:hover{background:rgba(239,68,68,.12);box-shadow:0 0 12px rgba(239,68,68,.25)}
+  .pending-btn-all{border-color:var(--green);color:var(--green);font-weight:700}
+  .pending-btn-all:hover{background:rgba(34,197,94,.12)}
+  .pending-actions{display:flex;justify-content:flex-end;gap:8px}
+  @media(max-width:680px){
+    .pending-card{grid-template-columns:1fr}
+    .pending-btns{flex-direction:row;min-width:0}
+    .pending-btn{flex:1}
+  }
 </style>
 </head>
 <body>
@@ -450,6 +496,24 @@
     <div class="si"><div class="si-i">🎯</div><div><div class="si-l">Accuracy</div><div class="si-v" style="color:var(--cyan)" id="s-acc">—</div></div></div>
     <div class="si"><div class="si-i">💾</div><div><div class="si-l">Memory</div><div class="si-v" style="color:var(--green)" id="s-mem">—</div></div></div>
     <div class="si"><div class="si-i">⚡</div><div><div class="si-l">Absorbed</div><div class="si-v" style="color:var(--amber)" id="s-abs">—</div></div></div>
+  </div>
+
+  <!-- Pending Confirms Panel (v0.22.0) -->
+  <!-- Wird nur sichtbar wenn Aktionen auf Bestätigung warten -->
+  <div class="pending-wrap" id="pending-wrap" style="display:none;margin-top:14px">
+    <div class="pnl pending-pnl">
+      <div class="pnl-t pending-t">
+        <span>✋ Wartende Aktionen</span>
+        <span class="pending-count" id="pending-count">0</span>
+      </div>
+      <div class="pending-list" id="pending-list"></div>
+      <div class="pending-actions">
+        <button class="pending-btn pending-btn-all"
+                onclick="callService('confirm_action',{confirm_all:true})">
+          ✅ Alle bestätigen
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Debug Toggle -->
@@ -915,6 +979,8 @@ function updateDashboard(d) {
         mode.toUpperCase() + ' · decisions: ' + (pf.total_decisions || 0) + ' · overrides: ' + (pf.overrides_detected || 0);
       // Mode-Buttons aktualisieren
       updateModeButtons(mode);
+      // v0.22.0: Wartende Bestätigungen rendern
+      renderPendingConfirms(pf.pending_confirms_list || []);
     }
     if (a.basal_ganglia) {
       document.getElementById('md-basalganglien').textContent =
@@ -1098,6 +1164,8 @@ async function callService(service, data) {
         'export_brain': 'Gehirn-Export gespeichert',
         'set_mode': 'Betriebsmodus geändert',
         'cortex_sequential': 'Sequential Mode umgeschaltet',
+        'confirm_action': 'Aktion bestätigt – wird ausgeführt',
+        'reject_action': 'Aktion abgelehnt – negatives Feedback',
       };
       const label = svcLabels[service] || `${service} erfolgreich`;
       dbgLog(`<span class="ok">${label}</span>`, '');
@@ -1241,6 +1309,98 @@ function updateSequentialButton() {
       btn.style.background = '';
     }
   }
+}
+
+// ── Pending Confirms (v0.22.0) ─────────────────────────────────
+// Rendert wartende Aktionen mit Begründung + per-Aktion Buttons.
+function _escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function renderPendingConfirms(list) {
+  const wrap = document.getElementById('pending-wrap');
+  const container = document.getElementById('pending-list');
+  const counter = document.getElementById('pending-count');
+  if (!wrap || !container) return;
+
+  if (!Array.isArray(list) || list.length === 0) {
+    wrap.style.display = 'none';
+    container.innerHTML = '';
+    if (counter) counter.textContent = '0';
+    return;
+  }
+
+  wrap.style.display = '';
+  if (counter) counter.textContent = list.length;
+
+  const html = list.map(item => {
+    const id = _escapeHtml(item.id || '');
+    const entity = _escapeHtml(item.entity_id || '?');
+    const action = _escapeHtml((item.action || '').toUpperCase());
+    const room = _escapeHtml(item.room || '');
+    const semantic = _escapeHtml(item.semantic || '');
+    const conf = Math.round((item.confidence || 0) * 100);
+    const risk = (item.risk || 0).toFixed(2);
+    const util = (item.utility || 0).toFixed(2);
+    const n = item.n_obs || 0;
+    const source = _escapeHtml(item.source || '?');
+    const age = item.age_s || 0;
+    const ttl = item.expires_in_s != null ? item.expires_in_s : Math.max(0, 600 - age);
+    const reasoning = _escapeHtml(item.reasoning || '');
+    const ctx = item.context || {};
+    const ctxBits = [];
+    if (ctx.mode) ctxBits.push('Modus: <b>' + _escapeHtml(ctx.mode) + '</b>');
+    if (ctx.time_bucket) ctxBits.push(_escapeHtml(ctx.time_bucket));
+    if (ctx.rule_order) ctxBits.push(_escapeHtml(ctx.rule_order) + '-gram Regel');
+    const ctxLine = ctxBits.length ? ctxBits.join(' · ') : '';
+
+    return `<div class="pending-card" data-id="${id}">
+      <div class="pending-info">
+        <div class="pending-head">
+          <span class="pending-entity">${entity}</span>
+          <span class="pending-action">${action}</span>
+        </div>
+        <div class="pending-meta">
+          ${room ? `<span>📍 <b>${room}</b></span>` : ''}
+          ${semantic ? `<span>🔧 ${semantic}</span>` : ''}
+          <span>🎯 conf <b>${conf}%</b></span>
+          <span>⚖ util <b>${util}</b></span>
+          <span>⚠ risk <b>${risk}</b></span>
+          <span>👁 n=<b>${n}</b></span>
+          <span>📡 ${source}</span>
+          <span>⌛ ${age}s (verfällt in ${ttl}s)</span>
+        </div>
+        ${ctxLine ? `<div class="pending-meta">${ctxLine}</div>` : ''}
+        ${reasoning ? `<div class="pending-why"><div class="pending-why-t">Begründung</div>${reasoning}</div>` : ''}
+      </div>
+      <div class="pending-btns">
+        <button class="pending-btn pending-btn-go" onclick="confirmOne('${id}')">
+          ✅ Ausführen
+        </button>
+        <button class="pending-btn pending-btn-no" onclick="rejectOne('${id}')">
+          ✖ Ablehnen
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = html;
+}
+
+async function confirmOne(confirmId) {
+  if (!confirmId) return;
+  await callService('confirm_action', { confirm_id: confirmId });
+  // Sofort UI refreshen damit der Card verschwindet
+  setTimeout(fetchSensors, 400);
+}
+
+async function rejectOne(confirmId) {
+  if (!confirmId) return;
+  await callService('reject_action', { confirm_id: confirmId });
+  setTimeout(fetchSensors, 400);
 }
 
 // ── Mode Buttons ──

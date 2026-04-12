@@ -164,15 +164,26 @@ class KontinuumStatusSensor(KontinuumSensorBase):
             "cerebellum": {
                 "rules_count": len(cerebellum.rules),
                 "total_fired": cerebellum.stats.get("total_fired", 0),
+                # v0.22.0: Kontext-Bewusstsein + hierarchisches Chunking
+                "rules_context_aware": cerebellum.stats.get("rules_context_aware", 0),
+                "chunks_count": cerebellum.stats.get("chunks_count", 0),
+                "top_chunks": cerebellum.stats.get("top_chunks", []),
             },
             "prefrontal": {
                 "total_decisions": prefrontal.total_decisions,
+                "total_executions": getattr(prefrontal, "total_executions", 0),
                 "total_confirms": getattr(prefrontal, "total_confirms", 0),
                 "overrides_detected": prefrontal.overrides_detected,
                 "operation_mode": getattr(prefrontal, "operation_mode", "shadow"),
                 "shadow_mode": prefrontal.shadow_mode,
                 "activated_semantics": list(prefrontal.activated_semantics),
                 "pending_confirms": len(getattr(prefrontal, "_pending_confirms", {})),
+                # v0.22.0: Vollständige Liste mit Begründung – das Dashboard
+                # rendert daraus pro Aktion einen "Ausführen / Ablehnen"-Button.
+                "pending_confirms_list": (
+                    prefrontal.get_all_pending_confirms()
+                    if hasattr(prefrontal, "get_all_pending_confirms") else []
+                ),
             },
             "basal_ganglia": self._brain["basal_ganglia"].stats,
         }
