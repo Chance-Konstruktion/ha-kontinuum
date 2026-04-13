@@ -5,7 +5,7 @@
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.20.0-blue)
+![Version](https://img.shields.io/badge/version-0.22.1-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [English version](README_EN.md)
@@ -376,6 +376,8 @@ Zeigen die Aktivität jedes Gehirnmoduls (0.0 -- 1.0):
 | Event | Beschreibung |
 |-------|-------------|
 | `kontinuum_mode_changed` | Feuert bei Moduswechsel (old_mode, new_mode, confidence, room) |
+| `kontinuum_confirm_requested` | Feuert wenn im Confirm-Modus eine Bestätigung ansteht (confirm_id, token, entity_id, action, confidence, utility, risk, reasoning, source) |
+| `kontinuum_confirm_rejected` | Feuert wenn eine anstehende Aktion abgelehnt wurde -- löst RPE-Feedback aus (confirm_id, token, entity_id, semantic) |
 
 Kann für eigene Automationen genutzt werden:
 
@@ -390,6 +392,29 @@ action:
   target:
     area_id: bedroom
 ```
+
+---
+
+## Confirm-Modus: Lernen durch Bestätigung (v0.22)
+
+Der Confirm-Modus ist die empfohlene Einstiegsphase nach dem initialen Shadow-Learning. KONTINUUM trifft autonome Entscheidungen, führt sie aber nicht aus, sondern stellt sie in eine **Pending-Queue** -- sichtbar als Karten im Dashboard.
+
+Jede Karte zeigt:
+
+- **Was** soll passieren (`light.flur → off`)
+- **Warum** -- menschenlesbare Begründung (z.B. *"Reflex aus gelernter Routine (3-gram): wohnzimmer.motion.on → flur.light.off · Konfidenz 87% · Kontext: Modus 'sleeping', nachts · Restrisiko 0.12"*)
+- **Kontext** -- aktueller Modus, Tageszeit-Bucket, Quelle (cerebellum / hippocampus / coordinator)
+- **Metriken** -- Konfidenz, Utility, Risiko, Beobachtungsanzahl
+
+Du kannst pro Karte **Ausführen** oder **Ablehnen**. Ablehnen ist dabei kein passives Ignorieren -- es löst ein **negatives RPE-Signal** aus (Basalganglien + Amygdala), sodass der Präfrontale Cortex die Aktion beim nächsten Mal anders gewichtet. So lernt das System genau in dem Moment, in dem du einen Fehler korrigierst.
+
+### Kontext-bewusstes Cerebellum
+
+Seit v0.22 berücksichtigt das Cerebellum **Kontext-Buckets** (Zeit × Modus × Energie × Tagestyp) in seinen Regeln. Eine Regel, die im Bucket `nachts/sleeping` gelernt wurde, erhält dort einen Score-Bonus und wird im Bucket `tagsüber/active` abgewertet. Dadurch feuern Reflexe nicht mehr kontextfrei.
+
+### Hierarchisches Chunking
+
+Wiederkehrende Regelketten (z.B. `motion_wohnzimmer → tv_on → licht_dim → rollo_runter`) werden automatisch zu **Chunks** zusammengefasst -- Higher-Order-Tokens, die eine ganze Routine repräsentieren. Sichtbar im Cerebellum-Sensor als `top_chunks`.
 
 ---
 

@@ -911,6 +911,46 @@ def _inject_token(hass, brain, token_info, timestamp):
 # DECISION PROCESSING
 # ══════════════════════════════════════════════════════════════════
 
+_STATE_EQUIVALENCES = {
+    # climate HVAC-Modes: wir lernen "heat" aus dem Service, der tatsächliche
+    # State meldet aber z.B. "heating" (HVACAction). Gleiches für cool/dry/fan.
+    ("climate", "heat"): {"heat", "heating"},
+    ("climate", "cool"): {"cool", "cooling"},
+    ("climate", "dry"): {"dry", "drying"},
+    ("climate", "fan_only"): {"fan_only", "fan"},
+    ("climate", "heat_cool"): {"heat_cool", "auto", "idle"},
+    ("climate", "off"): {"off", "idle"},
+    # cover: "open" vs. "opening", "closed" vs. "closing"
+    ("cover", "open"): {"open", "opening"},
+    ("cover", "closed"): {"closed", "closing"},
+    # media_player
+    ("media_player", "playing"): {"playing", "on"},
+    ("media_player", "paused"): {"paused", "idle", "on"},
+    ("media_player", "off"): {"off", "standby"},
+    # lock
+    ("lock", "locked"): {"locked", "locking"},
+    ("lock", "unlocked"): {"unlocked", "unlocking"},
+}
+
+
+def _states_match(entity_id: str, desired_state: str, actual_state: str) -> bool:
+    """True wenn actual_state als Erfolg für desired_state gilt.
+
+    Normalisiert domain-spezifische Äquivalenzen (z.B. climate "heat" ↔
+    "heating" via HVACAction). Ohne diese Normalisierung würden legitime
+    Aktionen fälschlich als Fehlschlag markiert → falsches RPE-Signal.
+    """
+    if not desired_state:
+        return True
+    if actual_state == desired_state:
+        return True
+    domain = entity_id.split(".", 1)[0] if "." in entity_id else ""
+    equiv = _STATE_EQUIVALENCES.get((domain, desired_state))
+    if equiv and actual_state in equiv:
+        return True
+    return False
+
+
 def _time_bucket_label(now) -> str:
     """Gibt einen menschenlesbaren Tageszeit-Bucket zurück (für Reasoning)."""
     h = now.hour if hasattr(now, "hour") else datetime.now(timezone.utc).hour
@@ -1080,7 +1120,7 @@ def _execute_decision(hass, brain, decision):
         new_state_obj = hass.states.get(entity_id)
         if new_state_obj:
             actual_state = new_state_obj.state
-            success = (actual_state == desired_state) if desired_state else True
+            success = _states_match(entity_id, desired_state, actual_state)
             cerebellum.record_outcome(
                 f"{decision.token_id}_{decision.token_id}", success)
             # ACC: Outcome-Feedback für Schwellen-Anpassung

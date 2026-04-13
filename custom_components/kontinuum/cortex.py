@@ -1144,20 +1144,33 @@ class Cortex:
             '"priority": 0}'
         )
 
-        # Alle Agents parallel analysieren lassen
+        # Alle Agents analysieren lassen
+        # v0.22.1: Sequential-Mode respektieren (Single-GPU / Ollama)
         import asyncio
-        tasks = [agent.think(prompt, self._session) for agent in self.agents]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
         analyses = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                analyses.append({
-                    "agent": self.agents[i].name,
-                    "error": str(result),
-                })
-            else:
-                analyses.append(result)
+        if self.sequential_mode:
+            for agent in self.agents:
+                try:
+                    ka = 0 if agent.provider == "ollama" else None
+                    result = await agent.think(prompt, self._session,
+                                               keep_alive=ka)
+                    analyses.append(result)
+                except Exception as e:  # noqa: BLE001
+                    analyses.append({
+                        "agent": agent.name,
+                        "error": str(e),
+                    })
+        else:
+            tasks = [agent.think(prompt, self._session) for agent in self.agents]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    analyses.append({
+                        "agent": self.agents[i].name,
+                        "error": str(result),
+                    })
+                else:
+                    analyses.append(result)
 
         # Durchschnittlicher Health Score
         scores = [

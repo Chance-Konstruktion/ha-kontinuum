@@ -168,6 +168,14 @@ class PrefrontalCortex:
                 candidates = thalamus.resolve_entities(token)
                 d.entity_id = candidates[0] if candidates else ""
 
+                # Ohne auflösbare Entity keine ausführbare Aktion möglich
+                # → niemals in Confirm-Queue oder Execute-Pfad aufnehmen.
+                if not d.entity_id:
+                    d.stage = Decision.OBSERVE
+                    d.reasons = d.reasons + ["keine Entity auflösbar (Thalamus)"]
+                    best_decision = d
+                    continue
+
                 # Stage bestimmen – v0.21.0 Betriebsmodus-Gating:
                 # 1. Zu wenig Beobachtungen → OBSERVE (immer)
                 # 2. Shadow-Modus → OBSERVE (immer)

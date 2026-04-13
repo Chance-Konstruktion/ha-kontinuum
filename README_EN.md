@@ -5,7 +5,7 @@
 **Your home learns by itself.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.18.0-blue)
+![Version](https://img.shields.io/badge/version-0.22.1-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [Deutsche Version](README.md)
@@ -305,6 +305,8 @@ Show the activity of each brain module (0.0 -- 1.0):
 | Event | Description |
 |-------|-------------|
 | `kontinuum_mode_changed` | Fires on mode change (old_mode, new_mode, confidence, room) |
+| `kontinuum_confirm_requested` | Fires in Confirm mode when an action awaits approval (confirm_id, token, entity_id, action, confidence, utility, risk, reasoning, source) |
+| `kontinuum_confirm_rejected` | Fires when a pending action was rejected -- emits RPE feedback (confirm_id, token, entity_id, semantic) |
 
 Can be used for your own automations:
 
@@ -319,6 +321,29 @@ action:
   target:
     area_id: bedroom
 ```
+
+---
+
+## Confirm Mode: Learning by Approval (v0.22)
+
+Confirm mode is the recommended first step after the initial shadow-learning phase. KONTINUUM makes autonomous decisions but does not execute them -- instead they are queued as **Pending Cards** in the dashboard.
+
+Each card shows:
+
+- **What** will happen (`light.flur → off`)
+- **Why** -- human-readable reasoning (e.g. *"Reflex from learned routine (3-gram): wohnzimmer.motion.on → flur.light.off · Confidence 87% · Context: mode 'sleeping', night · Residual risk 0.12"*)
+- **Context** -- current mode, time bucket, source (cerebellum / hippocampus / coordinator)
+- **Metrics** -- confidence, utility, risk, observation count
+
+You can **Execute** or **Reject** per card. Rejecting is not passive -- it triggers a **negative RPE signal** (basal ganglia + amygdala), so the prefrontal cortex reweights the action next time. The system learns exactly when you correct a mistake.
+
+### Context-aware Cerebellum
+
+Since v0.22, cerebellum rules track the **context buckets** (time × mode × energy × day type) they were learned in. A rule learned in `night/sleeping` gets a score bonus there and is downweighted in `day/active`, so reflexes no longer fire context-free.
+
+### Hierarchical Chunking
+
+Recurring rule chains (e.g. `motion_living → tv_on → lights_dim → blinds_down`) are auto-merged into **chunks** -- higher-order tokens representing a whole routine. Visible in the cerebellum sensor as `top_chunks`.
 
 ---
 

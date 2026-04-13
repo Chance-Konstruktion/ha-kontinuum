@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.22.1 – Bugfixes (Expert-Review)
+
+Mehrere Punkte aus einem externen Code-Review behoben:
+
+### Fixes
+- **Prefrontal: Decision ohne auflösbare Entity landet nicht mehr in der
+  Confirm-Queue.** Wenn `thalamus.resolve_entities()` keinen Kandidaten
+  liefert, wird die Entscheidung als `OBSERVE` markiert (inkl. expliziter
+  Begründung "keine Entity auflösbar"). Vorher konnten Phantom-Confirms mit
+  leerer `entity_id` entstehen, die nur per Service-Call-Fehler auffielen.
+- **Cortex: `brain_review()` respektiert `sequential_mode`.** Bisher wurde
+  immer `asyncio.gather` genutzt – auf Single-GPU-Ollama-Setups führte das
+  zu VRAM-Spikes. Jetzt identisch zu `consult()`: sequentielle Dispatcher-
+  Schleife mit `keep_alive=0` pro Agent.
+- **Outcome-Check: domain-bewusste State-Normalisierung.** Climate-Aktionen
+  wurden fälschlich als Fehlschlag gewertet, weil der Service `heat` setzt,
+  der tatsächliche State aber `heating` zurückmeldet (HVACAction). Neuer
+  Helper `_states_match()` kennt die Äquivalenzen für climate, cover,
+  media_player und lock – damit kein fehlerhaftes negatives RPE mehr.
+
+Keine Verhaltensänderung in den Happy-Path-Szenarien; ausschließlich Fixes
+für falsch-negative Feedback-Signale und leere Confirms.
+
+---
+
 ## v0.22.0 – Confirm-UI, kontextbewusstes Cerebellum, Reject-RPE, Chunking
 
 ### 🔴 Confirm-Modus UI/UX (kritisch)
