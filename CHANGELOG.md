@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.22.2 – Recorder-Attribut-Limit (16 KB)
+
+### Fix
+- **`sensor.kontinuum_status`-Attribute überschritten die 16 KB-Grenze** des
+  HA-Recorders – mit der Folge, dass der Recorder *alle* Attribute verwarf
+  ("State attributes for sensor.kontinuum_status exceed maximum size of
+  16384 bytes"). Dashboard funktionierte weiter (liest Live-State), aber
+  Historie war leer.
+- Lösung: `_unrecorded_attributes` am Status-, Cerebellum- und
+  Basal-Ganglia-Sensor gesetzt. Große / häufig wechselnde Felder
+  (`pending_confirms_list`, `top_chunks`, `top_rules`, `active_habits`,
+  Aux-Module-Dicts) bleiben im Live-State fürs Dashboard, werden aber
+  nicht mehr in die Recorder-DB geschrieben. Die kompakten Kern-Stats
+  (Counter, Modi, Konfidenzen) bleiben in der DB und damit in Historie/
+  Statistik-Graphen.
+
 ## v0.22.1 – Bugfixes (Expert-Review)
 
 Mehrere Punkte aus einem externen Code-Review behoben:
