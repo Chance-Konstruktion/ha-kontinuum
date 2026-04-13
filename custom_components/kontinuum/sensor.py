@@ -113,6 +113,26 @@ class KontinuumSensorBase(SensorEntity):
 # ══════════════════════════════════════════════════════════════════
 
 class KontinuumStatusSensor(KontinuumSensorBase):
+    # Große / häufig wechselnde Felder landen live im State (fürs Dashboard),
+    # aber NICHT in der Recorder-DB. Sonst reißt das Attribut-JSON die 16 KB-
+    # Grenze des Recorders und ALLE Attribute werden verworfen.
+    _unrecorded_attributes = frozenset({
+        "pending_confirms_list",
+        "top_chunks",
+        "basal_ganglia",
+        "anterior_cingulate",
+        "reticular",
+        "locus_coeruleus",
+        "entorhinal",
+        "predictive_processing",
+        "neurorhythms",
+        "sleep_consolidation",
+        "metaplasticity",
+        "last_brain_review",
+        "cortex",
+        "last_consolidation",
+    })
+
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "status",
                          "KONTINUUM Status", "mdi:brain")
@@ -406,6 +426,8 @@ class KontinuumLocationSensor(KontinuumSensorBase):
 
 
 class KontinuumCerebellumSensor(KontinuumSensorBase):
+    _unrecorded_attributes = frozenset({"top_rules"})
+
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "cerebellum",
                          "KONTINUUM Cerebellum", "mdi:cog-transfer")
@@ -428,6 +450,8 @@ class KontinuumCerebellumSensor(KontinuumSensorBase):
 
 
 class KontinuumBasalGangliaSensor(KontinuumSensorBase):
+    _unrecorded_attributes = frozenset({"active_habits"})
+
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "basal_ganglia",
                          "KONTINUUM Basal Ganglia", "mdi:brain")
