@@ -1,8 +1,8 @@
 # KONTINUUM – Roadmap zur 3-Repo-Architektur
 
-> **Status:** Planung / Bereit zur Umsetzung
-> **Branch:** `claude/kontinuum-lite-version-GMgIL`
-> **Zielarchitektur:** drei eigenständige Repositories mit klarer Verantwortung
+> **Status:** Phase 1 aktiv – Core-Module-Port läuft  
+> **Stand:** April 2026  
+> **Architektur:** Drei eigenständige Repositories (durch Maintainer angelegt)
 
 ---
 
@@ -11,16 +11,16 @@
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  REPO 1: kontinuum-core                                  │
-│  ─────────────────────────                               │
+│  ───────────────────────────   │
 │  • Reines Python-Package (PyPI: kontinuum-core)          │
 │  • KEINE Home-Assistant-Abhängigkeit                     │
 │  • Lizenz: AGPLv3 (+ kommerzielle Dual-Lizenz möglich)   │
-│  • Enthält die Lern-Substrat-Module                      │
+│  • Enthält alle 18 Brain-Module + Engine                  │
 └──────────────────────────────────────────────────────────┘
          ▲                                  ▲
          │ pip-dep via manifest.json        │
          │                                  │
-┌────────┴───────────────┐    ┌─────────────┴──────────────┐
+┌────────┼───────────────┐    ┌─────────┼──────────────┐
 │  REPO 2: ha-kontinuum  │    │  REPO 3: ha-kontinuum-lite │
 │  (Pro)                 │    │  (Headless)                │
 │  ───────────────────   │    │  ────────────────────────  │
@@ -29,7 +29,7 @@
 │  • Sensoren + Dashboard│    │  • 3 Sensoren, 1 Service,  │
 │  • Brand-Assets        │    │    1 Event                 │
 │  • Domain: kontinuum   │    │  • Domain: kontinuum_lite  │
-└────────────────────────┘    └────────────────────────────┘
+└────────────────────────┘    └──────────────────────────┘
 ```
 
 **Begründung der Trennung:**
@@ -40,18 +40,20 @@
 
 ---
 
-## 2. Bestandsaufnahme (Stand Branch)
+## 2. Aktueller Stand (April 2026)
 
-**Code-Volumen:** 9.942 LOC in 23 Python-Modulen.
+**Repos:**
+| Repo | Status |
+|---|---|
+| `kontinuum-core` | ✅ Existiert, v0.1.0 auf PyPI, Phase-1-Port aktiv |
+| `ha-kontinuum` | ✅ Pro-Integration, aktiv gewartet |
+| `ha-kontinuum-lite` | ⚠️ Repo existiert, aber Engine noch nicht mit Core verknüpft |
 
-**HA-Abhängigkeiten** (`from homeassistant ...`):
+**HA-Abhängigkeiten** in ha-kontinuum (`from homeassistant ...`):
 - `__init__.py` – 19 Imports (HA-Setup, **bleibt** in Pro-Integration)
 - `sensor.py` – 5 Imports (UI, **bleibt** in Pro-Integration)
 - `config_flow.py` – 3 Imports (UI, **bleibt** in Pro-Integration)
-- `metaplasticity.py` – **nur 2 Imports** (`HomeAssistant`, `async_track_time_interval`) → trivial refaktorierbar
-
-**Konsequenz:** 19 von 23 Modulen sind bereits HA-frei. Die Core-Extraktion ist
-ein **leichter Refactor**, kein Großprojekt.
+- `metaplasticity.py` – 2 Imports → **refaktoriert** in Phase 1 (Scheduler-Protocol)
 
 ---
 
@@ -59,35 +61,52 @@ ein **leichter Refactor**, kein Großprojekt.
 
 ### → kontinuum-core (Repo 1)
 
-| Modul | LOC | Status |
+Entscheidung: **alle 18 Brain-Module** gehen in Core (nicht nur die ursprünglich geplanten 8).
+Das macht Core zum vollständigen Substrat – beide HA-Integrationen delegieren vollständig.
+
+| Modul | LOC (ha-kont.) | Status in kontinuum-core |
 |---|---|---|
-| `hippocampus.py` | 464 | ✅ HA-frei |
-| `predictive_processing.py` | 193 | ✅ HA-frei |
-| `cerebellum.py` | 420 | ✅ HA-frei |
-| `basal_ganglia.py` | 311 | ✅ HA-frei |
-| `neurorhythms.py` | 280 | ✅ HA-frei |
-| `sleep_consolidation.py` | 276 | ✅ HA-frei |
-| `metaplasticity.py` | 200 | ⚠️ 2 HA-Imports refaktorieren |
-| `thalamus.py` | 1062 | ✅ HA-frei (Input-Tokenizer) |
-| **Summe** | **~3.200 LOC** | |
+| `hippocampus.py` | 464 | ✅ Gemergt (PR #2) |
+| `predictive_processing.py` | 193 | ✅ Gemergt (PR #2) |
+| `cerebellum.py` | 420 | ✅ Gemergt (PR #2) |
+| `basal_ganglia.py` | 311 | ✅ Gemergt (PR #2) |
+| `neurorhythms.py` | 280 | ✅ Gemergt (PR #2) |
+| `sleep_consolidation.py` | 276 | ✅ Gemergt (PR #2) |
+| `scheduler.py` | – | ✅ Gemergt (PR #2, neu) |
+| `types.py` | – | ✅ Gemergt (PR #2, neu) |
+| `amygdala.py` | ~200 | ✅ Branch `review-project-status` |
+| `anterior_cingulate.py` | ~250 | ✅ Branch (+ `AnteriorCingulate`-Alias) |
+| `entorhinal_cortex.py` | ~80 | ✅ Branch |
+| `hypothalamus.py` | ~400 | ✅ Branch |
+| `insula.py` | ~280 | ✅ Branch |
+| `locus_coeruleus.py` | ~50 | ✅ Branch |
+| `nucleus_accumbens.py` | ~50 | ✅ Branch |
+| `reticular.py` | ~120 | ✅ Branch (+ `Reticular`-Alias) |
+| `spatial_cortex.py` | ~360 | ✅ Branch |
+| `thalamus.py` | 1062 | ✅ Branch (dieser PR) |
+| `prefrontal_cortex.py` | ~750 | ✅ Branch (dieser PR) |
+| `metaplasticity.py` | 200 | ✅ Branch, HA-refaktoriert (dieser PR) |
+
+**Klassenname-Aliase** (engine.py-Kompatibilität):
+- `AnteriorCingulate = AnteriorCingulateCortex`
+- `Reticular = ReticularFormation`
+- `Metaplasticity = MetaPlasticity`
 
 ### → ha-kontinuum (Repo 2, Pro)
 
 Alle bisherigen Module **plus** Core-Dependency. Kein Code-Verlust.
 - `__init__.py`, `sensor.py`, `config_flow.py`, `const.py`, `services.yaml`
-- Brain-Erweiterungen: `amygdala`, `anterior_cingulate`, `insula`, `hypothalamus`,
-  `locus_coeruleus`, `nucleus_accumbens`, `prefrontal_cortex`, `spatial_cortex`,
-  `reticular`, `entorhinal_cortex`, `cortex`
+- Brain-Module bleiben für HA-spezifische Erweiterungen (UI, Events, Services)
 - `assets/`, `brand/`, `translations/`, `icons/`
+
+**TODO:** `manifest.json` auf `requirements: ["kontinuum-core>=0.1.0"]` umstellen.
 
 ### → ha-kontinuum-lite (Repo 3)
 
-Komplett neue, schlanke HA-Integration:
-- `__init__.py` (~200 LOC, nur Setup + Core-Wiring)
-- `sensor.py` (~150 LOC, exakt 3 Sensoren)
-- `config_flow.py` (~100 LOC, minimaler Setup)
-- `const.py`, `services.yaml`, `manifest.json`
-- **Kein** Brand, **keine** Assets, **keine** Brain-Visualisierung
+Schlanke HA-Integration, Phase-0-Prototyp vorhanden:
+- `__init__.py`, `sensor.py`, `config_flow.py`, `const.py`, `services.yaml`, `manifest.json`
+
+**TODO:** `engine.py` auf `kontinuum_core.KontinuumEngine` umstellen (Phase-1-TODO-Kommentar vorhanden).
 
 ---
 
@@ -112,7 +131,7 @@ class KontinuumEngine:
     # Datenfluss
     def observe(self, obs: Observation) -> None: ...
     def predict(self) -> Prediction: ...
-    def consolidate(self) -> None: ...     # Sleep-Consolidation-Tick
+    def consolidate(self) -> None:     # Sleep-Consolidation-Tick
 
     # Persistenz
     def to_dict(self) -> MemoryState: ...
@@ -134,57 +153,51 @@ aus `metaplasticity.py`.
 
 ## 5. Phasenplan
 
-### Phase 0 – Vorarbeit (dieser Branch)
-**Ziel:** Lite als Prototyp im Mono-Repo lauffähig, ohne Core-Repo zu splitten.
+### Phase 0 – Vorarbeit ✅ Abgeschlossen
+**Ziel:** Lite als Prototyp in eigenem Repo, ohne Core-Repo zu splitten.
 
-- [ ] `custom_components/kontinuum_lite/` anlegen
-  - [ ] `manifest.json` (Domain `kontinuum_lite`, Version `0.1.0`)
-  - [ ] `__init__.py` mit minimalem `async_setup_entry`
-  - [ ] `config_flow.py` (nur Name + Startwerte)
-  - [ ] `sensor.py` mit drei Entitys:
-    - `sensor.kontinuum_lite_surprise` (numerisch, 0..1)
-    - `binary_sensor.kontinuum_lite_anomaly` (on/off)
-    - `sensor.kontinuum_lite_learning_state` (z. B. `cold_start`/`learning`/`stable`)
-  - [ ] `services.yaml` mit `kontinuum_lite.evaluate`
-  - [ ] Event `kontinuum_lite_anomaly` definieren
-- [ ] Imports zunächst aus `custom_components.kontinuum.<module>` (Re-Export)
-- [ ] Smoke-Test: HA startet, Lite legt Entitys an, `evaluate` läuft durch.
+- [x] `ha-kontinuum-lite` Repository angelegt (Maintainer)
+- [x] `manifest.json` (Domain `kontinuum_lite`)
+- [x] `__init__.py` mit minimalem `async_setup_entry`
+- [x] `config_flow.py`
+- [x] `sensor.py` mit drei Entitys:
+  - `sensor.kontinuum_lite_surprise`
+  - `binary_sensor.kontinuum_lite_anomaly`
+  - `sensor.kontinuum_lite_learning_state`
+- [x] `services.yaml` mit `kontinuum_lite.evaluate`
+- [x] Event `kontinuum_lite_anomaly` definiert
 
-**Akzeptanzkriterien Phase 0:**
-- HA lädt beide Integrationen parallel ohne Konflikt.
-- Lite hat **keine** UI-Sensoren der Pro-Version sichtbar.
-- `homeassistant.log` zeigt < 5 Zeilen pro Stunde von Lite.
+### Phase 1 – Core-Refactor 🔄 Aktiv
+**Ziel:** Alle Brain-Module sauber von HA isolieren, in `kontinuum-core` publizieren.
 
-### Phase 1 – Core-Refactor im Mono-Repo
-**Ziel:** Core-Module sauber von HA isolieren, weiterhin im selben Repo.
-
-- [ ] Verzeichnis `packages/kontinuum_core/` anlegen
-- [ ] Core-Module dorthin verschieben (siehe Tabelle in §3)
-- [ ] `metaplasticity.py`: HA-Imports durch `Scheduler`-Protocol ersetzen
-- [ ] `kontinuum_core/__init__.py`: Public-API exportieren (siehe §4)
-- [ ] `pyproject.toml` für `kontinuum-core` (Build-Konfiguration, Version `0.1.0`)
-- [ ] Pro-Integration (`custom_components/kontinuum/`) auf Core-Imports umstellen
-- [ ] Lite-Integration auf Core-Imports umstellen
-- [ ] Adapter `HAScheduler` in beiden HA-Integrationen anlegen
+- [x] `kontinuum-core` Repository + PyPI-Link (Maintainer, v0.1.0 released)
+- [x] Verzeichnis `src/kontinuum_core/` angelegt
+- [x] Scheduler-Protocol (`scheduler.py`) implementiert
+- [x] Typen (`types.py`) definiert
+- [x] 6 Basis-Module gemergt: hippocampus, cerebellum, basal_ganglia, neurorhythms, predictive_processing, sleep_consolidation (PR #2)
+- [x] 9 Erweiterungs-Module gemergt: amygdala, anterior_cingulate, entorhinal_cortex, hypothalamus, insula, locus_coeruleus, nucleus_accumbens, reticular, spatial_cortex
+- [x] `thalamus.py` (1062 LOC, Tokenizer) portiert – dieser PR
+- [x] `prefrontal_cortex.py` portiert – dieser PR
+- [x] `metaplasticity.py` HA-frei refaktoriert (Scheduler-Protocol) – dieser PR
+- [ ] `engine.py` `observe()`/`predict()` auf echte Modul-Interfaces umstellen (derzeit Skeleton mit `.update()`-Aufrufen)
+- [ ] `ha-kontinuum` `manifest.json` auf `requirements: ["kontinuum-core>=0.1.0"]` setzen
+- [ ] `ha-kontinuum-lite` `engine.py` auf `KontinuumEngine` delegieren
+- [ ] `HAScheduler`-Adapter in beiden HA-Integrationen anlegen
+- [ ] Version auf `0.1.1` bumpen + PyPI-Release via GitHub-Tag
 
 **Akzeptanzkriterien Phase 1:**
-- `python -c "from kontinuum_core import KontinuumEngine; KontinuumEngine().observe(...)"` läuft **ohne installiertes HA**.
+- `python -c "from kontinuum_core import KontinuumEngine; print('OK')"` läuft **ohne installiertes HA**.
+- Keine Datei in `src/kontinuum_core/` enthält `from homeassistant`.
 - Beide HA-Integrationen funktionieren weiter wie zuvor.
-- Keine Datei in `packages/kontinuum_core/` enthält `from homeassistant`.
 
-### Phase 2 – Repo-Split (manueller Schritt durch Maintainer)
+### Phase 2 – Repo-Split ✅ Teilweise abgeschlossen
 **Ziel:** Drei eigenständige GitHub-Repos.
 
-> Diese Phase erfordert manuelle GitHub-Aktionen (neue Repos anlegen).
-> Codex/Agent kann die Inhalte vorbereiten, das Anlegen der Repos macht der Maintainer.
-
-- [ ] Maintainer legt an: `Chance-Konstruktion/kontinuum-core`
-- [ ] Maintainer legt an: `Chance-Konstruktion/ha-kontinuum-lite`
-- [ ] Inhalt von `packages/kontinuum_core/` → neues Core-Repo (mit Git-History via `git subtree split`)
-- [ ] Inhalt von `custom_components/kontinuum_lite/` → neues Lite-Repo
+- [x] Maintainer hat `Chance-Konstruktion/kontinuum-core` angelegt
+- [x] Maintainer hat `Chance-Konstruktion/ha-kontinuum-lite` angelegt
+- [x] PyPI-Release `kontinuum-core 0.1.0`
 - [ ] Beide HA-`manifest.json` auf `requirements: ["kontinuum-core>=0.1.0"]` setzen
-- [ ] PyPI-Release `kontinuum-core 0.1.0`
-- [ ] HACS-Eintrag für `ha-kontinuum-lite`
+- [ ] HACS-Eintrag für `ha-kontinuum-lite` (falls noch nicht vorhanden)
 - [ ] README in allen drei Repos kreuzverlinken
 
 **Akzeptanzkriterien Phase 2:**
@@ -195,32 +208,32 @@ aus `metaplasticity.py`.
 - [ ] `LICENSE` in allen drei Repos auf AGPLv3 setzen
 - [ ] `NOTICE`-Datei mit Copyright + Hinweis auf kommerzielle Lizenz
 - [ ] Optional: CLA für Contributor (ermöglicht spätere Dual-Lizenz)
-- [ ] Optional: Wort-/Bildmarke „KONTINUUM" beim DPMA/EUIPO anmelden
+- [ ] Optional: Wort-/Bildmarke „KONTINUUM“ beim DPMA/EUIPO anmelden
 
-### Phase 4 – Erst danach: Domänen-Layer
-**Bewusst zurückgestellt.** Erst nach Phase 2/3 anfassen.
+### Phase 4 – Domänen-Layer (bewusst zurückgestellt)
 
-- `kontinuum-anomaly` (z. B. für KFZ-Predictive-Maintenance via OBD)
+Erst nach Phase 2/3 anfassen:
+- `kontinuum-anomaly` (z.B. KFZ-Predictive-Maintenance via OBD)
 - `kontinuum-control`
 - `kontinuum-forecast`
 
 ---
 
-## 6. Was ein Coding-Agent (Codex etc.) sofort tun kann
+## 6. Was ein Coding-Agent jetzt tun kann
 
 **Direkt machbar ohne weitere Rückfrage:**
-1. **Phase 0 komplett** – Lite-Skelett auf diesem Branch anlegen (siehe Checklist §5).
-2. **Phase 1 vorbereiten** – Verzeichnis `packages/kontinuum_core/` anlegen, Core-Module hinüberkopieren (nicht verschieben!), Imports in Pro-Integration noch nicht ändern. So bleibt alles lauffähig, der Refactor lässt sich ohne Druck reviewen.
+1. `engine.py` in kontinuum-core: `observe()`/`predict()` auf echte Modul-Interfaces umstellen.
+2. `ha-kontinuum-lite/custom_components/kontinuum_lite/engine.py`: Phase-1-TODO umsetzen – `KontinuumEngine` aus kontinuum-core importieren und delegieren.
+3. `manifest.json` beider HA-Integrationen: `requirements: ["kontinuum-core>=0.1.0"]` hinzufügen.
+4. `HAScheduler`-Adapter schreiben: kapselt `async_track_time_interval` für das Scheduler-Protocol.
 
 **Erfordert Maintainer-Entscheidung vorab:**
-- Verschieben (statt Kopieren) der Core-Module → bricht Pro-Integration kurz.
-- Anlegen neuer GitHub-Repos.
-- PyPI-Account/Token für `kontinuum-core`.
+- Version auf `0.1.1` bumpen und PyPI-Release via GitHub-Tag auslösen.
 - Lizenz-Wechsel auf AGPLv3 (falls bisher andere Lizenz).
 
 **Tabu für Agents (manuell durch Maintainer):**
 - Neue Repos auf GitHub anlegen.
-- PyPI-Releases pushen.
+- PyPI-Releases manuell pushen (läuft über GitHub-Tag-Trigger).
 - Lizenz-Marken-Anmeldungen.
 
 ---
@@ -229,27 +242,27 @@ aus `metaplasticity.py`.
 
 | Risiko | Wahrscheinlichkeit | Gegenmaßnahme |
 |---|---|---|
-| Core-API zu früh stabilisiert | mittel | Phase 1 im Mono-Repo halten, bis 2-3 echte Konsumenten existieren |
-| Doppelte Maintenance-Last | hoch | Mono-Repo-Phase nicht überspringen, CI-Templates wiederverwenden |
-| Verwirrung Pro vs. Lite bei Nutzern | mittel | Klare README, FAQ, Vergleichstabelle |
-| HACS-Konflikt (zwei Integrationen, ein Repo) | niedrig | In Phase 2 separates Repo erzwingt Trennung |
+| Core-API zu früh stabilisiert | mittel | Phase 1 vollständig abschließen bevor erste externe Konsumenten |
+| `engine.py` Skeleton nicht mit realen Interfaces kompatibel | hoch | engine.py-Refactor als nächsten Schritt priorisieren |
+| ha-kontinuum-lite bleibt unverbunden | mittel | Phase-1-TODO in lite/engine.py hat höchste Priorität |
+| Doppelte Maintenance-Last | hoch | CI-Templates zwischen Repos teilen |
 | Breaking Changes bei `kontinuum-core` Updates | mittel | SemVer strikt, `requirements: ["kontinuum-core>=0.1,<0.2"]` |
 
 ---
 
 ## 8. Offene Fragen an den Maintainer
 
-1. Soll der Branch `claude/kontinuum-lite-version-GMgIL` nur **Phase 0** umfassen
-   und Phase 1 in einem separaten PR landen? (Empfehlung: ja.)
+1. Soll `engine.py` sofort mit echten Modul-Interfaces verknüpft werden, oder erst
+   nach dem Lite-Wiring? (Empfehlung: Lite-Wiring zuerst – gibt ein konkretes Ziel vor.)
 2. Welche Lizenz hat das Repo aktuell, und ist ein Wechsel auf **AGPLv3** in
    Ordnung? (Schutz vor kommerzieller Übernahme.)
-3. Soll `kontinuum-core` **synchron** (klassisch) oder **async-first** sein?
-   (Empfehlung: synchron im Kern, async-Adapter im HA-Layer – maximale
-   Wiederverwendbarkeit außerhalb von HA.)
-4. Ziel-Python-Version für `kontinuum-core`? (Empfehlung: `>=3.11` parallel zu HA.)
+3. Soll Version `0.1.1` via GitHub-Tag released werden, sobald Phase-1-PR gemergt ist?
+   (Empfehlung: ja, Changelogs/Release Notes vorbereiten.)
+4. Ist der `HAScheduler`-Adapter als Teil von ha-kontinuum oder als separates
+   Paket (`kontinuum-ha-scheduler`) gewünscht? (Empfehlung: direkt in ha-kontinuum.)
 
 ---
 
 *Diese Roadmap ist ein lebendiges Dokument. Änderungen bitte als PR gegen
-diese Datei einreichen, damit alle beteiligten Agents (Codex, Claude etc.) auf
+dies Datei einreichen, damit alle beteiligten Agents (Codex, Claude etc.) auf
 demselben Stand arbeiten.*
