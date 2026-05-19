@@ -10,6 +10,11 @@
 
 > [Deutsche Version](README.md)
 
+> **Part of the 3-repo family:**
+> [`kontinuum-core`](https://github.com/Chance-Konstruktion/kontinuum-core) (HA-free learning engine, PyPI) ·
+> [`ha-kontinuum-lite`](https://github.com/Chance-Konstruktion/ha-kontinuum-lite) (slim HA integration, no UI) ·
+> **ha-kontinuum** (full Pro integration, this repo)
+
 KONTINUUM is an experimental Home Assistant integration that understands your home without rules, without configuration, and without the cloud.
 
 Instead of writing automations manually, KONTINUUM observes the continuous stream of events in your home, recognizes patterns in your behavior, and predicts what will happen next -- fully local and extremely resource-efficient.

@@ -10,6 +10,11 @@
 
 > [English version](README_EN.md)
 
+> **Teil der 3-Repo-Familie:**
+> [`kontinuum-core`](https://github.com/Chance-Konstruktion/kontinuum-core) (HA-freie Lern-Engine, PyPI) ·
+> [`ha-kontinuum-lite`](https://github.com/Chance-Konstruktion/ha-kontinuum-lite) (schlanke HA-Integration ohne UI) ·
+> **ha-kontinuum** (volle Pro-Integration, dieses Repo)
+
 KONTINUUM ist eine experimentelle Home-Assistant-Integration, die dein Zuhause ohne Regeln, ohne Konfiguration und ohne Cloud versteht.
 
 Statt Automationen manuell zu schreiben, beobachtet KONTINUUM den kontinuierlichen Strom von Ereignissen in deinem Zuhause, erkennt Muster in deinem Verhalten und sagt voraus, was als Nächstes passieren wird -- vollständig lokal und extrem ressourcenschonend.
