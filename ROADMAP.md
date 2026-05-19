@@ -212,9 +212,10 @@ aus `metaplasticity.py`.
 - [x] CHANGELOG.md in `ha-kontinuum-lite` angelegt
 - [x] `kontinuum-core` Test-Suite (37 Tests: engine, thalamus,
   predictive_processing, hippocampus, cerebellum)
-- [x] Pro-auf-Core-Migration begonnen: `locus_coeruleus` → kommt aus
-  kontinuum-core, lokale Pro-Kopie entfernt
-- [ ] Pro-auf-Core-Migration fortsetzen: restliche 17 doppelte Module
+- [x] Pro-auf-Core-Migration: `locus_coeruleus`, `nucleus_accumbens`,
+  `entorhinal_cortex`, `reticular` → kommen aus kontinuum-core,
+  lokale Pro-Kopien entfernt (Stand: 4/18)
+- [ ] Pro-auf-Core-Migration fortsetzen: restliche 14 doppelte Module
   einzeln migrieren (siehe Risiko-Register)
 - [ ] HACS-Default-Repo-Antrag für `ha-kontinuum-lite` (falls Distribution über
   HACS-Default geplant; sonst custom-repo Anleitung)
@@ -285,7 +286,7 @@ Erst nach Phase 2/3 anfassen:
 | Core-API zu früh stabilisiert | mittel | Phase 1 abgeschlossen, aber Pre-1.0: Breaking Changes erlaubt |
 | ~~`engine.py` Skeleton nicht mit realen Interfaces kompatibel~~ | erledigt | Behoben in `kontinuum-core 0.1.1` |
 | ~~ha-kontinuum-lite bleibt unverbunden~~ | erledigt | Lite delegiert vollständig an Core |
-| **18 Brain-Module doppelt** (Pro + Core) | hoch | Pro auf Core umstellen, lokale Module entfernen (1/18 erledigt: locus_coeruleus) |
+| **18 Brain-Module doppelt** (Pro + Core) | hoch | Pro auf Core umstellen, lokale Module entfernen (4/18 erledigt: locus_coeruleus, nucleus_accumbens, entorhinal_cortex, reticular) |
 | Doppelte Maintenance-Last | hoch | CI-Templates zwischen Repos teilen, gemeinsame Tests in Core |
 | Breaking Changes bei `kontinuum-core` Updates | mittel | SemVer strikt, `requirements: ["kontinuum-core>=0.1,<0.2"]` |
 

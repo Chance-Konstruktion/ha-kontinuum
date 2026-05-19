@@ -46,10 +46,10 @@ from .cerebellum import Cerebellum
 from .prefrontal_cortex import PrefrontalCortex, MODE_SHADOW, MODE_CONFIRM, MODE_ACTIVE, VALID_MODES
 from .basal_ganglia import BasalGanglia
 from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
-from .reticular import ReticularFormation
-from .nucleus_accumbens import NucleusAccumbens
+from kontinuum_core.reticular import ReticularFormation
+from kontinuum_core.nucleus_accumbens import NucleusAccumbens
 from kontinuum_core.locus_coeruleus import LocusCoeruleus
-from .entorhinal_cortex import EntorhinalCortex
+from kontinuum_core.entorhinal_cortex import EntorhinalCortex
 from .sleep_consolidation import SleepConsolidation
 from .anterior_cingulate import AnteriorCingulateCortex
 from .metaplasticity import MetaPlasticity
