@@ -15,6 +15,9 @@
   (Pro-lokale Kopie entfernt). Erster Schritt zur Reduktion der
   Code-Duplikation zwischen Pro und Core (Roadmap-Risiko: 18 Module
   doppelt). Andere Module folgen einzeln.
+- **`nucleus_accumbens`, `entorhinal_cortex`, `reticular`** ebenfalls
+  aus `kontinuum_core` importiert; lokale Pro-Kopien gelöscht.
+  Migrations-Stand: **4/18** doppelte Module konsolidiert.
 
 ### Added
 - **`ha_scheduler.py`**: `HAScheduler` – Adapter, der das HA-freie
