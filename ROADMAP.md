@@ -1,7 +1,7 @@
 # KONTINUUM – Roadmap zur 3-Repo-Architektur
 
-> **Status:** Phase 1 aktiv – Core-Module-Port läuft  
-> **Stand:** April 2026  
+> **Status:** Phase 1 abgeschlossen – Phase 2 in Arbeit  
+> **Stand:** Mai 2026  
 > **Architektur:** Drei eigenständige Repositories (durch Maintainer angelegt)
 
 ---
@@ -40,20 +40,21 @@
 
 ---
 
-## 2. Aktueller Stand (April 2026)
+## 2. Aktueller Stand (Mai 2026)
 
 **Repos:**
 | Repo | Status |
 |---|---|
-| `kontinuum-core` | ✅ Existiert, v0.1.0 auf PyPI, Phase-1-Port aktiv |
-| `ha-kontinuum` | ✅ Pro-Integration, aktiv gewartet |
-| `ha-kontinuum-lite` | ⚠️ Repo existiert, aber Engine noch nicht mit Core verknüpft |
+| `kontinuum-core` | ✅ v0.1.1 auf PyPI, alle 18 Module portiert, Engine wired |
+| `ha-kontinuum` | ✅ Pro-Integration, `MetaPlasticity` delegiert an Core via `HAScheduler` |
+| `ha-kontinuum-lite` | ✅ Engine delegiert vollständig an `KontinuumEngine` |
 
 **HA-Abhängigkeiten** in ha-kontinuum (`from homeassistant ...`):
-- `__init__.py` – 19 Imports (HA-Setup, **bleibt** in Pro-Integration)
-- `sensor.py` – 5 Imports (UI, **bleibt** in Pro-Integration)
-- `config_flow.py` – 3 Imports (UI, **bleibt** in Pro-Integration)
-- `metaplasticity.py` – 2 Imports → **refaktoriert** in Phase 1 (Scheduler-Protocol)
+- `__init__.py` – Setup-Code, **bleibt** in Pro-Integration
+- `sensor.py` – UI, **bleibt** in Pro-Integration
+- `config_flow.py` – UI, **bleibt** in Pro-Integration
+- `metaplasticity.py` – nur noch dünner Wrapper um `kontinuum_core.metaplasticity`
+- `ha_scheduler.py` – Adapter für das Core-`Scheduler`-Protocol
 
 ---
 
@@ -167,38 +168,45 @@ aus `metaplasticity.py`.
 - [x] `services.yaml` mit `kontinuum_lite.evaluate`
 - [x] Event `kontinuum_lite_anomaly` definiert
 
-### Phase 1 – Core-Refactor 🔄 Aktiv
+### Phase 1 – Core-Refactor ✅ Abgeschlossen
 **Ziel:** Alle Brain-Module sauber von HA isolieren, in `kontinuum-core` publizieren.
 
-- [x] `kontinuum-core` Repository + PyPI-Link (Maintainer, v0.1.0 released)
+- [x] `kontinuum-core` Repository + PyPI-Link (v0.1.0, v0.1.1 released)
 - [x] Verzeichnis `src/kontinuum_core/` angelegt
 - [x] Scheduler-Protocol (`scheduler.py`) implementiert
 - [x] Typen (`types.py`) definiert
-- [x] 6 Basis-Module gemergt: hippocampus, cerebellum, basal_ganglia, neurorhythms, predictive_processing, sleep_consolidation (PR #2)
+- [x] 6 Basis-Module gemergt: hippocampus, cerebellum, basal_ganglia, neurorhythms, predictive_processing, sleep_consolidation
 - [x] 9 Erweiterungs-Module gemergt: amygdala, anterior_cingulate, entorhinal_cortex, hypothalamus, insula, locus_coeruleus, nucleus_accumbens, reticular, spatial_cortex
-- [x] `thalamus.py` (1062 LOC, Tokenizer) portiert – dieser PR
-- [x] `prefrontal_cortex.py` portiert – dieser PR
-- [x] `metaplasticity.py` HA-frei refaktoriert (Scheduler-Protocol) – dieser PR
-- [ ] `engine.py` `observe()`/`predict()` auf echte Modul-Interfaces umstellen (derzeit Skeleton mit `.update()`-Aufrufen)
-- [ ] `ha-kontinuum` `manifest.json` auf `requirements: ["kontinuum-core>=0.1.0"]` setzen
-- [ ] `ha-kontinuum-lite` `engine.py` auf `KontinuumEngine` delegieren
-- [ ] `HAScheduler`-Adapter in beiden HA-Integrationen anlegen
-- [ ] Version auf `0.1.1` bumpen + PyPI-Release via GitHub-Tag
+- [x] `thalamus.py` (1062 LOC, Tokenizer) portiert
+- [x] `prefrontal_cortex.py` portiert
+- [x] `metaplasticity.py` HA-frei refaktoriert (Scheduler-Protocol)
+- [x] `engine.py` `observe()`/`predict()` auf echte Modul-Interfaces umgestellt (kontinuum-core 0.1.1)
+- [x] `KontinuumEngine.__init__(config, scheduler, storage_path)` entspricht dem Roadmap-Vertrag
+- [x] `ha-kontinuum` `manifest.json` auf `requirements: ["kontinuum-core>=0.1.1"]`
+- [x] `ha-kontinuum-lite` `manifest.json` auf `requirements: ["kontinuum-core>=0.1.1"]`
+- [x] `ha-kontinuum-lite` `engine.py` delegiert an `KontinuumEngine`
+- [x] `HAScheduler`-Adapter in `ha-kontinuum` (Pro)
+- [x] `HAScheduler`-Adapter in `ha-kontinuum-lite`
+- [x] Version `0.1.1` in `pyproject.toml` UND `__init__.py` synchronisiert
 
-**Akzeptanzkriterien Phase 1:**
+**Akzeptanzkriterien Phase 1:** ✅
 - `python -c "from kontinuum_core import KontinuumEngine; print('OK')"` läuft **ohne installiertes HA**.
 - Keine Datei in `src/kontinuum_core/` enthält `from homeassistant`.
 - Beide HA-Integrationen funktionieren weiter wie zuvor.
 
-### Phase 2 – Repo-Split ✅ Teilweise abgeschlossen
-**Ziel:** Drei eigenständige GitHub-Repos.
+### Phase 2 – Repo-Split 🔄 In Arbeit
+**Ziel:** Drei eigenständige GitHub-Repos, sauberer Auslieferungsweg.
 
 - [x] Maintainer hat `Chance-Konstruktion/kontinuum-core` angelegt
 - [x] Maintainer hat `Chance-Konstruktion/ha-kontinuum-lite` angelegt
-- [x] PyPI-Release `kontinuum-core 0.1.0`
-- [ ] Beide HA-`manifest.json` auf `requirements: ["kontinuum-core>=0.1.0"]` setzen
-- [ ] HACS-Eintrag für `ha-kontinuum-lite` (falls noch nicht vorhanden)
-- [ ] README in allen drei Repos kreuzverlinken
+- [x] PyPI-Release `kontinuum-core 0.1.0`, `0.1.1` getaggt
+- [x] Beide HA-`manifest.json` auf `requirements: ["kontinuum-core>=0.1.1"]`
+- [x] `hacs.json` in `ha-kontinuum-lite` vorhanden
+- [x] README in `ha-kontinuum` verlinkt auf `kontinuum-core` und `ha-kontinuum-lite`
+- [ ] README in `kontinuum-core` verlinkt zurück auf `ha-kontinuum` + `ha-kontinuum-lite`
+- [ ] README in `ha-kontinuum-lite` verlinkt zurück auf `ha-kontinuum` + `kontinuum-core`
+- [ ] HACS-Default-Repo-Antrag für `ha-kontinuum-lite` (falls Distribution über
+  HACS-Default geplant; sonst custom-repo Anleitung)
 
 **Akzeptanzkriterien Phase 2:**
 - Frischer HA-Container kann `ha-kontinuum-lite` über HACS installieren, Core wird automatisch via pip nachgezogen.
@@ -222,14 +230,14 @@ Erst nach Phase 2/3 anfassen:
 ## 6. Was ein Coding-Agent jetzt tun kann
 
 **Direkt machbar ohne weitere Rückfrage:**
-1. `engine.py` in kontinuum-core: `observe()`/`predict()` auf echte Modul-Interfaces umstellen.
-2. `ha-kontinuum-lite/custom_components/kontinuum_lite/engine.py`: Phase-1-TODO umsetzen – `KontinuumEngine` aus kontinuum-core importieren und delegieren.
-3. `manifest.json` beider HA-Integrationen: `requirements: ["kontinuum-core>=0.1.0"]` hinzufügen.
-4. `HAScheduler`-Adapter schreiben: kapselt `async_track_time_interval` für das Scheduler-Protocol.
+1. READMEs in `kontinuum-core` und `ha-kontinuum-lite` mit Kreuzverweisen auf die anderen beiden Repos versehen (Phase 2).
+2. `ha-kontinuum`-Pro schrittweise auf `kontinuum-core` umstellen: lokale Brain-Module gegen den Core austauschen, sobald die Pro-spezifischen Aufrufe gegen das Core-Interface validiert sind (vermeidet Code-Duplikation, derzeit liegen 18 Module doppelt vor).
+3. Schmaler Integrations-/Smoke-Test (`tests/` in `kontinuum-core`) der die `observe()`-Pipeline und das Scheduler-Wiring der `Metaplasticity` abdeckt.
 
 **Erfordert Maintainer-Entscheidung vorab:**
-- Version auf `0.1.1` bumpen und PyPI-Release via GitHub-Tag auslösen.
-- Lizenz-Wechsel auf AGPLv3 (falls bisher andere Lizenz).
+- Version `0.1.2` bumpen + PyPI-Release via GitHub-Tag, sobald der nächste Sammelfix (z. B. Kreuzverweise, Tests) gemergt ist.
+- Lizenz-Wechsel auf AGPLv3 in `ha-kontinuum`-Pro (Core ist bereits AGPLv3, Lite hat eigene LICENSE-Datei – Konsistenz prüfen).
+- Pro-Integration: Entscheidung, ob lokale Module entfernt werden oder als Pro-Erweiterung neben Core bestehen bleiben.
 
 **Tabu für Agents (manuell durch Maintainer):**
 - Neue Repos auf GitHub anlegen.
@@ -242,24 +250,31 @@ Erst nach Phase 2/3 anfassen:
 
 | Risiko | Wahrscheinlichkeit | Gegenmaßnahme |
 |---|---|---|
-| Core-API zu früh stabilisiert | mittel | Phase 1 vollständig abschließen bevor erste externe Konsumenten |
-| `engine.py` Skeleton nicht mit realen Interfaces kompatibel | hoch | engine.py-Refactor als nächsten Schritt priorisieren |
-| ha-kontinuum-lite bleibt unverbunden | mittel | Phase-1-TODO in lite/engine.py hat höchste Priorität |
-| Doppelte Maintenance-Last | hoch | CI-Templates zwischen Repos teilen |
+| Core-API zu früh stabilisiert | mittel | Phase 1 abgeschlossen, aber Pre-1.0: Breaking Changes erlaubt |
+| ~~`engine.py` Skeleton nicht mit realen Interfaces kompatibel~~ | erledigt | Behoben in `kontinuum-core 0.1.1` |
+| ~~ha-kontinuum-lite bleibt unverbunden~~ | erledigt | Lite delegiert vollständig an Core |
+| **18 Brain-Module doppelt** (Pro + Core) | hoch | Pro auf Core umstellen, lokale Module entfernen (Phase 2-Ziel) |
+| Doppelte Maintenance-Last | hoch | CI-Templates zwischen Repos teilen, gemeinsame Tests in Core |
 | Breaking Changes bei `kontinuum-core` Updates | mittel | SemVer strikt, `requirements: ["kontinuum-core>=0.1,<0.2"]` |
 
 ---
 
 ## 8. Offene Fragen an den Maintainer
 
-1. Soll `engine.py` sofort mit echten Modul-Interfaces verknüpft werden, oder erst
-   nach dem Lite-Wiring? (Empfehlung: Lite-Wiring zuerst – gibt ein konkretes Ziel vor.)
-2. Welche Lizenz hat das Repo aktuell, und ist ein Wechsel auf **AGPLv3** in
-   Ordnung? (Schutz vor kommerzieller Übernahme.)
-3. Soll Version `0.1.1` via GitHub-Tag released werden, sobald Phase-1-PR gemergt ist?
-   (Empfehlung: ja, Changelogs/Release Notes vorbereiten.)
-4. Ist der `HAScheduler`-Adapter als Teil von ha-kontinuum oder als separates
-   Paket (`kontinuum-ha-scheduler`) gewünscht? (Empfehlung: direkt in ha-kontinuum.)
+1. ~~Soll `engine.py` sofort mit echten Modul-Interfaces verknüpft werden?~~
+   Erledigt in `kontinuum-core 0.1.1`.
+2. Welche Lizenz hat `ha-kontinuum` aktuell, und ist ein Wechsel auf **AGPLv3**
+   gewünscht, um die drei Repos konsistent zu halten? (Core ist bereits AGPLv3.)
+3. Soll der nächste Sammel-Release `0.1.2` heißen oder direkt `0.2.0`?
+   Empfehlung `0.1.2`, da die Änderung am `__init__`-Vertrag rückwärtskompatibel ist
+   (alle Parameter sind keyword + default).
+4. ~~Ist der `HAScheduler`-Adapter als Teil von ha-kontinuum oder als separates
+   Paket gewünscht?~~ Entschieden: pro HA-Integration eine eigene Datei
+   (`ha_scheduler.py`). Beide Repos haben einen Adapter, die Bibliothek bleibt
+   HA-frei.
+5. Pro-Integration: lokale Brain-Module entfernen und auf Core delegieren, oder
+   als Pro-Erweiterung behalten und nur einzelne Module migrieren? (Doppel-
+   Maintenance vs. Code-Eigenständigkeit.)
 
 ---
 
