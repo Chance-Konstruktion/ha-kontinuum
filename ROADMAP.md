@@ -202,9 +202,9 @@ aus `metaplasticity.py`.
 - [x] PyPI-Release `kontinuum-core 0.1.0`, `0.1.1` getaggt
 - [x] Beide HA-`manifest.json` auf `requirements: ["kontinuum-core>=0.1.1"]`
 - [x] `hacs.json` in `ha-kontinuum-lite` vorhanden
-- [x] README in `ha-kontinuum` verlinkt auf `kontinuum-core` und `ha-kontinuum-lite`
-- [ ] README in `kontinuum-core` verlinkt zurück auf `ha-kontinuum` + `ha-kontinuum-lite`
-- [ ] README in `ha-kontinuum-lite` verlinkt zurück auf `ha-kontinuum` + `kontinuum-core`
+- [x] README in `kontinuum-core` verlinkt auf `ha-kontinuum` + `ha-kontinuum-lite`
+- [x] README in `ha-kontinuum` (DE + EN) verlinkt auf `kontinuum-core` + `ha-kontinuum-lite`
+- [x] README in `ha-kontinuum-lite` verlinkt auf `ha-kontinuum` + `kontinuum-core`
 - [ ] HACS-Default-Repo-Antrag für `ha-kontinuum-lite` (falls Distribution über
   HACS-Default geplant; sonst custom-repo Anleitung)
 
@@ -213,10 +213,29 @@ aus `metaplasticity.py`.
 - `ha-kontinuum-lite` Installation legt **keine** Pro-Dateien auf der Platte ab.
 
 ### Phase 3 – Lizenz & Schutz
-- [ ] `LICENSE` in allen drei Repos auf AGPLv3 setzen
-- [ ] `NOTICE`-Datei mit Copyright + Hinweis auf kommerzielle Lizenz
+
+**Aktueller Stand (Mai 2026):**
+| Repo | LICENSE-Datei | pyproject/manifest |
+|---|---|---|
+| `kontinuum-core` | AGPL-3.0 (Stub, verweist auf gnu.org) | `license = “AGPL-3.0”` in pyproject.toml |
+| `ha-kontinuum` | MIT | — |
+| `ha-kontinuum-lite` | MIT | — |
+
+→ **Inkonsistent.** Bei einer AGPL-Bibliothek (`kontinuum-core`) sind MIT-Wrapper
+zulässig (MIT ist permissiv), aber das Schutzziel der Roadmap (Schutz vor
+kommerzieller Übernahme) wird so nicht erreicht: ein Forker kann beide HA-Wrapper
+unter MIT weiterverwerten.
+
+**Aufgaben:**
+- [ ] Maintainer-Entscheidung: alle drei Repos auf AGPLv3 angleichen?
+  (Empfehlung: ja, sonst hat Phase 3 keinen Effekt.)
+- [ ] Falls ja: `LICENSE` in `ha-kontinuum` + `ha-kontinuum-lite` durch
+  vollständigen AGPLv3-Text ersetzen (nicht nur Stub-Verweis wie in Core).
+- [ ] `LICENSE` in `kontinuum-core` ebenfalls auf Volltext bringen
+  (PyPI sieht ungern Stub-Lizenzen).
+- [ ] `NOTICE`-Datei mit Copyright + Hinweis auf kommerzielle Dual-Lizenz
 - [ ] Optional: CLA für Contributor (ermöglicht spätere Dual-Lizenz)
-- [ ] Optional: Wort-/Bildmarke „KONTINUUM“ beim DPMA/EUIPO anmelden
+- [ ] Optional: Wort-/Bildmarke „KONTINUUM” beim DPMA/EUIPO anmelden
 
 ### Phase 4 – Domänen-Layer (bewusst zurückgestellt)
 
