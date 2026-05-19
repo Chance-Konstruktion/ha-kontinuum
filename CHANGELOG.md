@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased – 3-Repo-Refactor (Phase 1+)
+
+### Changed
+- **`manifest.json`** pinnt `kontinuum-core>=0.1.1`. Die neuro-inspirierte
+  Lern-Engine wird ab sofort aus dem PyPI-Paket nachgezogen statt
+  vendored. Existierender HA-Code (Sensoren, Services, UI) bleibt
+  unverändert.
+- **`metaplasticity.py`** ist jetzt ein dünner Wrapper um
+  `kontinuum_core.metaplasticity.MetaPlasticity`. Externe API unverändert:
+  `MetaPlasticity(hass)`, `await async_load()`, `await async_start(...)`,
+  `await async_stop()`, `await async_save()`.
+- **`locus_coeruleus`** wird jetzt aus `kontinuum_core` importiert
+  (Pro-lokale Kopie entfernt). Erster Schritt zur Reduktion der
+  Code-Duplikation zwischen Pro und Core (Roadmap-Risiko: 18 Module
+  doppelt). Andere Module folgen einzeln.
+
+### Added
+- **`ha_scheduler.py`**: `HAScheduler` – Adapter, der das HA-freie
+  `kontinuum_core.Scheduler`-Protocol auf
+  `homeassistant.helpers.event.async_track_time_interval` brückt. Sync-
+  Callbacks laufen im Executor, blockieren also nicht den Event-Loop.
+- README-Banner (DE + EN) mit Cross-Links auf `kontinuum-core` und
+  `ha-kontinuum-lite`.
+- ROADMAP-Dokument konsolidiert: Phase 1 abgeschlossen, Phase 2 in
+  Arbeit, Phase 3 mit konkretem Lizenz-Stand.
+
 ## v0.22.2 – Recorder-Attribut-Limit (16 KB)
 
 ### Fix

@@ -48,7 +48,7 @@ from .basal_ganglia import BasalGanglia
 from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
 from .reticular import ReticularFormation
 from .nucleus_accumbens import NucleusAccumbens
-from .locus_coeruleus import LocusCoeruleus
+from kontinuum_core.locus_coeruleus import LocusCoeruleus
 from .entorhinal_cortex import EntorhinalCortex
 from .sleep_consolidation import SleepConsolidation
 from .anterior_cingulate import AnteriorCingulateCortex
