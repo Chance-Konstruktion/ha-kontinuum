@@ -28,8 +28,9 @@
 │  • Alle Brain-Module   │    │  • Nur Core + Wrapper      │
 │  • Sensoren + Dashboard│    │  • 3 Sensoren, 1 Service,  │
 │  • Brand-Assets        │    │    1 Event                 │
-│  • Domain: kontinuum   │    │  • Domain: kontinuum_lite  │
-└────────────────────────┘    └──────────────────────────┘
+│  • Domain: kontinuum   │    │  • Brand-Icon (HACS-Pflicht)│
+└────────────────────────┘    │  • Domain: kontinuum_lite  │
+                              └────────────────────────────┘
 ```
 
 **Begründung der Trennung:**
@@ -205,8 +206,20 @@ aus `metaplasticity.py`.
 - [x] README in `kontinuum-core` verlinkt auf `ha-kontinuum` + `ha-kontinuum-lite`
 - [x] README in `ha-kontinuum` (DE + EN) verlinkt auf `kontinuum-core` + `ha-kontinuum-lite`
 - [x] README in `ha-kontinuum-lite` verlinkt auf `ha-kontinuum` + `kontinuum-core`
+- [x] Brand-Icons in `ha-kontinuum-lite` (HACS-Validation-Pflicht; reusen Pro-Icons)
+- [x] CI in `kontinuum-core` (pytest auf Python 3.9-3.12)
+- [x] CI in `ha-kontinuum-lite` (HACS-validate + hassfest)
+- [x] CHANGELOG.md in `ha-kontinuum-lite` angelegt
+- [x] `kontinuum-core` Test-Suite (37 Tests: engine, thalamus,
+  predictive_processing, hippocampus, cerebellum)
+- [x] Pro-auf-Core-Migration begonnen: `locus_coeruleus` → kommt aus
+  kontinuum-core, lokale Pro-Kopie entfernt
+- [ ] Pro-auf-Core-Migration fortsetzen: restliche 17 doppelte Module
+  einzeln migrieren (siehe Risiko-Register)
 - [ ] HACS-Default-Repo-Antrag für `ha-kontinuum-lite` (falls Distribution über
   HACS-Default geplant; sonst custom-repo Anleitung)
+- [ ] PyPI-Release `kontinuum-core 0.1.2` via GitHub-Tag (Tests + Engine-
+  Vertrags-Parameter)
 
 **Akzeptanzkriterien Phase 2:**
 - Frischer HA-Container kann `ha-kontinuum-lite` über HACS installieren, Core wird automatisch via pip nachgezogen.
@@ -272,7 +285,7 @@ Erst nach Phase 2/3 anfassen:
 | Core-API zu früh stabilisiert | mittel | Phase 1 abgeschlossen, aber Pre-1.0: Breaking Changes erlaubt |
 | ~~`engine.py` Skeleton nicht mit realen Interfaces kompatibel~~ | erledigt | Behoben in `kontinuum-core 0.1.1` |
 | ~~ha-kontinuum-lite bleibt unverbunden~~ | erledigt | Lite delegiert vollständig an Core |
-| **18 Brain-Module doppelt** (Pro + Core) | hoch | Pro auf Core umstellen, lokale Module entfernen (Phase 2-Ziel) |
+| **18 Brain-Module doppelt** (Pro + Core) | hoch | Pro auf Core umstellen, lokale Module entfernen (1/18 erledigt: locus_coeruleus) |
 | Doppelte Maintenance-Last | hoch | CI-Templates zwischen Repos teilen, gemeinsame Tests in Core |
 | Breaking Changes bei `kontinuum-core` Updates | mittel | SemVer strikt, `requirements: ["kontinuum-core>=0.1,<0.2"]` |
 
