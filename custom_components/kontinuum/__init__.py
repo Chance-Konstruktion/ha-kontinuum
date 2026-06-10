@@ -36,31 +36,32 @@ from homeassistant import config_entries
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 import homeassistant.helpers.config_validation as cv
 
-from .thalamus import Thalamus
-from .hippocampus import Hippocampus
-from .hypothalamus import Hypothalamus
-from .spatial_cortex import SpatialCortex
-from .insula import Insula
-from .amygdala import Amygdala
-from .cerebellum import Cerebellum
-from .prefrontal_cortex import PrefrontalCortex, MODE_SHADOW, MODE_CONFIRM, MODE_ACTIVE, VALID_MODES
-from .basal_ganglia import BasalGanglia
-from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
+from kontinuum_core.thalamus import Thalamus
+from kontinuum_core.hippocampus import Hippocampus
+from kontinuum_core.hypothalamus import Hypothalamus
+from kontinuum_core.spatial_cortex import SpatialCortex
+from kontinuum_core.insula import Insula
+from kontinuum_core.amygdala import Amygdala
+from kontinuum_core.cerebellum import Cerebellum
+from kontinuum_core.prefrontal_cortex import PrefrontalCortex, MODE_SHADOW, MODE_CONFIRM, MODE_ACTIVE, VALID_MODES
+from kontinuum_core.basal_ganglia import BasalGanglia
 from kontinuum_core.reticular import ReticularFormation
 from kontinuum_core.nucleus_accumbens import NucleusAccumbens
 from kontinuum_core.locus_coeruleus import LocusCoeruleus
 from kontinuum_core.entorhinal_cortex import EntorhinalCortex
-from .sleep_consolidation import SleepConsolidation
-from .anterior_cingulate import AnteriorCingulateCortex
-from .metaplasticity import MetaPlasticity
-from .predictive_processing import PredictiveProcessing
-from .neurorhythms import Neurorhythms
+from kontinuum_core.sleep_consolidation import SleepConsolidation
+from kontinuum_core.anterior_cingulate import AnteriorCingulateCortex
+from kontinuum_core.predictive_processing import PredictiveProcessing
+from kontinuum_core.neurorhythms import Neurorhythms
 
+from .const import DOMAIN
+from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
+from .metaplasticity import MetaPlasticity
 from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
-DOMAIN = "kontinuum"
-VERSION = "0.20.0"
+# Muss mit manifest.json "version" übereinstimmen
+VERSION = "0.23.0"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"

@@ -2,7 +2,44 @@
 
 ## Unreleased – 3-Repo-Refactor (Phase 1+)
 
+### Fixed
+- **ImportError beim Laden der Integration:** `metaplasticity.py`
+  importierte `DOMAIN` aus `const.py`, das nur `STORAGE_PATH` definierte –
+  damit schlug `from .metaplasticity import MetaPlasticity` in
+  `__init__.py` fehl und die Integration konnte gar nicht starten.
+  `DOMAIN` ist jetzt zentral in `const.py` definiert; `__init__.py`,
+  `config_flow.py` und `sensor.py` importieren es von dort statt es
+  dreifach zu duplizieren.
+- **`VERSION` in `__init__.py` (0.20.0) war hinter `manifest.json`
+  (0.23.0) zurückgefallen** – Statussensor und Notifications zeigten die
+  falsche Version. Synchronisiert; die neue Smoke-Test-CI erzwingt den
+  Gleichstand ab jetzt.
+
 ### Changed
+- **Pro-auf-Core-Migration abgeschlossen (18/18):** Die restlichen 13
+  Brain-Module (`amygdala`, `anterior_cingulate`, `basal_ganglia`,
+  `cerebellum`, `hippocampus`, `hypothalamus`, `insula`, `neurorhythms`,
+  `predictive_processing`, `prefrontal_cortex`, `sleep_consolidation`,
+  `spatial_cortex`, `thalamus`) werden aus `kontinuum_core` importiert,
+  die lokalen Kopien (~5 300 LOC) sind gelöscht. Verifikation per
+  AST-Vergleich: 10 Module byte-/AST-identisch, 3 nur kosmetisch
+  verschieden (tote Imports, Type-Hints, Inline-Variable).
+  *Hinweis:* Die Begründungs-/Anzeigetexte von Amygdala (z. B.
+  „ist sicherheitskritisch“) und Hypothalamus (Batterie/Solar-Labels)
+  kommen jetzt aus dem Core und sind englisch.
+
+### Added
+- **Smoke-Test-CI (`.github/workflows/smoke.yaml`):** Installiert
+  Home Assistant + `kontinuum-core` (vorerst via Git-URL, bis der
+  PyPI-Release existiert), kompiliert alle Python-Dateien, importiert
+  beide Integrationen und prüft `VERSION` ↔ `manifest.json`. Hätte den
+  o. g. ImportError sofort gefangen – hassfest/HACS-Validate prüfen so
+  etwas nicht.
+
+### Known Issues
+- **`kontinuum-core` ist nicht auf PyPI** (404), obwohl beide Manifeste
+  `kontinuum-core>=0.1.1` verlangen → Neuinstallationen schlagen fehl,
+  bis der Maintainer den Release taggt (Details in der ROADMAP-Blocker-Box).
 - **`manifest.json`** pinnt `kontinuum-core>=0.1.1`. Die neuro-inspirierte
   Lern-Engine wird ab sofort aus dem PyPI-Paket nachgezogen statt
   vendored. Existierender HA-Code (Sensoren, Services, UI) bleibt

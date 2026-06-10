@@ -20,11 +20,10 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
+from .const import DOMAIN
 from .cortex import PROVIDERS, DEFAULT_PROMPTS
 
 _LOGGER = logging.getLogger(__name__)
-
-DOMAIN = "kontinuum"
 
 PRESETS = {
     "mutig": {
