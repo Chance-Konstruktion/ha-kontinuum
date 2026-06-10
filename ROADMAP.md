@@ -1,8 +1,17 @@
 # KONTINUUM – Roadmap zur 3-Repo-Architektur
 
 > **Status:** Phase 1 abgeschlossen – Phase 2 in Arbeit  
-> **Stand:** Mai 2026  
+> **Stand:** Juni 2026  
 > **Architektur:** Drei eigenständige Repositories (durch Maintainer angelegt)
+
+> ⚠️ **BLOCKER (Juni 2026):** `kontinuum-core` ist **nicht auf PyPI**
+> (`pypi.org/pypi/kontinuum-core/json` → 404), das Core-Repo hat **keine
+> Git-Tags** und **keinen Publish-Workflow** (nur `tests.yaml`). Beide
+> HA-Integrationen verlangen aber `kontinuum-core>=0.1.1` in der
+> `manifest.json` → **Neuinstallation schlägt fehl**, bis der Release
+> existiert. Nötig (Maintainer): Publish-Workflow in `kontinuum-core`
+> anlegen (PyPI Trusted Publishing), Tag `v0.1.1` (oder `v0.1.2`) setzen,
+> `pip install kontinuum-core` verifizieren.
 
 ---
 
@@ -46,8 +55,8 @@
 **Repos:**
 | Repo | Status |
 |---|---|
-| `kontinuum-core` | ✅ v0.1.1 auf PyPI, alle 18 Module portiert, Engine wired |
-| `ha-kontinuum` | ✅ Pro-Integration, `MetaPlasticity` delegiert an Core via `HAScheduler` |
+| `kontinuum-core` | ⚠️ Code komplett (v0.1.1, alle 18 Module, Engine wired), aber **kein PyPI-Release** – Paket 404t, keine Tags, kein Publish-Workflow |
+| `ha-kontinuum` | ✅ Pro-Integration, **alle 18 Brain-Module aus Core importiert** (0 Duplikate) |
 | `ha-kontinuum-lite` | ✅ Engine delegiert vollständig an `KontinuumEngine` |
 
 **HA-Abhängigkeiten** in ha-kontinuum (`from homeassistant ...`):
@@ -172,7 +181,8 @@ aus `metaplasticity.py`.
 ### Phase 1 – Core-Refactor ✅ Abgeschlossen
 **Ziel:** Alle Brain-Module sauber von HA isolieren, in `kontinuum-core` publizieren.
 
-- [x] `kontinuum-core` Repository + PyPI-Link (v0.1.0, v0.1.1 released)
+- [x] `kontinuum-core` Repository angelegt, Code-Stand v0.1.1
+  (PyPI-Release steht noch aus – siehe Blocker-Box oben)
 - [x] Verzeichnis `src/kontinuum_core/` angelegt
 - [x] Scheduler-Protocol (`scheduler.py`) implementiert
 - [x] Typen (`types.py`) definiert
@@ -200,7 +210,11 @@ aus `metaplasticity.py`.
 
 - [x] Maintainer hat `Chance-Konstruktion/kontinuum-core` angelegt
 - [x] Maintainer hat `Chance-Konstruktion/ha-kontinuum-lite` angelegt
-- [x] PyPI-Release `kontinuum-core 0.1.0`, `0.1.1` getaggt
+- [ ] ~~PyPI-Release `kontinuum-core 0.1.0`, `0.1.1` getaggt~~ **Korrektur
+  Juni 2026: war fälschlich abgehakt.** PyPI kennt das Paket nicht (404),
+  im Core-Repo existieren weder Tags noch ein Publish-Workflow. → Siehe
+  Blocker-Box oben; bis dahin installiert die Smoke-Test-CI den Core via
+  `pip install git+https://github.com/Chance-Konstruktion/kontinuum-core.git`.
 - [x] Beide HA-`manifest.json` auf `requirements: ["kontinuum-core>=0.1.1"]`
 - [x] `hacs.json` in `ha-kontinuum-lite` vorhanden
 - [x] README in `kontinuum-core` verlinkt auf `ha-kontinuum` + `ha-kontinuum-lite`
@@ -212,15 +226,23 @@ aus `metaplasticity.py`.
 - [x] CHANGELOG.md in `ha-kontinuum-lite` angelegt
 - [x] `kontinuum-core` Test-Suite (37 Tests: engine, thalamus,
   predictive_processing, hippocampus, cerebellum)
-- [x] Pro-auf-Core-Migration: `locus_coeruleus`, `nucleus_accumbens`,
-  `entorhinal_cortex`, `reticular` → kommen aus kontinuum-core,
-  lokale Pro-Kopien entfernt (Stand: 4/18)
-- [ ] Pro-auf-Core-Migration fortsetzen: restliche 14 doppelte Module
-  einzeln migrieren (siehe Risiko-Register)
+- [x] Pro-auf-Core-Migration **abgeschlossen (18/18)**: alle Brain-Module
+  kommen aus kontinuum-core, lokale Pro-Kopien entfernt. Verifikation
+  per AST-Vergleich: 10 Module byte-/AST-identisch; `anterior_cingulate`,
+  `spatial_cortex`, `thalamus` nur kosmetisch verschieden (tote Imports,
+  Type-Hints, Inline-Variable); `amygdala`/`hypothalamus` logik-identisch,
+  aber Begründungs-/Anzeigetexte jetzt englisch (kommen aus Core)
+- [x] Smoke-Test-CI in `ha-kontinuum`: installiert HA + Core und
+  importiert beide Integrationen (fängt ImportError/fehlende
+  Dependencies, die hassfest/HACS-Validate nicht prüfen)
 - [ ] HACS-Default-Repo-Antrag für `ha-kontinuum-lite` (falls Distribution über
   HACS-Default geplant; sonst custom-repo Anleitung)
-- [ ] PyPI-Release `kontinuum-core 0.1.2` via GitHub-Tag (Tests + Engine-
-  Vertrags-Parameter)
+- [ ] **Maintainer:** Publish-Workflow in `kontinuum-core` anlegen +
+  ersten PyPI-Release taggen (siehe Blocker-Box) – danach Smoke-Test-CI
+  von Git-URL auf `kontinuum-core>=0.1.1` umstellen
+- [ ] Entscheidung: Phase-0-Prototyp `custom_components/kontinuum_lite/`
+  aus diesem Repo entfernen? Lite lebt inzwischen im eigenen Repo;
+  zwei Integrationen in einem HACS-Repo sind unsauber
 
 **Akzeptanzkriterien Phase 2:**
 - Frischer HA-Container kann `ha-kontinuum-lite` über HACS installieren, Core wird automatisch via pip nachgezogen.
@@ -263,9 +285,14 @@ Erst nach Phase 2/3 anfassen:
 ## 6. Was ein Coding-Agent jetzt tun kann
 
 **Direkt machbar ohne weitere Rückfrage:**
-1. READMEs in `kontinuum-core` und `ha-kontinuum-lite` mit Kreuzverweisen auf die anderen beiden Repos versehen (Phase 2).
-2. `ha-kontinuum`-Pro schrittweise auf `kontinuum-core` umstellen: lokale Brain-Module gegen den Core austauschen, sobald die Pro-spezifischen Aufrufe gegen das Core-Interface validiert sind (vermeidet Code-Duplikation, derzeit liegen 18 Module doppelt vor).
-3. Schmaler Integrations-/Smoke-Test (`tests/` in `kontinuum-core`) der die `observe()`-Pipeline und das Scheduler-Wiring der `Metaplasticity` abdeckt.
+1. ~~READMEs mit Kreuzverweisen~~ ✅ erledigt.
+2. ~~Pro auf `kontinuum-core` umstellen~~ ✅ erledigt (18/18, Juni 2026).
+3. ~~Smoke-Test~~ ✅ erledigt (`.github/workflows/smoke.yaml` in diesem
+   Repo: HA + Core installieren, Integrationen importieren, Version-Sync
+   `__init__.py` ↔ `manifest.json` prüfen).
+4. Nach dem PyPI-Release: Smoke-Test-CI von Git-URL auf das PyPI-Paket
+   umstellen und Engine-Vertrag (`observe()`/`predict()`-Pipeline) im
+   Core-Repo um Integrationstests erweitern.
 
 **Erfordert Maintainer-Entscheidung vorab:**
 - Version `0.1.2` bumpen + PyPI-Release via GitHub-Tag, sobald der nächste Sammelfix (z. B. Kreuzverweise, Tests) gemergt ist.
@@ -283,11 +310,12 @@ Erst nach Phase 2/3 anfassen:
 
 | Risiko | Wahrscheinlichkeit | Gegenmaßnahme |
 |---|---|---|
+| **`kontinuum-core` nicht auf PyPI → Integrationen nicht installierbar** | **eingetreten** | Maintainer: Publish-Workflow + Tag im Core-Repo (siehe Blocker-Box). Smoke-Test-CI überbrückt mit Git-URL |
 | Core-API zu früh stabilisiert | mittel | Phase 1 abgeschlossen, aber Pre-1.0: Breaking Changes erlaubt |
 | ~~`engine.py` Skeleton nicht mit realen Interfaces kompatibel~~ | erledigt | Behoben in `kontinuum-core 0.1.1` |
 | ~~ha-kontinuum-lite bleibt unverbunden~~ | erledigt | Lite delegiert vollständig an Core |
-| **18 Brain-Module doppelt** (Pro + Core) | hoch | Pro auf Core umstellen, lokale Module entfernen (4/18 erledigt: locus_coeruleus, nucleus_accumbens, entorhinal_cortex, reticular) |
-| Doppelte Maintenance-Last | hoch | CI-Templates zwischen Repos teilen, gemeinsame Tests in Core |
+| ~~**18 Brain-Module doppelt** (Pro + Core)~~ | erledigt | 18/18 migriert, alle lokalen Kopien entfernt (Juni 2026) |
+| Doppelte Maintenance-Last | mittel | Duplikate beseitigt; CI-Templates zwischen Repos teilen, gemeinsame Tests in Core |
 | Breaking Changes bei `kontinuum-core` Updates | mittel | SemVer strikt, `requirements: ["kontinuum-core>=0.1,<0.2"]` |
 
 ---
