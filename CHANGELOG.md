@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased – Regelkreise geschlossen (Neuro-Wiring v2)
+
+### Fixed
+- **UnboundLocalError im Feedback-Pfad:** Bei Override-Erkennung und
+  impliziter Akzeptanz wurde `neurorhythms.register_outcome(token_id, …)`
+  mit einer Variable aufgerufen, die erst ~50 Zeilen später definiert
+  wird. Folge: Genau in den Momenten, in denen das System aus
+  User-Feedback lernen soll, brach die Event-Pipeline mit einer
+  Exception ab (Thalamus, Hippocampus, PFC liefen für dieses Event nicht
+  mehr). Jetzt wird der Token der betroffenen KONTINUUM-Aktion *vor*
+  `check_override()`/`check_implicit_positives()` gesichert (beide
+  löschen ihre `own_actions`-Einträge) und als korrektes Dopamin-Ziel an
+  Neurorhythms gemeldet.
+
+### Changed
+- **ACC-Konfliktmonitor sieht jetzt echte Konflikte:** Bisher bekam
+  `acc.observe_decision()` immer nur den Hippocampus-Top-Kandidaten –
+  mit einer einzigen Stimme ist Konflikt per Definition 0, und der
+  Amygdala-Zweig prüfte ein Attribut (`last_risk_score`), das es im Core
+  nie gab (toter Code). Neu: `_build_acc_proposals()` sammelt pro Event
+  die Stimmen von Hippocampus (Top-Rohvorhersage), Cerebellum (gefeuerte
+  Reflex-Regel), Basalganglien (nur wenn ihr Re-Ranking die Reihenfolge
+  kippt) und Amygdala (Veto-Stimme bei `decision.risk > 0.5`).
+- **Cognitive-Control-Loop geschlossen:** `acc.cognitive_control`
+  (EMA aus Konfliktlevel + Fehlerrate) dämpft jetzt die Confidence im
+  Basalganglien-Ranking um bis zu 25 %. Widersprechen sich die Module
+  oder häufen sich falsche Outcomes, werden PFC-Entscheidungen
+  automatisch vorsichtiger (mehr OBSERVE/SUGGEST statt EXECUTE); läuft
+  alles rund, klingt die Dämpfung über die EMA wieder ab. Vorher wurde
+  der ACC-Output nirgends konsumiert (write-only Modul).
+- **Entorhinale Antizipation aktiviert:** Der Entorhinal-Cortex lernte
+  Raumübergänge, wurde aber nie abgefragt. Beim Betreten eines Raums
+  wird jetzt `predict_next_room()` gestellt und Tokens im erwarteten
+  nächsten Raum bekommen im Ranking einen kleinen Priming-Boost (+0.05
+  Confidence) – das System denkt der wahrscheinlichsten Bewegung voraus.
+
+### Added
+- **`tests/test_wiring.py`:** 9 Unit-Tests für `_rank_with_basal_ganglia`
+  und `_build_acc_proposals` – mit echten kontinuum-core-Modulen
+  (Thalamus, BasalGanglia, ACC, Decision) statt Mocks. Läuft in der
+  Smoke-CI mit.
+
 ## Unreleased – 3-Repo-Refactor (Phase 1+)
 
 ### Fixed
