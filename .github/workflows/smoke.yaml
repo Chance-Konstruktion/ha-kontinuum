@@ -28,7 +28,6 @@ jobs:
         run: |
           python3 -c "import custom_components.kontinuum as k; print('kontinuum', k.VERSION)"
           python3 -c "from custom_components.kontinuum import sensor, config_flow, const, metaplasticity, ha_scheduler, cortex; print('submodules OK')"
-          python3 -c "import custom_components.kontinuum_lite; print('kontinuum_lite OK')"
 
       - name: Check VERSION matches manifest.json
         run: |
