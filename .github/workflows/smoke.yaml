@@ -19,10 +19,13 @@ jobs:
       - name: Install Home Assistant + kontinuum-core
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install homeassistant "kontinuum-core @ git+https://github.com/Chance-Konstruktion/kontinuum-core.git"
+          python3 -m pip install pytest homeassistant "kontinuum-core @ git+https://github.com/Chance-Konstruktion/kontinuum-core.git"
 
       - name: Compile all Python files
         run: python3 -m compileall -q custom_components
+
+      - name: Run wiring tests
+        run: python3 -m pytest tests/ -q
 
       - name: Import integrations
         run: |

@@ -474,6 +474,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 # ── Override-Erkennung ────────────────────────
                 if prefrontal.is_own_action(entity_id):
                     return
+                # Token-Snapshot VOR check_override/check_implicit_positives:
+                # beide löschen ihre own_actions-Einträge, danach wäre der
+                # Token der KONTINUUM-Aktion weg. Er ist das korrekte
+                # Dopamin-Ziel für register_outcome – nicht der Token des
+                # aktuellen Events (der existiert hier noch gar nicht und
+                # löste vorher einen UnboundLocalError aus, der die
+                # Pipeline genau in den Lern-Momenten abbrach).
+                own_action_tokens = {
+                    eid: a.get("token", "")
+                    for eid, a in prefrontal.own_actions.items()
+                }
                 was_override = prefrontal.check_override(entity_id, new_state, amygdala)
                 if was_override:
                     # Basalganglien: Negatives Feedback (NoGo-Pathway)
@@ -481,18 +492,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     # Accumbens: Negatives Reward-Signal
                     state_key = f"{room}|{insula.current_mode}|{datetime.now(timezone.utc).hour}"
                     accumbens.reinforce(state_key, entity_id, -1.0)
-                    # Neurorhythms: Dopamin-Dip (unerwartet negativ)
-                    neurorhythms.register_outcome(token_id, positive=False)
+                    # Neurorhythms: Dopamin-Dip für die übersteuerte Aktion
+                    overridden_tok = thalamus.token_to_id.get(
+                        own_action_tokens.get(entity_id, ""))
+                    if overridden_tok is not None:
+                        neurorhythms.register_outcome(overridden_tok, positive=False)
                 # Implizite Positives → Basalganglien: Go-Pathway
                 accepted = prefrontal.check_implicit_positives(amygdala)
                 if accepted:
+                    state_key = f"{room}|{insula.current_mode}|{datetime.now(timezone.utc).hour}"
                     for acc_eid in accepted:
                         basal_ganglia.process_outcome(acc_eid, positive=True)
                         # Accumbens: Positives Reward-Signal
-                        state_key = f"{room}|{insula.current_mode}|{datetime.now(timezone.utc).hour}"
                         accumbens.reinforce(state_key, acc_eid, 1.0)
-                    # Neurorhythms: Dopamin-Burst möglich (unerwartet positiv)
-                    neurorhythms.register_outcome(token_id, positive=True)
+                        # Neurorhythms: Dopamin-Burst für die akzeptierte Aktion
+                        accepted_tok = thalamus.token_to_id.get(
+                            own_action_tokens.get(acc_eid, ""))
+                        if accepted_tok is not None:
+                            neurorhythms.register_outcome(accepted_tok, positive=True)
                 basal_ganglia.cleanup_pending()
 
                 # ── Hypothalamus (Energie/Klima) ──────────────
@@ -514,6 +531,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                             if prev_room and next_room:
                                 entorhinal.observe_transition(prev_room, next_room)
                             brain["_entorhinal_last_room"] = next_room
+                            # Antizipation: wohin geht es von hier aus
+                            # erfahrungsgemäß weiter? Das Ranking
+                            # pre-aktiviert Tokens in diesem Raum.
+                            if next_room:
+                                brain["_expected_next_room"] = (
+                                    entorhinal.predict_next_room(next_room))
 
                     # Insula mit räumlichem Signal füttern
                     mode_result = insula.process(semantic, new_state, room)
@@ -577,7 +600,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     )
 
                 # Predictions + Basalganglien-Ranking
-                predictions = hippocampus.predict(ctx)
+                raw_predictions = hippocampus.predict(ctx)
+                predictions = raw_predictions
 
                 # Cerebellum-Regel als Top-Prediction injizieren (hohe Konfidenz)
                 if fired_rule and fired_rule.confidence >= 0.7:
@@ -595,30 +619,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     predictions = _rank_with_basal_ganglia(
                         predictions, basal_ganglia, bucket,
                         thalamus, accumbens, room, insula.current_mode,
-                        locus.get_arousal())
-
-                # ACC: Konflikte zwischen Modulen beobachten
-                acc_proposals = []
-                if predictions:
-                    top = predictions[0] if predictions else None
-                    if top:
-                        acc_proposals.append({
-                            "source": "hippocampus", "action": top[0],
-                            "confidence": top[1],
-                        })
-                    # Amygdala-Veto als konkurrierender Vorschlag
-                    if amygdala and hasattr(amygdala, "last_risk_score"):
-                        risk = getattr(amygdala, "last_risk_score", 0.0)
-                        if risk > 0.5:
-                            acc_proposals.append({
-                                "source": "amygdala", "action": "veto",
-                                "confidence": risk, "veto": True,
-                            })
-                acc.observe_decision(acc_proposals)
+                        locus.get_arousal(), acc,
+                        brain.get("_expected_next_room"))
 
                 # PFC entscheidet (mit Q-Value Boost aus Basalganglien)
                 decision = prefrontal.evaluate(
                     predictions, thalamus, basal_ganglia, bucket)
+
+                # ACC: Konflikt zwischen den Modul-Stimmen messen.
+                # Fließt über cognitive_control als Confidence-Dämpfung
+                # in das Ranking der nächsten Events ein (EMA-geglättet).
+                acc.observe_decision(_build_acc_proposals(
+                    raw_predictions, predictions, fired_rule,
+                    decision, thalamus))
                 if decision:
                     # Basalganglien: Aktion registrieren für Outcome-Tracking
                     if decision.entity_id:
@@ -854,12 +867,17 @@ async def async_remove_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 
 def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
                              accumbens=None, room="unknown", mode="active",
-                             arousal=0.2):
+                             arousal=0.2, acc=None, expected_room=None):
     """
     Basalganglien-Ranking: Sortiert Predictions nach Go/NoGo-Pathway.
     Go (positive Q-Values) → nach oben
     NoGo (negative Q-Values) → nach unten
     Arousal (Locus Coeruleus) moduliert Confidence: hoch = reaktiver.
+    ACC (Cognitive Control) dämpft Confidence bei Konflikt/Fehlerhäufung:
+    je mehr sich die Module widersprechen oder Outcomes danebenliegen,
+    desto vorsichtiger werden alle nachgelagerten PFC-Entscheidungen.
+    Entorhinal-Antizipation: Tokens im erwarteten nächsten Raum werden
+    leicht vor-aktiviert (Priming auf die wahrscheinlichste Bewegung).
     Predictions: [(token_id, prob, conf, source, n_obs), ...]
     """
     ranked = []
@@ -867,22 +885,84 @@ def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
     state_key = f"{room}|{mode}|{hour}"
     # Locus Coeruleus Arousal: hohes Arousal (+5% Confidence), niedriges (-3%)
     arousal_boost = (arousal - 0.3) * 0.15  # Range: -0.045 bis +0.105
+    # ACC Cognitive Control: 0.0 = entspannt, 1.0 = max. Konflikt/Fehler
+    # → dämpft Confidence um bis zu 25%
+    control_damping = 1.0
+    if acc is not None:
+        control = max(0.0, min(1.0, getattr(acc, "cognitive_control", 0.0)))
+        control_damping = 1.0 - 0.25 * control
     for prediction in predictions:
         token_id, prob, conf, source = prediction[:4]
         n_obs = prediction[4] if len(prediction) > 4 else 0
         priority = basal_ganglia.get_action_priority(token_id, bucket)
-        # Accumbens Reward-Boost
+        # Accumbens Reward-Boost + entorhinale Antizipation
         reward_boost = 0.0
-        if accumbens and thalamus:
+        anticipation_boost = 0.0
+        if thalamus:
             action_key = thalamus.decode_token(token_id)
-            reward_boost = accumbens.get_bias(state_key, action_key) * 0.1
-        # Confidence durch Basalganglien + Accumbens + Arousal modifizieren
-        bg_conf = conf + priority * 0.1 + reward_boost + arousal_boost
+            if accumbens:
+                reward_boost = accumbens.get_bias(state_key, action_key) * 0.1
+            if expected_room and action_key.split(".")[0] == expected_room:
+                anticipation_boost = 0.05
+        # Confidence durch Basalganglien + Accumbens + Arousal +
+        # Antizipation modifizieren, dann ACC-Dämpfung anwenden
+        bg_conf = (conf + priority * 0.1 + reward_boost + arousal_boost
+                   + anticipation_boost) * control_damping
         bg_conf = max(0.05, min(1.0, bg_conf))
         ranked.append((token_id, prob, bg_conf, source, n_obs))
     # Re-sort by modified confidence * probability
     ranked.sort(key=lambda x: x[1] * x[2], reverse=True)
     return ranked
+
+
+def _build_acc_proposals(raw_predictions, ranked_predictions, fired_rule,
+                         decision, thalamus):
+    """
+    Baut die Vorschlagsliste für den ACC-Konfliktmonitor.
+
+    Jede Quelle stimmt mit ihrem eigenen Top-Kandidaten ab:
+    - Hippocampus: beste rohe Sequenz-Vorhersage
+    - Cerebellum: gefeuerte Reflex-Regel
+    - Basalganglien: Top nach Re-Ranking (nur wenn sie die Reihenfolge
+      gekippt haben und nicht bloß den Cerebellum-Reflex bestätigen)
+    - Amygdala: Veto-Stimme, wenn die PFC-Entscheidung riskant ist
+
+    Erst ab 2 Stimmen kann acc.observe_decision() Konflikt messen –
+    vorher bekam der ACC immer nur den Hippocampus-Top übergeben und
+    blieb dauerhaft bei conflict_level ≈ 0 (der frühere Amygdala-Zweig
+    prüfte ein Attribut, das es im Core nie gab).
+    """
+    proposals = []
+    raw_top = raw_predictions[0] if raw_predictions else None
+    if raw_top:
+        proposals.append({
+            "source": "hippocampus",
+            "action": thalamus.decode_token(raw_top[0]),
+            "confidence": raw_top[2],
+        })
+    reflex_target = fired_rule.target if fired_rule is not None else None
+    if fired_rule is not None:
+        proposals.append({
+            "source": "cerebellum",
+            "action": thalamus.decode_token(fired_rule.target),
+            "confidence": fired_rule.confidence,
+        })
+    ranked_top = ranked_predictions[0] if ranked_predictions else None
+    if (ranked_top and raw_top and ranked_top[0] != raw_top[0]
+            and ranked_top[0] != reflex_target):
+        proposals.append({
+            "source": "basal_ganglia",
+            "action": thalamus.decode_token(ranked_top[0]),
+            "confidence": ranked_top[2],
+        })
+    if decision is not None and getattr(decision, "risk", 0.0) > 0.5:
+        proposals.append({
+            "source": "amygdala",
+            "action": "veto",
+            "confidence": decision.risk,
+            "veto": True,
+        })
+    return proposals
 
 
 def _inject_token(hass, brain, token_info, timestamp):
