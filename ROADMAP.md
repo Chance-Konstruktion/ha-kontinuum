@@ -114,7 +114,9 @@ Alle bisherigen Module **plus** Core-Dependency. Kein Code-Verlust.
 
 ### → ha-kontinuum-lite (Repo 3)
 
-Schlanke HA-Integration, Phase-0-Prototyp vorhanden:
+Schlanke HA-Integration, lebt im eigenen Repo `ha-kontinuum-lite`
+(der Phase-0-Prototyp `custom_components/kontinuum_lite/` in diesem
+Repo wurde nach dem Split entfernt):
 - `__init__.py`, `sensor.py`, `config_flow.py`, `const.py`, `services.yaml`, `manifest.json`
 
 **TODO:** `engine.py` auf `kontinuum_core.KontinuumEngine` umstellen (Phase-1-TODO-Kommentar vorhanden).
@@ -233,16 +235,15 @@ aus `metaplasticity.py`.
   Type-Hints, Inline-Variable); `amygdala`/`hypothalamus` logik-identisch,
   aber Begründungs-/Anzeigetexte jetzt englisch (kommen aus Core)
 - [x] Smoke-Test-CI in `ha-kontinuum`: installiert HA + Core und
-  importiert beide Integrationen (fängt ImportError/fehlende
+  importiert die Integration (fängt ImportError/fehlende
   Dependencies, die hassfest/HACS-Validate nicht prüfen)
 - [ ] HACS-Default-Repo-Antrag für `ha-kontinuum-lite` (falls Distribution über
   HACS-Default geplant; sonst custom-repo Anleitung)
-- [ ] **Maintainer:** Publish-Workflow in `kontinuum-core` anlegen +
-  ersten PyPI-Release taggen (siehe Blocker-Box) – danach Smoke-Test-CI
-  von Git-URL auf `kontinuum-core>=0.1.1` umstellen
-- [ ] Entscheidung: Phase-0-Prototyp `custom_components/kontinuum_lite/`
-  aus diesem Repo entfernen? Lite lebt inzwischen im eigenen Repo;
-  zwei Integrationen in einem HACS-Repo sind unsauber
+- [ ] **Maintainer:** Publish-Workflow in `kontinuum-core` mergen
+  (PR #10) + ersten PyPI-Release taggen (siehe Blocker-Box) – danach
+  Smoke-Test-CI von Git-URL auf `kontinuum-core>=0.1.1` umstellen
+- [x] Phase-0-Prototyp `custom_components/kontinuum_lite/` aus diesem
+  Repo entfernt – Lite lebt im eigenen Repo `ha-kontinuum-lite`
 
 **Akzeptanzkriterien Phase 2:**
 - Frischer HA-Container kann `ha-kontinuum-lite` über HACS installieren, Core wird automatisch via pip nachgezogen.
