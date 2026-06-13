@@ -156,3 +156,35 @@ def test_risky_decision_adds_amygdala_veto():
 def test_empty_predictions_yield_no_proposals():
     thalamus = _make_thalamus([])
     assert _build_acc_proposals([], [], None, None, thalamus) == []
+
+
+# ──────────────────────────────────────────────────────────────────
+# ACC outcome feedback (error-rate half of cognitive_control)
+# ──────────────────────────────────────────────────────────────────
+
+def test_acc_outcome_feedback_drives_cognitive_control():
+    """User overrides/accepts must move cognitive_control.
+
+    The handler now feeds overrides (system mistake) and implicit accepts
+    (correct prediction) into acc.observe_outcome, so the error-rate half of
+    cognitive_control (conflict·0.6 + error_rate·0.4) reflects real
+    corrections — previously only the autonomous-execute path fed it, so for
+    every non-ACTIVE user error_rate stayed 0 forever. observe_outcome only
+    updates error_rate; cognitive_control is refreshed by the following
+    observe_decision (exactly the handler order: feedback, then ranking).
+    """
+    acc = AnteriorCingulateCortex()
+    assert acc.cognitive_control == 0.0
+
+    for _ in range(20):
+        acc.observe_outcome(False)   # repeated overrides = system mistakes
+        acc.observe_decision([])     # refreshes the EMA-derived control
+    assert acc.error_rate > 0.0
+    stressed = acc.cognitive_control
+    assert stressed > 0.0           # control now brakes on real errors
+
+    for _ in range(80):
+        acc.observe_outcome(True)    # consistent accepts = correct
+        acc.observe_decision([])
+    assert acc.error_rate < 0.1
+    assert acc.cognitive_control < stressed   # recovers smoothly

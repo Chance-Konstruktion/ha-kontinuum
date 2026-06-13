@@ -30,6 +30,19 @@
   automatisch vorsichtiger (mehr OBSERVE/SUGGEST statt EXECUTE); läuft
   alles rund, klingt die Dämpfung über die EMA wieder ab. Vorher wurde
   der ACC-Output nirgends konsumiert (write-only Modul).
+- **Fehlerraten-Hälfte von `cognitive_control` jetzt aus echtem
+  User-Feedback:** Der Cognitive-Control-Loop nutzt
+  `conflict·0.6 + error_rate·0.4`, aber `acc.observe_outcome()` wurde nur
+  im autonomen Execute-Pfad (ACTIVE-Modus, 3-Sekunden-Hardware-Check)
+  gespeist. Für jeden Nutzer ohne autonome Aktionen (SHADOW/CONFIRM)
+  blieb `error_rate` damit dauerhaft 0 – `cognitive_control` reagierte nur
+  auf Modul-Uneinigkeit, nie auf tatsächliche Fehler. Jetzt meldet der
+  bestehende User-Feedbackpfad Overrides als Fehler
+  (`observe_outcome(False)`) und implizite Akzeptanz als Erfolg
+  (`observe_outcome(True)`) an den ACC – symmetrisch zu
+  Basalganglien/Accumbens/Neurorhythms, die dort längst gespeist wurden.
+  Wiederholte Korrekturen bremsen das Ranking jetzt spürbar; konsistente
+  Akzeptanz lässt es über die EMA wieder lockerer werden.
 - **Entorhinale Antizipation aktiviert:** Der Entorhinal-Cortex lernte
   Raumübergänge, wurde aber nie abgefragt. Beim Betreten eines Raums
   wird jetzt `predict_next_room()` gestellt und Tokens im erwarteten
