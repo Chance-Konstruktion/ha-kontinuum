@@ -497,6 +497,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                         own_action_tokens.get(entity_id, ""))
                     if overridden_tok is not None:
                         neurorhythms.register_outcome(overridden_tok, positive=False)
+                    # ACC: ein Override ist ein echter Fehler des Systems.
+                    # Speist die Fehlerraten-Hälfte von cognitive_control
+                    # (conflict·0.6 + error_rate·0.4), die sonst nur der
+                    # autonome Execute-Pfad (ACTIVE-Modus) füllte – für alle
+                    # anderen Nutzer blieb error_rate dauerhaft 0. Wiederholte
+                    # Korrekturen machen das Ranking jetzt vorsichtiger.
+                    acc.observe_outcome(False)
                 # Implizite Positives → Basalganglien: Go-Pathway
                 accepted = prefrontal.check_implicit_positives(amygdala)
                 if accepted:
@@ -510,6 +517,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                             own_action_tokens.get(acc_eid, ""))
                         if accepted_tok is not None:
                             neurorhythms.register_outcome(accepted_tok, positive=True)
+                        # ACC: ein implizit akzeptierter Vorschlag war korrekt
+                        # → senkt die Fehlerrate, cognitive_control entspannt
+                        # sich wieder (EMA-geglättet, symmetrisch zum Override).
+                        acc.observe_outcome(True)
                 basal_ganglia.cleanup_pending()
 
                 # ── Hypothalamus (Energie/Klima) ──────────────
