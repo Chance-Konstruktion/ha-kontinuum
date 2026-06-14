@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased – Regelkreise geschlossen (Neuro-Wiring v2)
+## v0.23.0 – Regelkreise geschlossen / Neuro-Wiring v2 + 3-Repo-Refactor (2026-06-14)
+
+### Changed (Release)
+- **`manifest.json`** pinnt jetzt **`kontinuum-core>=0.1.2`** (auf PyPI
+  veröffentlicht) – der Core-Release mit vollständiger `to_dict`/`from_dict`-
+  Persistenz und der durchverdrahteten 18-Modul-Pipeline, auf die das
+  geschlossene Regelkreis-Wiring dieser Version aufsetzt.
+
+### Regelkreise geschlossen (Neuro-Wiring v2)
 
 ### Fixed
 - **UnboundLocalError im Feedback-Pfad:** Bei Override-Erkennung und
@@ -55,7 +63,7 @@
   (Thalamus, BasalGanglia, ACC, Decision) statt Mocks. Läuft in der
   Smoke-CI mit.
 
-## Unreleased – 3-Repo-Refactor (Phase 1+)
+### 3-Repo-Refactor (Phase 1+)
 
 ### Fixed
 - **ImportError beim Laden der Integration:** `metaplasticity.py`
