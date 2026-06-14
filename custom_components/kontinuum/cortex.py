@@ -30,6 +30,8 @@ from datetime import datetime, timezone
 
 import aiohttp
 
+from kontinuum_core import build_llm_context, normalize_proposal, render_llm_context
+
 # ── Transiente Fehler für Retry ──────────────────────────────
 _TRANSIENT_ERRORS = (
     aiohttp.ClientError,
@@ -236,12 +238,13 @@ async def _call_gemini(session, url, api_key, model, system_prompt, user_msg):
         "contents": [{"parts": [{"text": user_msg}]}],
         "generationConfig": {"responseMimeType": "application/json"},
     }
-    endpoint = (
-        f"{url.rstrip('/')}/v1beta/models/{model}:generateContent"
-        f"?key={api_key}"
-    )
+    endpoint = f"{url.rstrip('/')}/v1beta/models/{model}:generateContent"
+    # API key in a header, not the query string — request URLs get logged by
+    # proxies / aiohttp debug logging, which would leak the key.
+    headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
     async with session.post(
-        endpoint, json=payload, timeout=aiohttp.ClientTimeout(total=30)
+        endpoint, json=payload, headers=headers,
+        timeout=aiohttp.ClientTimeout(total=30)
     ) as resp:
         if resp.status != 200:
             text = await resp.text()
@@ -315,24 +318,25 @@ class CortexAgent:
                 keep_alive=keep_alive, timeout=timeout,
             )
 
-            # Parse JSON response
-            result = json.loads(raw) if isinstance(raw, str) else raw
-            result["agent"] = self.name
+            # Robust parse via the core contract: normalize_proposal survives
+            # ```json fences / prose / a JSON list and coerces priority (→int
+            # 0-100) and veto (→bool), flagging garbage with valid=False — so the
+            # consensus logic below never does arithmetic on a stringly-typed
+            # field or subscripts a non-dict.
+            result = normalize_proposal(raw, agent=self.name)
             self.last_response = result
+            if not result.get("valid"):
+                self.total_errors += 1
+                _LOGGER.warning("Cortex %s: kein verwertbares JSON: %s",
+                                self.name, str(raw)[:200])
             return result
 
-        except json.JSONDecodeError:
-            self.total_errors += 1
-            _LOGGER.warning("Cortex %s: Kein valides JSON: %s",
-                            self.name, raw[:200])
-            return {"agent": self.name, "action": None,
-                    "reason": f"JSON-Parse-Fehler: {raw[:100]}",
-                    "priority": 0}
         except Exception as e:
             self.total_errors += 1
             _LOGGER.error("Cortex %s Fehler: %s", self.name, e)
-            return {"agent": self.name, "action": None,
-                    "reason": str(e)[:100], "priority": 0}
+            return {"agent": self.name, "action": None, "entity_id": None,
+                    "reason": str(e)[:100], "priority": 0, "veto": False,
+                    "valid": False}
 
     @property
     def stats(self) -> dict:
@@ -450,7 +454,10 @@ class Cortex:
         )
 
         # ── Runde 1: Initiale Vorschläge (nur Worker-Agents) ───
-        context_msg = self._format_context(context)
+        # Prepend the core LLM-context block: labeled brain state WITH the
+        # anomaly/surprise signal and explicit 0–1 scales, so the agents reason
+        # over interpretable data instead of bare numbers.
+        context_msg = self._brain_state_block(brain) + self._format_context(context)
         active_agents = worker_agents or self.agents
 
         if self.sequential_mode:
@@ -590,6 +597,24 @@ class Cortex:
             "habits": basal_ganglia.total_habits,
             "dopamine": basal_ganglia.dopamine_signal,
         }
+
+    def _brain_state_block(self, brain: dict) -> str:
+        """Core LLM-context (labeled brain state + anomaly signal + 0–1 scales)
+        plus the entity_ids the engine actually knows, so agents don't invent
+        entities. Defensive: a bad read never breaks the consult."""
+        try:
+            block = render_llm_context(build_llm_context(brain))
+        except Exception:  # noqa: BLE001
+            return ""
+        try:
+            known = sorted(brain["thalamus"].entity_semantic.keys())
+            if known:
+                shown = ", ".join(known[:40])
+                more = "" if len(known) <= 40 else f" (+{len(known) - 40} more)"
+                block += f"\n- Known entities you may control: {shown}{more}"
+        except Exception:  # noqa: BLE001
+            pass
+        return block + "\n\n"
 
     def _format_context(self, context: dict) -> str:
         """Formatiert den Kontext als Nachricht für Runde 1."""
@@ -935,34 +960,32 @@ class Cortex:
         proposals = consensus.get("proposals", [])
 
         if consensus_action and not consensus.get("vetoed"):
-            # Token aus Action+Entity ableiten (z.B. "light.turn_on")
-            for p in proposals:
-                agent_name = p.get("agent", "?")
-                priority = p.get("priority", 0)
-                reason = p.get("reason", "")
-
-                # Cortex-Confidence = normalisierte Priorität
-                cortex_confidence = min(1.0, priority / 100.0)
-
-                _LOGGER.debug(
-                    "Cortex→Hippocampus: Agent=%s, priority=%d, "
-                    "confidence=%.2f",
-                    agent_name, priority, cortex_confidence,
-                )
-
+            # The consensus is registered with the basal ganglia (step 2) and
+            # tracked as a reflex candidate (step 5); the hippocampus learns the
+            # resulting state change through the normal observe() path. (The old
+            # per-proposal loop here only computed a confidence it threw away.)
             actions.append("hippocampus_cortex_event")
 
         # ── 2. Basal Ganglia: Cortex als Handlungsimpuls ──────────
-        # Der Cortex-Vorschlag wird wie eine beobachtete Aktion
-        # registriert, damit die Basalganglien davon lernen können
+        # Der Cortex-Vorschlag wird wie eine beobachtete Aktion registriert,
+        # damit die Basalganglien aus seinem Outcome lernen können.
         if consensus_action and consensus_entity and not consensus.get("vetoed"):
-            # Pseudo-Token für den Cortex-Vorschlag
-            ctx = hippocampus._context_bucket(hippocampus._get_context())
+            # Build the engine's 21-dim context vector (9 time + 9 hypothalamus
+            # + 3 insula) and bucket it. Previously this called
+            # hippocampus._get_context() and thalamus.get_or_create_token() —
+            # neither existed, so the whole bridge crashed here with
+            # AttributeError. get_or_create_token is public since core 0.4.1.
+            ctx_vec = (
+                list(thalamus.encode_time_context(datetime.now(timezone.utc)))
+                + list(brain["hypothalamus"].get_context_vector())
+                + list(brain["insula"].get_mode_context())
+            )
+            bucket = hippocampus._context_bucket(ctx_vec)
             token_str = f"cortex.{consensus_action}"
             token_id = thalamus.get_or_create_token(token_str)
 
             basal_ganglia.register_action(
-                consensus_entity, token_id, ctx, token_str
+                consensus_entity, token_id, bucket, token_str
             )
             actions.append("basal_ganglia_register")
             _LOGGER.debug(

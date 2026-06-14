@@ -43,7 +43,10 @@ from kontinuum_core.spatial_cortex import SpatialCortex
 from kontinuum_core.insula import Insula
 from kontinuum_core.amygdala import Amygdala
 from kontinuum_core.cerebellum import Cerebellum
-from kontinuum_core.prefrontal_cortex import PrefrontalCortex, MODE_SHADOW, MODE_CONFIRM, MODE_ACTIVE, VALID_MODES
+from kontinuum_core.prefrontal_cortex import (
+    PrefrontalCortex, Decision, STATE_TO_SERVICE,
+    MODE_SHADOW, MODE_CONFIRM, MODE_ACTIVE, VALID_MODES,
+)
 from kontinuum_core.basal_ganglia import BasalGanglia
 from kontinuum_core.reticular import ReticularFormation
 from kontinuum_core.nucleus_accumbens import NucleusAccumbens
@@ -61,7 +64,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 # Muss mit manifest.json "version" übereinstimmen
-VERSION = "0.23.0"
+VERSION = "0.24.0"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
@@ -1177,6 +1180,86 @@ def _process_decision(hass, brain, decision, decision_ctx=None):
         )
 
 
+def _cortex_action_to_decision(brain, action, entity, confidence):
+    """Map a cortex ``domain.service`` + entity to a PFC Decision, or ``None``.
+
+    Returns None when the action doesn't map to a known semantic/state — the
+    caller then keeps it advisory and never executes it. This lets cortex
+    actions flow through the exact same confirm/execute pipeline as PFC
+    decisions instead of firing a raw, unvalidated service call.
+    """
+    parts = action.split(".") if action else []
+    if len(parts) != 2:
+        return None
+    domain, service = parts
+    states = STATE_TO_SERVICE.get(domain)
+    if not states:
+        return None
+    state = next((s for s, svc in states.items() if svc == service), None)
+    if state is None:
+        return None
+    thalamus = brain["thalamus"]
+    room = thalamus.entity_room.get(entity, "unknown")
+    token = f"{room}.{domain}.{state}"
+    decision = Decision()
+    decision.token = token
+    decision.token_id = thalamus.get_or_create_token(token)
+    decision.entity_id = entity
+    decision.confidence = max(0.0, min(1.0, confidence))
+    decision.source = "cortex"
+    decision.stage = Decision.CONFIRM
+    return decision
+
+
+async def _handle_cortex_action(hass, brain, action, entity, result):
+    """Validate a cortex consensus action and route it by operation mode.
+
+    Strict + confirm-pipeline (never the old raw, mode-ignoring service call):
+      * unmappable / unknown entity / unknown service / not an activated type
+        / SHADOW mode  -> advisory only, nothing is executed;
+      * CONFIRM mode (activated type) -> queued for human confirmation via the
+        same ``kontinuum.confirm_action`` path the PFC uses;
+      * ACTIVE mode (activated type) -> executed via ``_execute_decision``.
+    """
+    prefrontal = brain["prefrontal"]
+    op_mode = prefrontal.operation_mode
+    semantic = action.split(".")[0] if "." in action else action
+    priority = max((p.get("priority", 0) for p in result.get("proposals", [])),
+                   default=0)
+
+    decision = _cortex_action_to_decision(brain, action, entity, min(1.0, priority / 100.0))
+    svc = prefrontal.get_service_call(decision) if decision else None
+    valid = bool(
+        decision and svc
+        and hass.states.get(entity) is not None
+        and hass.services.has_service(svc["domain"], svc["service"])
+    )
+    activated = semantic in prefrontal.activated_semantics
+
+    if not valid:
+        outcome = "beratend (nicht validierbar)"
+    elif op_mode == MODE_ACTIVE and activated:
+        _execute_decision(hass, brain, decision)
+        outcome = "ausgeführt (Active-Modus)"
+    elif op_mode == MODE_CONFIRM and activated:
+        confirm_id = prefrontal.queue_confirm(
+            decision, reasoning=result.get("consensus_reason", ""))
+        await hass.services.async_call("persistent_notification", "create", {
+            "title": "KONTINUUM Cortex – Bestätigung nötig",
+            "message": (
+                f"**{action} → {entity}**\n{result.get('consensus_reason', '')}\n\n"
+                f"Bestätigen: `kontinuum.confirm_action` mit `confirm_id: {confirm_id}`"
+            ),
+            "notification_id": "kontinuum_cortex_confirm",
+        })
+        outcome = f"wartet auf Bestätigung (confirm_id={confirm_id})"
+    else:
+        outcome = (f"beratend (Modus {op_mode}, "
+                   f"Typ {'aktiviert' if activated else 'nicht aktiviert'})")
+
+    _LOGGER.info("Cortex-Aktion %s → %s: %s", action, entity, outcome)
+
+
 def _execute_decision(hass, brain, decision):
     """Führt eine bestätigte Entscheidung tatsächlich aus (+ Outcome-Tracking)."""
     prefrontal = brain["prefrontal"]
@@ -1709,21 +1792,13 @@ def _register_services(hass, brain):
             _LOGGER.info("Cortex Bridge: %s",
                          ", ".join(bridge_result.get("actions", [])))
 
-        # Wenn Konsens eine Aktion vorschlägt und kein Veto → ausführen
+        # Konsens-Aktion: validieren und gemäß Betriebsmodus durch die
+        # Confirm/Execute-Pipeline routen — NIE mehr ein ungeprüfter, den Modus
+        # ignorierender Service-Call (der vorher sogar im Shadow-Modus feuerte).
         action = result.get("consensus_action")
         entity = result.get("consensus_entity")
         if action and entity and not result.get("vetoed"):
-            parts = action.split(".")
-            if len(parts) == 2:
-                _LOGGER.info("Cortex EXECUTE: %s → %s", action, entity)
-                _async_service_call(hass, parts[0], parts[1], {"entity_id": entity})
-
-                # Ausführung im Prefrontal tracken (für Override-Detection)
-                prefrontal = brain["prefrontal"]
-                semantic = parts[0] if parts else ""
-                prefrontal.mark_own_action(
-                    entity, token=f"cortex.{action}", semantic=semantic,
-                )
+            await _handle_cortex_action(hass, brain, action, entity, result)
 
     async def handle_set_mode(call):
         """
