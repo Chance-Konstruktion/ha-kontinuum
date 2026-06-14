@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.25.0 – Generischer Custom-/OpenAI-kompatibler Cortex-Provider (2026-06-14)
+
+### Added
+- **Custom-Provider für die Cortex-Schicht.** Neben Ollama/OpenAI/Claude/Gemini/
+  Grok lässt sich jetzt **jeder OpenAI-kompatible** Endpunkt einbinden – z.B. ein
+  **OpenCLAW-Bot**, ein lokaler vLLM-/LM-Studio-Server oder OpenRouter. Im
+  Agent-Setup Provider **„Custom / OpenAI-kompatibel"** wählen und **Basis-URL +
+  API-Key + Model** eintragen (erscheint automatisch im Dropdown, da die Liste
+  aus `PROVIDERS` gebaut wird). Robust: kein erzwungenes `response_format` (nicht
+  jeder Server unterstützt es) und defensives Auslesen der Antwort – die Reply
+  läuft ohnehin durch `normalize_proposal`, das non-strikte JSONs verkraftet.
+
 ## v0.24.0 – Cortex-LLM-Schicht: Bridge-Fix, robustes Parsing, striktes Safety-Gate (2026-06-14)
 
 ### Security
