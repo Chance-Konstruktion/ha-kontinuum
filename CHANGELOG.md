@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.24.0 – Cortex-LLM-Schicht: Bridge-Fix, robustes Parsing, striktes Safety-Gate (2026-06-14)
+
+### Security
+- **Gefährliches Safety-Loch geschlossen.** Cortex-Konsens-Aktionen wurden
+  **ohne jede Validierung** und **unter Ignorieren des Betriebsmodus**
+  ausgeführt – sie feuerten echte `service.call`s **sogar im Shadow-Modus**.
+  Neu: Aktionen werden validiert (existierende Entity + existierender Service +
+  **aktivierter** Semantik-Typ) und **modus-korrekt durch dieselbe
+  Confirm/Execute-Pipeline wie PFC-Entscheidungen** geroutet – Shadow / nicht
+  aktiviert / nicht validierbar → nur beratend, Confirm → `queue_confirm`
+  (Mensch bestätigt via `kontinuum.confirm_action`), Active → `_execute_decision`.
+  Fail-safe: ausgeführt wird nur bei Active + aktiviert + validiert.
+- **Gemini-API-Key** wandert von der URL-Query in einen `x-goog-api-key`-Header
+  (Request-URLs landen in Proxy-/Debug-Logs).
+
+### Fixed
+- **Cortex→Gehirn-Bridge crashte** bei jedem nicht-vetoten Aktions-Konsens:
+  `integrate_into_brain` rief `hippocampus._get_context()` und
+  `thalamus.get_or_create_token()` auf – beide existierten im Core nicht
+  (`AttributeError`), wodurch die nachfolgenden Integrationsschritte nie liefen.
+  Jetzt mit echtem 21-dim-Kontextvektor + der seit **kontinuum-core 0.4.1**
+  öffentlichen `get_or_create_token()`.
+
+### Changed
+- **Robustes LLM-Antwort-Parsing:** Agent-Antworten laufen durch
+  `kontinuum_core.normalize_proposal` statt nacktem `json.loads` – übersteht
+  ` ```json `-Fences/Prosa/JSON-Listen und koerziert `priority`/`veto` in ein
+  striktes Schema (kein Bruch der Konsens-Arithmetik mehr bei String-Werten).
+- **Reicherer Prompt:** `build_llm_context`/`render_llm_context` geben den Agents
+  jetzt den Hirn-Zustand **inkl. Anomalie-/Surprise-Signal, 0–1-Skalen** und der
+  Liste tatsächlich bekannter Entities (weniger halluzinierte `entity_id`s).
+- Toten No-op-Code in `integrate_into_brain` (berechnete und verworfene
+  Confidence) entfernt.
+- `manifest.json` pinnt **`kontinuum-core>=0.4.1`**.
+
 ## v0.23.0 – Regelkreise geschlossen / Neuro-Wiring v2 + 3-Repo-Refactor (2026-06-14)
 
 ### Changed (Release)
