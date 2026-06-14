@@ -111,6 +111,14 @@ PROVIDERS = {
         "needs_key": True,
         "default_model": "grok-3-mini",
     },
+    "custom": {
+        # Generic OpenAI-compatible endpoint — plug in any bot (e.g. an
+        # OpenCLAW-Bot, a local vLLM/LM-Studio server, OpenRouter, …) by URL.
+        "label": "Custom / OpenAI-kompatibel (z.B. OpenCLAW-Bot)",
+        "default_url": "",          # vom Nutzer gesetzt (vollständige Basis-URL)
+        "needs_key": True,
+        "default_model": "",        # vom Nutzer gesetzt
+    },
 }
 
 # ── Default System-Prompts ──────────────────────────────────────
@@ -185,16 +193,21 @@ async def _call_ollama(session, url, model, system_prompt, user_msg,
         return data["message"]["content"]
 
 
-async def _call_openai(session, url, api_key, model, system_prompt, user_msg):
-    """OpenAI-kompatible API (auch für Grok, da xAI OpenAI-Format nutzt)."""
+async def _call_openai(session, url, api_key, model, system_prompt, user_msg,
+                       json_mode=True):
+    """OpenAI-kompatible API (Grok + generische Custom/OpenCLAW-Endpunkte)."""
     payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_msg},
         ],
-        "response_format": {"type": "json_object"},
     }
+    if json_mode:
+        # Nicht jeder OpenAI-kompatible Server unterstützt response_format;
+        # für generische Custom-Endpunkte weglassen und auf Prompt +
+        # normalize_proposal() vertrauen.
+        payload["response_format"] = {"type": "json_object"}
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     async with session.post(
         f"{url.rstrip('/')}/v1/chat/completions", json=payload,
@@ -204,7 +217,10 @@ async def _call_openai(session, url, api_key, model, system_prompt, user_msg):
             text = await resp.text()
             raise RuntimeError(f"OpenAI {resp.status}: {text[:200]}")
         data = await resp.json()
-        return data["choices"][0]["message"]["content"]
+        try:
+            return data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            raise RuntimeError(f"Unerwartetes Antwortformat: {str(data)[:200]}")
 
 
 async def _call_claude(session, url, api_key, model, system_prompt, user_msg):
@@ -267,6 +283,12 @@ async def _call_llm(session, provider, url, api_key, model,
         elif provider in ("openai", "grok"):
             return await _call_openai(session, url, api_key, model,
                                       system_prompt, user_msg)
+        elif provider == "custom":
+            # Generic OpenAI-compatible endpoint (e.g. OpenCLAW-Bot). No
+            # response_format for max compatibility; the prompt asks for JSON
+            # and normalize_proposal() tolerates non-strict replies.
+            return await _call_openai(session, url, api_key, model,
+                                      system_prompt, user_msg, json_mode=False)
         elif provider == "claude":
             return await _call_claude(session, url, api_key, model,
                                       system_prompt, user_msg)

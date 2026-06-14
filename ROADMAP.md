@@ -1,17 +1,21 @@
 # KONTINUUM – Roadmap zur 3-Repo-Architektur
 
-> **Status:** Phase 1 abgeschlossen – Phase 2 in Arbeit  
+> **Status:** Phasen 1–2 abgeschlossen – Engine gehärtet, LLM-Schicht repariert & abgesichert  
 > **Stand:** Juni 2026  
-> **Architektur:** Drei eigenständige Repositories (durch Maintainer angelegt)
+> **Architektur:** Drei eigenständige Repositories
 
-> ⚠️ **BLOCKER (Juni 2026):** `kontinuum-core` ist **nicht auf PyPI**
-> (`pypi.org/pypi/kontinuum-core/json` → 404), das Core-Repo hat **keine
-> Git-Tags** und **keinen Publish-Workflow** (nur `tests.yaml`). Beide
-> HA-Integrationen verlangen aber `kontinuum-core>=0.1.1` in der
-> `manifest.json` → **Neuinstallation schlägt fehl**, bis der Release
-> existiert. Nötig (Maintainer): Publish-Workflow in `kontinuum-core`
-> anlegen (PyPI Trusted Publishing), Tag `v0.1.1` (oder `v0.1.2`) setzen,
-> `pip install kontinuum-core` verifizieren.
+> ✅ **Release-Pipeline steht (gelöst):** `kontinuum-core` ist auf **PyPI**
+> (aktuell **0.4.1**), mit Tag-getriggertem Publish-Workflow (PyPI Trusted
+> Publishing, `skip-existing`) und Git-Tags. `ha-kontinuum` pinnt
+> `kontinuum-core>=0.4.1`, `ha-kontinuum-lite` `>=0.1.2`. Der frühere
+> Installations-Blocker existiert nicht mehr.
+>
+> **Seit dem 3-Repo-Refactor zusätzlich erledigt:** vollständige 18-Modul-
+> Pipeline + Persistenz, robuster (median+MAD) Anomalie-Schwellwert, aktivierte
+> Reticular-Aufmerksamkeit & Sleep-Consolidation, LLM-Datenvertrag
+> (`build_llm_context`/`normalize_proposal`) + Tag-1-Priors, und ein
+> **abgesichertes Cortex-Safety-Gate** (validiert + modus-korrekt, nie mehr
+> ungeprüfte Aktionen im Shadow-Modus).
 
 ---
 
