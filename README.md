@@ -5,7 +5,7 @@
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.22.1-blue)
+![Version](https://img.shields.io/badge/version-0.27.0-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [English version](README_EN.md)
@@ -117,7 +117,7 @@ Hypothalamus   Spatial     Basalganglien  Amygdala
 | **Sleep Consolidation** | Hippocampaler Replay -- konsolidiert Muster in ruhigen Phasen (schwache vergessen, starke verstärken) |
 | **Metaplastizität** | Meta-Lernen -- passt Lernraten aller Module automatisch an (alle 24h) |
 
-### Erweiterte Areale & Botenstoffe (v0.26 -- aus kontinuum-core 0.5.0)
+### Erweiterte Areale & Botenstoffe (v0.27 -- aus kontinuum-core 0.5.0)
 
 Sieben weitere Module modellieren die langsamen, bislang fehlenden Signale --
 alle O(1) pro Event, Raspberry-Pi-tauglich, starten neutral (kein verändertes
@@ -147,7 +147,7 @@ Wenn aktiviert, können bis zu **4 LLM-Agents** konfiguriert werden:
 | **Coordinator** | Sieht alle Vorschläge der anderen Agents und trifft die finale Entscheidung per LLM |
 | **Custom** | Eigene Rolle mit eigenem System-Prompt |
 
-**Unterstützte Provider:** Ollama (lokal), OpenAI, Claude, Gemini, Grok -- alle über pure HTTP (kein SDK nötig).
+**Unterstützte Provider:** Ollama (lokal), OpenAI, Claude, Gemini, Grok sowie **Custom / OpenAI-kompatibel** -- alle über pure HTTP (kein SDK nötig). Über den Custom-Provider lässt sich **jeder OpenAI-kompatible** Endpunkt einbinden, z.B. ein **OpenCLAW-Gateway**, ein lokaler vLLM-/LM-Studio-Server oder OpenRouter (Basis-URL + API-Key + Model eintragen).
 
 **Ablauf einer Cortex-Beratung:**
 
@@ -245,8 +245,8 @@ Aktivierbar unter: Integrationen --> KONTINUUM --> Konfigurieren --> Allgemeine 
 4. In der **Agent-Übersicht**: "Neuen Agent hinzufügen" wählen
 5. Agent konfigurieren:
    - **Rolle** wählen (Comfort / Energy / Safety / Coordinator / Custom)
-   - **Provider** wählen (Ollama, OpenAI, Claude, Gemini, Grok)
-   - **URL** eingeben -- bei Ollama reicht z.B. `localhost` oder `192.168.1.100`
+   - **Provider** wählen (Ollama, OpenAI, Claude, Gemini, Grok, Custom / OpenAI-kompatibel)
+   - **URL** eingeben -- bei Ollama reicht z.B. `localhost` oder `192.168.1.100`; beim Custom-Provider die Basis-URL des OpenAI-kompatiblen Gateways (z.B. OpenCLAW)
 6. Im nächsten Schritt: **Modell auswählen**
    - Bei Ollama werden alle installierten Modelle als Dropdown angezeigt
    - Bei Cloud-Providern wird das Default-Modell vorgeschlagen
@@ -331,6 +331,31 @@ KONTINUUM erstellt automatisch native HA-Entitäten -- kein YAML nötig.
 | `sensor.kontinuum_cerebellum` | Gelernte Routinen (Regelanzahl, Fired) |
 | `sensor.kontinuum_basal_ganglia` | Habits + Go/NoGo + Q-Values |
 | `sensor.kontinuum_unknown_entities` | Entities ohne Raumzuordnung |
+
+### Observability-Sensoren (engine-only)
+
+Heben die wichtigsten Engine-Signale in eigenständige, graph-/historienfähige
+Entitäten -- **ohne LLM-Abhängigkeit**, immer verfügbar (auch bei deaktiviertem Cortex):
+
+| Entität | Typ | Beschreibung |
+|--------|-----|-------------|
+| `sensor.kontinuum_surprise` | numerisch `0.0`–`1.0` | Aktuelles Surprise-Niveau (Prediction-Error). Attribute: Baseline, Durchschnitt, adaptive Anomalie-Schwelle, Lerngewicht, Surprise-Quote |
+| `binary_sensor.kontinuum_anomaly` | on/off (`problem`) | **An**, sobald Surprise die robuste (Median+MAD) Anomalie-Schwelle erreicht -- ideal als Automations-Trigger |
+| `sensor.kontinuum_routines` | numerisch | Gelernte Routinen (Cerebellum-Chunks + Basalganglien-Habits) |
+| `sensor.kontinuum_consolidation` | Zähler | Anzahl Schlaf-Konsolidierungs-Läufe + Bilanz des letzten Laufs (pruned/reinforced/rules/dreams) |
+
+Beispiel-Automation auf Anomalien:
+
+```yaml
+trigger:
+  platform: state
+  entity_id: binary_sensor.kontinuum_anomaly
+  to: "on"
+action:
+  service: notify.mobile_app
+  data:
+    message: "KONTINUUM: ungewöhnliche Aktivität erkannt"
+```
 
 ### Cortex Agent-Sensoren (nur bei aktiviertem Cortex)
 
