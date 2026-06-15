@@ -8,7 +8,7 @@ beim Entfernen der Integration wieder gelöscht.
 """
 
 import logging
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -47,6 +47,10 @@ async def async_setup_entry(
         KontinuumBasalGangliaSensor(brain, entry),
         KontinuumPersonsSensor(brain, entry),
         KontinuumUnknownEntitiesSensor(brain, entry),
+        # ── Observability (engine-only, keine LLM-Abhängigkeit) ──
+        KontinuumSurpriseSensor(brain, entry),
+        KontinuumRoutinesSensor(brain, entry),
+        KontinuumConsolidationSensor(brain, entry),
         # ── Aktivitäts-Sensoren (ersetzen template-Sensoren) ──
         KontinuumActivitySensor(brain, entry, "thalamus", "mdi:transit-connection-variant"),
         KontinuumActivitySensor(brain, entry, "hippocampus", "mdi:head-lightbulb"),
@@ -536,6 +540,120 @@ class KontinuumUnknownEntitiesSensor(KontinuumSensorBase):
                 for eid, cnt, sem, name, sug in unassigned
             ],
         }
+
+
+# ══════════════════════════════════════════════════════════════════
+# OBSERVABILITY-SENSOREN (engine-only)
+#
+# Heben die wichtigsten Engine-Signale aus den Status-Attributen in
+# eigenständige, graph-/historienfähige Entitäten. Lesen ausschließlich
+# aus den Kern-Gehirnmodulen – keine Cortex-/LLM-Abhängigkeit. Sind alle
+# Module vorhanden (immer bei aktiver Integration), liefern sie Werte;
+# fehlt ein Modul, degradieren sie sauber auf None/leer.
+# ══════════════════════════════════════════════════════════════════
+
+class KontinuumSurpriseSensor(KontinuumSensorBase):
+    """Aktuelles Surprise-Niveau (Prediction-Error, 0.0–1.0).
+
+    Der zentrale Lern-/Anomalie-Treiber der Engine als numerische Zeitreihe –
+    ideal für History-Graphen. Attribute liefern Baseline, Durchschnitt,
+    adaptive Anomalie-Schwelle und Surprise-Quote.
+    """
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, brain, entry):
+        super().__init__(brain, entry, "surprise",
+                         "KONTINUUM Surprise", "mdi:chart-bell-curve-cumulative")
+
+    @property
+    def native_value(self):
+        pred = self._brain.get("predictive")
+        if not pred:
+            return None
+        return round(pred.current_surprise, 3)
+
+    @property
+    def extra_state_attributes(self):
+        pred = self._brain.get("predictive")
+        if not pred:
+            return {}
+        # pred.stats liefert bereits current/baseline/learn_weight/
+        # anomaly_threshold/average/totals/ratio/max – alles gerundet.
+        return pred.stats
+
+
+class KontinuumRoutinesSensor(KontinuumSensorBase):
+    """Gelernte Routinen: Cerebellum-Chunks + Basalganglien-Habits.
+
+    Eine Roll-up-Zahl, wie viele höherwertige Routinen das Zuhause
+    verfestigt hat. Wächst mit zunehmender Reife.
+    """
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "routines"
+    _unrecorded_attributes = frozenset({"top_chunks"})
+
+    def __init__(self, brain, entry):
+        super().__init__(brain, entry, "routines",
+                         "KONTINUUM Routines", "mdi:repeat-variant")
+
+    @staticmethod
+    def _chunks(cb):
+        return cb.stats.get("chunks_count", len(getattr(cb, "chunks", []))) if cb else 0
+
+    @property
+    def native_value(self):
+        cb = self._brain.get("cerebellum")
+        bg = self._brain.get("basal_ganglia")
+        return self._chunks(cb) + (bg.total_habits if bg else 0)
+
+    @property
+    def extra_state_attributes(self):
+        cb = self._brain.get("cerebellum")
+        bg = self._brain.get("basal_ganglia")
+        attrs = {}
+        if cb:
+            attrs["chunks"] = self._chunks(cb)
+            attrs["rules"] = len(cb.rules)
+            attrs["top_chunks"] = cb.stats.get("top_chunks", [])
+        if bg:
+            attrs["habits"] = bg.total_habits
+            attrs["go_actions"] = bg.stats.get("go_actions", 0)
+            attrs["nogo_actions"] = bg.stats.get("nogo_actions", 0)
+        return attrs
+
+
+class KontinuumConsolidationSensor(KontinuumSensorBase):
+    """Schlaf-Konsolidierung: Anzahl Läufe + letzter Lauf.
+
+    Zeigt, wie oft die Engine in Ruhephasen repliziert/prunt/verstärkt hat
+    (monoton steigender Zähler) – plus die Detailbilanz des letzten Laufs.
+    """
+
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = "runs"
+    _unrecorded_attributes = frozenset({"last_run"})
+
+    def __init__(self, brain, entry):
+        super().__init__(brain, entry, "consolidation",
+                         "KONTINUUM Consolidation", "mdi:power-sleep")
+
+    @property
+    def native_value(self):
+        sc = self._brain.get("sleep_consolidation")
+        return sc.total_consolidations if sc else 0
+
+    @property
+    def extra_state_attributes(self):
+        sc = self._brain.get("sleep_consolidation")
+        attrs = {}
+        if sc:
+            attrs.update(sc.to_dict())
+        last = self._brain.get("_last_consolidation")
+        if last:
+            attrs["last_run"] = last
+        return attrs
 
 
 # ══════════════════════════════════════════════════════════════════

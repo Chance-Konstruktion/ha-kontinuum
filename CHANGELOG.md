@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.26.0 – Observability: Surprise / Anomalie / Routinen / Konsolidierung als Entitäten (2026-06-15)
+
+### Added
+- **Vier neue, engine-only Observability-Entitäten** heben die wichtigsten
+  Engine-Signale aus den Status-Attributen in eigenständige, graph- und
+  historienfähige Entitäten – **ohne jede LLM-/Cortex-Abhängigkeit**:
+  - `sensor.kontinuum_surprise` – aktuelles Surprise-Niveau (Prediction-Error,
+    `0.0`–`1.0`, `state_class: measurement`). Attribute: Baseline, Durchschnitt,
+    adaptive Anomalie-Schwelle, Lerngewicht, Surprise-Quote, Max.
+  - `binary_sensor.kontinuum_anomaly` – `device_class: problem`, **an**, sobald
+    das aktuelle Surprise die robuste (Median+MAD) Anomalie-Schwelle erreicht.
+    Gleiche Semantik wie `binary_sensor.kontinuum_lite_anomaly` der Lite-Variante
+    → Automationen reagieren identisch. (Neue `binary_sensor`-Plattform.)
+  - `sensor.kontinuum_routines` – Roll-up gelernter Routinen (Cerebellum-Chunks
+    + Basalganglien-Habits). Attribute: Chunks, Regeln, Habits, Go/NoGo, Top-Chunks.
+  - `sensor.kontinuum_consolidation` – Anzahl Schlaf-Konsolidierungs-Läufe
+    (`state_class: total_increasing`) plus Detailbilanz des letzten Laufs
+    (pruned / reinforced / rules / dream-connections / homeostasis).
+
+### Notes
+- Die Entitäten lesen ausschließlich aus den **Kern-Gehirnmodulen** (`predictive`,
+  `cerebellum`, `basal_ganglia`, `sleep_consolidation`) und sind damit **immer**
+  verfügbar, auch wenn der Cortex (LLM) deaktiviert ist. Fehlt ein Modul,
+  degradieren sie sauber auf `None`/leer. Bestätigt das Leitprinzip: KONTINUUM
+  läuft eigenständig – LLM/OpenCLAW sind reine Features.
+
 ## v0.25.0 – Generischer Custom-/OpenAI-kompatibler Cortex-Provider (2026-06-14)
 
 ### Added
