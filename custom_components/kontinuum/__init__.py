@@ -64,13 +64,13 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 # Muss mit manifest.json "version" übereinstimmen
-VERSION = "0.25.0"
+VERSION = "0.26.0"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
 BRAIN_FILE_LEGACY = "brain.json"
 SAVE_INTERVAL = 600
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 SIGNAL_SENSORS_UPDATE = f"{DOMAIN}_sensors_update"
 SIGNAL_PERSONS_UPDATE = f"{DOMAIN}_persons_update"

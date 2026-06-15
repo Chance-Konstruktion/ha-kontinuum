@@ -5,7 +5,7 @@
 **Your home learns by itself.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.22.1-blue)
+![Version](https://img.shields.io/badge/version-0.26.0-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [Deutsche Version](README.md)
@@ -102,7 +102,7 @@ When enabled, up to **4 LLM Agents** can be configured:
 | **Coordinator** | Sees all other agents' proposals and makes the final decision via LLM |
 | **Custom** | Custom role with custom system prompt |
 
-**Supported providers:** Ollama (local), OpenAI, Claude, Gemini, Grok -- all via pure HTTP (no SDK needed).
+**Supported providers:** Ollama (local), OpenAI, Claude, Gemini, Grok plus **Custom / OpenAI-compatible** -- all via pure HTTP (no SDK needed). The Custom provider connects **any OpenAI-compatible** endpoint, e.g. an **OpenCLAW gateway**, a local vLLM/LM-Studio server or OpenRouter (just enter base URL + API key + model).
 
 **How a Cortex consultation works:**
 
@@ -163,7 +163,7 @@ Can be changed later: Integrations --> KONTINUUM --> Configure
 2. Enable **Cortex**
 3. Configure an agent:
    - Choose **Role** (Comfort / Energy / Safety / Coordinator / Custom)
-   - Choose **Provider** (Ollama, OpenAI, Claude, Gemini, Grok)
+   - Choose **Provider** (Ollama, OpenAI, Claude, Gemini, Grok, Custom / OpenAI-compatible)
    - Enter **URL** -- for Ollama just `localhost` or `192.168.1.100` is enough
 4. Next step: **Select model**
    - For Ollama: all installed models shown as dropdown
@@ -244,6 +244,18 @@ KONTINUUM automatically creates native HA entities -- no YAML needed.
 | `sensor.kontinuum_cerebellum` | Learned routines (rule count, fired) |
 | `sensor.kontinuum_basal_ganglia` | Habits + Go/NoGo + Q-values |
 | `sensor.kontinuum_unknown_entities` | Entities without room assignment |
+
+### Observability Sensors (engine-only)
+
+Surface the core engine signals as standalone, graph-/history-friendly entities
+-- **no LLM dependency**, always available (even with Cortex disabled):
+
+| Entity | Type | Description |
+|--------|------|-------------|
+| `sensor.kontinuum_surprise` | numeric `0.0`–`1.0` | Current surprise level (prediction error). Attributes: baseline, average, adaptive anomaly threshold, learn weight, surprise ratio |
+| `binary_sensor.kontinuum_anomaly` | on/off (`problem`) | **On** once surprise crosses the robust (median+MAD) anomaly threshold -- ideal automation trigger |
+| `sensor.kontinuum_routines` | numeric | Learned routines (cerebellum chunks + basal-ganglia habits) |
+| `sensor.kontinuum_consolidation` | counter | Number of sleep-consolidation runs + last-run breakdown (pruned/reinforced/rules/dreams) |
 
 ### Cortex Agent Sensors (only with Cortex enabled)
 
