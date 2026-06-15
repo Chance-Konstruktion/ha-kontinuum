@@ -56,6 +56,14 @@ from kontinuum_core.sleep_consolidation import SleepConsolidation
 from kontinuum_core.anterior_cingulate import AnteriorCingulateCortex
 from kontinuum_core.predictive_processing import PredictiveProcessing
 from kontinuum_core.neurorhythms import Neurorhythms
+# v0.26.0: Extended region / neuromodulator set (kontinuum-core >= 0.5.0)
+from kontinuum_core.habenula import LateralHabenula
+from kontinuum_core.subthalamic_nucleus import SubthalamicNucleus
+from kontinuum_core.suprachiasmatic import SuprachiasmaticNucleus
+from kontinuum_core.serotonin import Serotonin
+from kontinuum_core.acetylcholine import Acetylcholine
+from kontinuum_core.cortisol import Cortisol
+from kontinuum_core.bdnf import Bdnf
 
 from .const import DOMAIN
 from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
@@ -64,7 +72,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 # Muss mit manifest.json "version" übereinstimmen
-VERSION = "0.25.0"
+VERSION = "0.26.0"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
@@ -86,6 +94,14 @@ AUX_MODULE_FILES = {
     "acc": "anterior_cingulate.json.gz",
     "predictive": "predictive_processing.json.gz",
     "neurorhythms": "neurorhythms.json.gz",
+    # v0.26.0: extended region / neuromodulator set (each its own .json.gz)
+    "habenula": "habenula.json.gz",
+    "subthalamic": "subthalamic_nucleus.json.gz",
+    "suprachiasmatic": "suprachiasmatic.json.gz",
+    "serotonin": "serotonin.json.gz",
+    "acetylcholine": "acetylcholine.json.gz",
+    "cortisol": "cortisol.json.gz",
+    "bdnf": "bdnf.json.gz",
 }
 
 
@@ -313,6 +329,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         acc = AnteriorCingulateCortex()
         predictive = PredictiveProcessing()
         neurorhythms = Neurorhythms()
+        # v0.26.0: Extended region / neuromodulator set (mirrors core 0.5.0).
+        # All O(1) per event — Raspberry-Pi-friendly.
+        habenula = LateralHabenula()            # anti-reward (stop nagging)
+        subthalamic = SubthalamicNucleus()      # "hold your horses" brake
+        suprachiasmatic = SuprachiasmaticNucleus()  # learned inner clock
+        serotonin = Serotonin()                 # mood / patience
+        acetylcholine = Acetylcholine()         # expected uncertainty
+        cortisol = Cortisol()                   # systemic stress hormone
+        bdnf = Bdnf()                            # use-dependent protection
         metaplasticity = MetaPlasticity(hass)
 
         # Locus Coeruleus → Reticular Formation Verbindung (Arousal moduliert Burst-Filter)
@@ -363,6 +388,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "acc": acc,
             "predictive": predictive,
             "neurorhythms": neurorhythms,
+            "habenula": habenula,
+            "subthalamic": subthalamic,
+            "suprachiasmatic": suprachiasmatic,
+            "serotonin": serotonin,
+            "acetylcholine": acetylcholine,
+            "cortisol": cortisol,
+            "bdnf": bdnf,
             "metaplasticity": metaplasticity,
             "preset": preset_key,
             "_scenes_enabled": False,
@@ -500,6 +532,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                         own_action_tokens.get(entity_id, ""))
                     if overridden_tok is not None:
                         neurorhythms.register_outcome(overridden_tok, positive=False)
+                        # v0.26.0: anti-reward memory + Stress-Hormon + Stimmung.
+                        # Schlüssel identisch zum Ranking-Lookup (state_key +
+                        # decode_token), damit die Suppression beim nächsten
+                        # Mal genau diesen Vorschlag trifft.
+                        habenula.punish(state_key, thalamus.decode_token(overridden_tok))
+                        cortisol.stress_event()
+                        serotonin.reward(False)
                     # ACC: ein Override ist ein echter Fehler des Systems.
                     # Speist die Fehlerraten-Hälfte von cognitive_control
                     # (conflict·0.6 + error_rate·0.4), die sonst nur der
@@ -520,6 +559,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                             own_action_tokens.get(acc_eid, ""))
                         if accepted_tok is not None:
                             neurorhythms.register_outcome(accepted_tok, positive=True)
+                            # v0.26.0: relief der Enttäuschung + neurotropher
+                            # Schutz der bewährten Aktion + Stimmung hoch.
+                            habenula.relieve(state_key, thalamus.decode_token(accepted_tok))
+                            bdnf.reinforce(accepted_tok)
+                            serotonin.reward(True)
                         # ACC: ein implizit akzeptierter Vorschlag war korrekt
                         # → senkt die Fehlerrate, cognitive_control entspannt
                         # sich wieder (EMA-geglättet, symmetrisch zum Override).
@@ -581,22 +625,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 hypo_ctx = hypothalamus.get_context_vector()
                 mode_ctx = insula.get_mode_context()
                 ctx = time_ctx + hypo_ctx + mode_ctx
+                # Bucket schon hier (pure Funktion von ctx) – für die
+                # Acetylcholin-Lernraten-Dämpfung weiter unten.
+                bucket = hippocampus._context_bucket(ctx)
 
                 # ── Predictive Processing: Surprise berechnen VOR dem Lernen ──
                 # Was hat der Hippocampus erwartet? Was kam wirklich?
                 pre_predictions = hippocampus.predict(ctx)
+                anomaly_threshold = predictive.anomaly_threshold()
                 surprise = predictive.compute_surprise(token_id, pre_predictions)
+                anomaly_flag = surprise >= anomaly_threshold
                 learn_weight = predictive.get_learn_weight()
 
                 # ── Neurorhythms: Surprise registrieren + Lernrate modulieren ──
                 neurorhythms.register_surprise(token_id, surprise)
                 learn_weight = neurorhythms.modulate_learning(learn_weight)
 
-                # Hippocampus lernt (gewichtet durch Surprise + Rhythmen)
+                # ── Suprachiasmatischer Nukleus: gelernte innere Uhr (±15%) ──
+                # Startet neutral (1.0), bis das Haus-Tagesprofil eingelernt ist.
+                suprachiasmatic.observe(now.hour)
+                learn_weight *= suprachiasmatic.phase_gain(now.hour)
+                # ── Acetylcholin: erwartete Unsicherheit dämpft Lernen in
+                # verlässlich verrauschten Kontexten (Gain VOR dem Update lesen).
+                learn_weight *= acetylcholine.learn_gain(bucket)
+                acetylcholine.observe(bucket, surprise)
+                learn_weight = max(0.05, min(10.0, learn_weight))
+
+                # Hippocampus lernt (Surprise + Rhythmen + innere Uhr + ACh)
                 hippocampus.learn(token_id, ctx, now, learn_weight=learn_weight)
 
+                # ── Langsame Hormone beobachten (nur Ranking-seitige Effekte) ──
+                cortisol.observe(surprise, anomaly_flag)   # Stress-Integration
+                serotonin.observe(anomaly_flag)            # Stimmungsdämpfung
+
                 # Basalganglien: Passives Lernen (beobachtete Muster)
-                bucket = hippocampus._context_bucket(ctx)
                 basal_ganglia.process_observation(token_id, bucket)
 
                 # ── Cerebellum: Routine-Check (schnelle Reflexe) ──
@@ -634,7 +696,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                         predictions, basal_ganglia, bucket,
                         thalamus, accumbens, room, insula.current_mode,
                         locus.get_arousal(), acc,
-                        brain.get("_expected_next_room"))
+                        brain.get("_expected_next_room"),
+                        habenula, cortisol)
 
                 # PFC entscheidet (mit Q-Value Boost aus Basalganglien)
                 decision = prefrontal.evaluate(
@@ -699,7 +762,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if sleep_consolidation.should_consolidate(last_event_ts):
                     consolidation_stats = sleep_consolidation.consolidate(
                         hippocampus, cerebellum, basal_ganglia,
-                        neurorhythms=neurorhythms)
+                        neurorhythms=neurorhythms, bdnf=bdnf)
                     brain["_last_consolidation"] = consolidation_stats
                     _LOGGER.info("Sleep Consolidation: %s", consolidation_stats)
 
@@ -881,7 +944,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 
 def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
                              accumbens=None, room="unknown", mode="active",
-                             arousal=0.2, acc=None, expected_room=None):
+                             arousal=0.2, acc=None, expected_room=None,
+                             habenula=None, cortisol=None):
     """
     Basalganglien-Ranking: Sortiert Predictions nach Go/NoGo-Pathway.
     Go (positive Q-Values) → nach oben
@@ -905,6 +969,8 @@ def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
     if acc is not None:
         control = max(0.0, min(1.0, getattr(acc, "cognitive_control", 0.0)))
         control_damping = 1.0 - 0.25 * control
+    # Cortisol: globale Vorsicht unter anhaltendem Stress (1.0 = Baseline).
+    cortisol_damping = cortisol.damping() if cortisol is not None else 1.0
     for prediction in predictions:
         token_id, prob, conf, source = prediction[:4]
         n_obs = prediction[4] if len(prediction) > 4 else 0
@@ -912,16 +978,22 @@ def _rank_with_basal_ganglia(predictions, basal_ganglia, bucket, thalamus=None,
         # Accumbens Reward-Boost + entorhinale Antizipation
         reward_boost = 0.0
         anticipation_boost = 0.0
+        suppression = 0.0
         if thalamus:
             action_key = thalamus.decode_token(token_id)
             if accumbens:
                 reward_boost = accumbens.get_bias(state_key, action_key) * 0.1
             if expected_room and action_key.split(".")[0] == expected_room:
                 anticipation_boost = 0.05
-        # Confidence durch Basalganglien + Accumbens + Arousal +
-        # Antizipation modifizieren, dann ACC-Dämpfung anwenden
-        bg_conf = (conf + priority * 0.1 + reward_boost + arousal_boost
-                   + anticipation_boost) * control_damping
+            # Laterale Habenula: chronisch abgelehnte (state, action) abwerten.
+            if habenula is not None:
+                suppression = habenula.get_suppression(state_key, action_key)
+        # Confidence durch Basalganglien + Accumbens + Arousal + Antizipation
+        # modifizieren, dann ACC- und Cortisol-Dämpfung + Habenula-Suppression.
+        bg_conf = ((conf + priority * 0.1 + reward_boost + arousal_boost
+                    + anticipation_boost)
+                   * control_damping * cortisol_damping
+                   * (1.0 - 0.6 * suppression))
         bg_conf = max(0.05, min(1.0, bg_conf))
         ranked.append((token_id, prob, bg_conf, source, n_obs))
     # Re-sort by modified confidence * probability

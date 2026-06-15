@@ -117,6 +117,22 @@ Hypothalamus   Spatial     Basalganglien  Amygdala
 | **Sleep Consolidation** | Hippocampaler Replay -- konsolidiert Muster in ruhigen Phasen (schwache vergessen, starke verstärken) |
 | **Metaplastizität** | Meta-Lernen -- passt Lernraten aller Module automatisch an (alle 24h) |
 
+### Erweiterte Areale & Botenstoffe (v0.26 -- aus kontinuum-core 0.5.0)
+
+Sieben weitere Module modellieren die langsamen, bislang fehlenden Signale --
+alle O(1) pro Event, Raspberry-Pi-tauglich, starten neutral (kein verändertes
+Verhalten, bis etwas gelernt wurde):
+
+| Modul | Funktion |
+|-------|----------|
+| **Laterale Habenula** | Anti-Reward -- unterdrückt wiederholt abgelehnte Vorschläge (Schluss mit "Nerven") |
+| **Nucleus Subthalamicus** | "Hold your horses" -- wartet bei Konflikt + knapper Marge, statt vorschnell zu handeln |
+| **Nucleus Suprachiasmaticus** | Gelernte innere Uhr -- richtet die Lernrate am echten Tagesrhythmus des Haushalts aus (±15 %) |
+| **Cortisol** | Stress-Hormon -- macht das Ranking in chaotischen Phasen vorsichtiger (bis -30 %) |
+| **Acetylcholin** | Erwartete Unsicherheit -- dämpft Lernen in verlässlich verrauschten Kontexten |
+| **Serotonin** | Stimmung/Geduld -- langsame Baseline, steuert die Wartebereitschaft (STN) |
+| **BDNF** | Neurotropher Schutz -- bewahrt bewährte Reflexe vor pauschalem Vergessen |
+
 ### Cortex -- Bewusstes Denken (optional, LLM-Agents)
 
 > **KONTINUUM funktioniert vollständig ohne LLM.** Der Cortex ist ein optionales Upgrade für komplexe Entscheidungen. Das Kernlernen (Muster, Routinen, Vorhersagen) läuft immer lokal und ohne Cloud.
