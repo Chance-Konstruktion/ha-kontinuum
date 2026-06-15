@@ -296,7 +296,14 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
                 vol.Required("sequential_mode", default=self._data.get("sequential_mode", False)): bool,
                 vol.Required(
                     "discussion_rounds", default=self._data.get("discussion_rounds", 2),
-                ): vol.In({1: "1 Runde", 2: "2 Runden", 3: "3 Runden"}),
+                ): vol.All(
+                    # Das HA-Frontend liefert die Auswahl als String ("2") zurück;
+                    # ohne Coerce schlägt vol.In gegen die int-Keys fehl
+                    # ("value must be one of [1, 2, 3]"). Coerce(int) macht daraus
+                    # wieder einen int, die Labels bleiben erhalten.
+                    vol.Coerce(int),
+                    vol.In({1: "1 Runde", 2: "2 Runden", 3: "3 Runden"}),
+                ),
             }),
         )
 
