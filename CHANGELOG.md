@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.27.0 – Erweiterte Hirnareale & Botenstoffe (2026-06-15)
+
+> Baut auf v0.26.0 auf (die engine-only Observability-Entitäten wurden parallel
+> nach `main` gemergt; daher diese Version 0.27.0 statt 0.26.0).
+
+### Added
+- **Sieben neue neuro-inspirierte Module** aus `kontinuum-core 0.5.0`, in die
+  Pro-Pipeline verdrahtet — alle O(1) pro Event, Raspberry-Pi-tauglich, starten
+  neutral (kein verändertes Verhalten, bis etwas gelernt wurde):
+  - **Laterale Habenula** – Anti-Reward: wiederholt abgelehnte Vorschläge werden
+    im Ranking unterdrückt (Schluss mit „Nerven"). Lernt am Override-/Accept-Pfad
+    mit demselben `(state, action)`-Schlüssel wie das Ranking.
+  - **Nucleus Subthalamicus** – „Hold your horses"-Bremse unter Konflikt
+    (verhaltenswirksam im Core; in Pro vorhanden & persistiert).
+  - **Nucleus Suprachiasmaticus** – gelernte innere Uhr: moduliert die Lernrate
+    nach dem echten Tagesrhythmus des Haushalts (±15 %).
+  - **Cortisol** – langsames Stress-Hormon: macht das Ranking in chaotischen
+    Phasen vorsichtiger (bis −30 %).
+  - **Acetylcholin** – erwartete Unsicherheit: dämpft Lernen in verlässlich
+    verrauschten Kontexten.
+  - **Serotonin** – langsame Stimmungs-/Geduld-Baseline.
+  - **BDNF** – schützt bewährte Reflexe vor pauschalem Vergessen in der
+    Schlaf-Konsolidierung (Mindestgewicht statt Löschen).
+- Persistenz je Modul als eigene `*.json.gz` (über `AUX_MODULE_FILES`).
+
+### Changed
+- `kontinuum-core`-Anforderung auf **`>=0.5.0`** angehoben.
+- Lernraten-Pipeline, Ranking, Outcome-Lernen und Sleep-Consolidation um die
+  neuen Signale erweitert — rein additiv.
+
 ## v0.26.0 – Observability: Surprise / Anomalie / Routinen / Konsolidierung als Entitäten (2026-06-15)
 
 ### Added
