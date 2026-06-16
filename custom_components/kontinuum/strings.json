@@ -43,29 +43,43 @@
         }
       },
       "cortex": {
-        "title": "Cortex (LLM Agents)",
-        "description": "Enable Cortex for LLM-powered multi-agent decisions. Sequential mode queries agents one-by-one (recommended for single GPU).",
+        "title": "🧠 Cortex – LLM Agents (optional)",
+        "description": "KONTINUUM learns and decides fully without an LLM. The Cortex is an optional upgrade: up to 4 agents (Comfort, Energy, Safety, Coordinator) deliberate on complex decisions.\n\nProviders: Ollama (local), OpenAI, Claude, Gemini, Grok and Custom/OpenAI-compatible (e.g. OpenCLAW).",
         "data": {
           "enable_cortex": "Enable Cortex",
-          "sequential_mode": "Sequential Mode (recommended for 1 GPU)",
+          "sequential_mode": "Sequential Mode",
           "discussion_rounds": "Discussion Rounds"
+        },
+        "data_description": {
+          "enable_cortex": "Off = local learning only. On = LLM agents advise on top.",
+          "sequential_mode": "Query agents one-by-one instead of in parallel - recommended for a single GPU/Ollama instance.",
+          "discussion_rounds": "How often agents may revise on disagreement (1-3). More rounds = more thorough, but slower."
         }
       },
       "agents_overview": {
         "title": "Cortex – Agent Overview",
-        "description": "Manage your LLM agents. Agents are preserved until you explicitly remove them.",
+        "description": "Manage your LLM agents (up to 4). Agents are preserved until you explicitly remove them.",
         "data": {
           "action": "Action"
+        },
+        "data_description": {
+          "action": "Add, edit or remove an agent - or go back to the menu."
         }
       },
       "agent_setup": {
         "title": "Cortex – Agent {slot} (Connection)",
-        "description": "Choose a role and provider. For Ollama just enter the host (e.g. 'localhost' or '192.168.1.100') – http:// and port 11434 are added automatically.",
+        "description": "Choose a role and provider. For Ollama just enter the host (e.g. 'localhost' or '192.168.1.100').",
         "data": {
           "role": "Role",
           "provider": "Provider",
-          "url": "URL / Host (leave empty for default)",
-          "api_key": "API Key (Cloud only)"
+          "url": "URL / Host",
+          "api_key": "API Key"
+        },
+        "data_description": {
+          "role": "Comfort, Energy, Safety, Coordinator - or your own role (Custom).",
+          "provider": "Ollama runs locally without a key. Cloud providers need an API key. \"Custom/OpenAI-compatible\" for your own endpoints like OpenCLAW.",
+          "url": "Base URL only (e.g. http://192.168.1.50:8080). \"/v1/chat/completions\" is appended automatically - do not enter it yourself. Empty = provider default.",
+          "api_key": "Only needed for cloud/custom providers. Leave empty for Ollama."
         }
       },
       "agent_model": {
@@ -73,7 +87,11 @@
         "description": "{status}",
         "data": {
           "model": "Model",
-          "system_prompt": "System Prompt (leave empty for default)"
+          "system_prompt": "System Prompt"
+        },
+        "data_description": {
+          "model": "For Ollama a dropdown of installed models. For cloud/custom enter the model name (e.g. gpt-4o-mini or your OpenCLAW model).",
+          "system_prompt": "Optional - overrides the default prompt of the chosen role. Empty = default."
         }
       }
     },

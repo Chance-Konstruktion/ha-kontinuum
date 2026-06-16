@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "KONTINUUM Einrichtung",
-        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als N\u00e4chstes passiert. W\u00e4hle eine Pers\u00f6nlichkeit.",
+        "description": "KONTINUUM lernt die Muster deines Zuhauses und sagt voraus, was als Nächstes passiert. Wähle eine Persönlichkeit.",
         "data": {
-          "preset": "Pers\u00f6nlichkeit"
+          "preset": "Persönlichkeit"
         }
       },
       "dashboard": {
         "title": "Dashboard",
-        "description": "KONTINUUM enth\u00e4lt ein Gehirn-Dashboard. Wenn aktiviert, wird es automatisch installiert.",
+        "description": "KONTINUUM enthält ein Gehirn-Dashboard. Wenn aktiviert, wird es automatisch installiert.",
         "data": {
           "enable_dashboard": "Dashboard aktivieren"
         }
@@ -24,7 +24,7 @@
     "step": {
       "init": {
         "title": "KONTINUUM Einstellungen",
-        "description": "W\u00e4hle was du konfigurieren m\u00f6chtest.",
+        "description": "Wähle was du konfigurieren möchtest.",
         "menu_options": {
           "general": "Allgemeine Einstellungen",
           "cortex": "Cortex Agents (LLM)",
@@ -33,9 +33,9 @@
       },
       "general": {
         "title": "Allgemeine Einstellungen",
-        "description": "Pers\u00f6nlichkeit, Betriebsmodus, Tracking und allgemeine Optionen.",
+        "description": "Persönlichkeit, Betriebsmodus, Tracking und allgemeine Optionen.",
         "data": {
-          "preset": "Pers\u00f6nlichkeit",
+          "preset": "Persönlichkeit",
           "operation_mode": "Betriebsmodus",
           "track_mode": "Entity-Tracking-Modus",
           "enable_dashboard": "Dashboard aktivieren",
@@ -43,42 +43,60 @@
         }
       },
       "cortex": {
-        "title": "Cortex (LLM-Agents)",
-        "description": "Aktiviere Cortex f\u00fcr LLM-gest\u00fctzte Multi-Agent-Entscheidungen. Sequential Mode fragt Agents nacheinander (empfohlen bei einer GPU).",
+        "title": "🧠 Cortex – LLM-Agents (optional)",
+        "description": "KONTINUUM lernt und entscheidet auch komplett ohne LLM. Der Cortex ist ein optionales Upgrade: bis zu 4 Agents (Comfort, Energy, Safety, Coordinator) beraten bei komplexen Entscheidungen.\n\nProvider: Ollama (lokal), OpenAI, Claude, Gemini, Grok sowie Custom/OpenAI-kompatibel (z. B. OpenCLAW).",
         "data": {
           "enable_cortex": "Cortex aktivieren",
-          "sequential_mode": "Sequential Mode (empfohlen bei 1 GPU)",
+          "sequential_mode": "Sequential Mode",
           "discussion_rounds": "Diskussionsrunden"
+        },
+        "data_description": {
+          "enable_cortex": "Aus = reines lokales Lernen. An = LLM-Agents beraten zusätzlich.",
+          "sequential_mode": "Agents nacheinander statt parallel anfragen – empfohlen bei nur einer GPU/Ollama-Instanz.",
+          "discussion_rounds": "Wie oft Agents bei Uneinigkeit revidieren dürfen (1–3). Mehr Runden = gründlicher, aber langsamer."
         }
       },
       "agents_overview": {
-        "title": "Cortex \u2013 Agent-\u00dcbersicht",
-        "description": "Verwalte deine LLM-Agents. Agents bleiben erhalten bis du sie explizit entfernst.",
+        "title": "Cortex – Agent-Übersicht",
+        "description": "Verwalte deine LLM-Agents (bis zu 4). Agents bleiben erhalten, bis du sie explizit entfernst.",
         "data": {
           "action": "Aktion"
+        },
+        "data_description": {
+          "action": "Agent hinzufügen, bearbeiten oder entfernen – oder zurück zum Menü."
         }
       },
       "agent_setup": {
-        "title": "Cortex \u2013 Agent {slot} (Verbindung)",
-        "description": "W\u00e4hle Rolle und Provider. F\u00fcr Ollama einfach den Host eingeben (z.B. 'localhost' oder '192.168.1.100').",
+        "title": "Cortex – Agent {slot} (Verbindung)",
+        "description": "Wähle Rolle und Provider. Bei Ollama genügt der Host (z. B. 'localhost' oder '192.168.1.100').",
         "data": {
           "role": "Rolle",
           "provider": "Provider",
-          "url": "URL / Host (leer = Standard)",
-          "api_key": "API-Key (nur Cloud)"
+          "url": "URL / Host",
+          "api_key": "API-Key"
+        },
+        "data_description": {
+          "role": "Comfort, Energy, Safety, Coordinator – oder eine eigene Rolle (Custom).",
+          "provider": "Ollama läuft lokal ohne Key. Cloud-Provider brauchen einen API-Key. „Custom/OpenAI-kompatibel“ für eigene Endpunkte wie OpenCLAW.",
+          "url": "Nur die Basis-URL (z. B. http://192.168.1.50:8080). „/v1/chat/completions“ wird automatisch angehängt – nicht selbst eintragen. Leer = Standard des Providers.",
+          "api_key": "Nur für Cloud-/Custom-Provider nötig. Bei Ollama leer lassen."
         }
       },
       "agent_model": {
-        "title": "Cortex \u2013 Agent {slot} (Modell)",
+        "title": "Cortex – Agent {slot} (Modell)",
         "description": "{status}",
         "data": {
           "model": "Modell",
-          "system_prompt": "System-Prompt (leer = Standard)"
+          "system_prompt": "System-Prompt"
+        },
+        "data_description": {
+          "model": "Bei Ollama als Dropdown der installierten Modelle. Bei Cloud/Custom den Modellnamen eintragen (z. B. gpt-4o-mini oder dein OpenCLAW-Modell).",
+          "system_prompt": "Optional – überschreibt den Standard-Prompt der gewählten Rolle. Leer = Standard."
         }
       }
     },
     "error": {
-      "ollama_unreachable": "Ollama nicht erreichbar. Pr\u00fcfe ob Ollama l\u00e4uft und die URL stimmt."
+      "ollama_unreachable": "Ollama nicht erreichbar. Prüfe ob Ollama läuft und die URL stimmt."
     }
   }
 }

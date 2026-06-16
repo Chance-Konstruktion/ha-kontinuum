@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.27.1 – Cortex-Options-Flow: klarere Texte & Feld-Hinweise (2026-06-16)
+
+### Changed
+- **Cortex-Schritte im Options-Flow lesbarer gemacht** (reine Übersetzungs-/Text-
+  Politur in `strings.json` + `translations/de.json` + `translations/en.json`,
+  keine Logik-Änderung):
+  - Jedes Feld hat jetzt einen **Hinweistext** (`data_description`) — z. B. unter
+    **URL**: „Nur die Basis-URL … `/v1/chat/completions` wird automatisch
+    angehängt", unter **Provider** der Hinweis auf **Custom/OpenAI-kompatibel
+    (OpenCLAW)**, unter **Diskussionsrunden**/**Sequential Mode** eine kurze
+    Erklärung.
+  - Klarere Schritt-Beschreibungen (Cortex ist optional; bis zu 4 Agents) und
+    ein 🧠-Titel.
+
+### Docs
+- **`docs/SETTINGS.md`** neu — vollständige Einstellungs-Referenz (Presets,
+  Betriebsmodi, Tracking/Labels, Home-Only, Gerätetypen, **Cortex inkl.
+  OpenCLAW**, Services, Events, Sensoren).
+- `docs/ARCHITECTURE.md`: veralteten „8 Module"-Stand korrigiert + Verweise auf
+  die Core-Modul-/Pipeline-Referenz.
+
 ## v0.27.0 – Erweiterte Hirnareale & Botenstoffe (2026-06-15)
 
 > Baut auf v0.26.0 auf (die engine-only Observability-Entitäten wurden parallel
