@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.28.1 – Schönere Dropdowns im Config-/Options-Flow (2026-06-16)
+
+### Changed
+- **Statische Auswahlfelder als echte Dropdown-`SelectSelector`** statt HAs
+  Basis-Rendering: **Persönlichkeit**, **Betriebsmodus**, **Tracking-Modus**
+  (Allgemein) sowie **Rolle** und **Provider** (Agent-Setup) sind jetzt
+  durchsuchbare, sauber gestylte Dropdowns. Werte bleiben unverändert (Strings)
+  → keine Verhaltens-/Persistenz-Änderung. Dynamische Listen (Modell, Menü) und
+  das Diskussionsrunden-Feld bleiben wie sie sind.
+
 ## v0.28.0 – Interval Timing in der Pro-Pipeline (innere Stoppuhr) (2026-06-16)
 
 ### Added
