@@ -18,7 +18,15 @@ import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
+from homeassistant.helpers.selector import (
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
 from .const import DOMAIN
 from .cortex import PROVIDERS, DEFAULT_PROMPTS
@@ -63,6 +71,24 @@ AGENT_ROLES = {
     "coordinator": "Coordinator – Leitet die anderen Agents, trifft finale Entscheidung",
     "custom": "Custom – Eigene Rolle mit eigenem Prompt",
 }
+
+
+def _dropdown(options: dict):
+    """Render a ``{value: label}`` mapping as a polished dropdown.
+
+    Replaces a bare ``vol.In(dict)`` (which HA renders as a plain select) with a
+    proper SelectSelector in dropdown mode (searchable, consistent styling).
+    Values stay strings, so the surrounding handler logic is unchanged.
+    """
+    return SelectSelector(
+        SelectSelectorConfig(
+            options=[
+                SelectOptionDict(value=str(value), label=str(label))
+                for value, label in options.items()
+            ],
+            mode=SelectSelectorMode.DROPDOWN,
+        )
+    )
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -157,7 +183,7 @@ class KontinuumConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
-                vol.Required("preset", default="ausgeglichen"): vol.In(
+                vol.Required("preset", default="ausgeglichen"): _dropdown(
                     preset_options
                 ),
             }),
@@ -260,13 +286,13 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="general",
             data_schema=vol.Schema({
-                vol.Required("preset", default=current.get("preset", "ausgeglichen")): vol.In(
+                vol.Required("preset", default=current.get("preset", "ausgeglichen")): _dropdown(
                     preset_options
                 ),
-                vol.Required("operation_mode", default=current.get("operation_mode", "shadow")): vol.In(
+                vol.Required("operation_mode", default=current.get("operation_mode", "shadow")): _dropdown(
                     operation_mode_options
                 ),
-                vol.Required("track_mode", default=current.get("track_mode", "standard")): vol.In(
+                vol.Required("track_mode", default=current.get("track_mode", "standard")): _dropdown(
                     track_mode_options
                 ),
                 vol.Required("enable_dashboard", default=current.get("enable_dashboard", True)): bool,
@@ -399,10 +425,10 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Required(
                     "role", default=existing.get("name", slot_defaults.get(slot, "custom")),
-                ): vol.In(AGENT_ROLES),
+                ): _dropdown(AGENT_ROLES),
                 vol.Required(
                     "provider", default=existing.get("provider", "ollama"),
-                ): vol.In(PROVIDER_OPTIONS),
+                ): _dropdown(PROVIDER_OPTIONS),
                 vol.Optional(
                     "url",
                     description={"suggested_value": existing.get("url", "")},
