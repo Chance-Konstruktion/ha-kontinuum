@@ -2,7 +2,14 @@
 
 ## Überblick
 
-KONTINUUM ist ein neuroinspiriertes System das Home Assistant Events beobachtet, Muster lernt und Vorhersagen trifft. Es besteht aus 8 Modulen die jeweils einer Gehirnregion nachempfunden sind.
+KONTINUUM ist ein neuroinspiriertes System das Home Assistant Events beobachtet, Muster lernt und Vorhersagen trifft. Die Lern-Engine ist in das HA-freie Paket **`kontinuum-core`** ausgelagert und umfasst inzwischen **26 Module**, die jeweils einer Gehirnregion bzw. einem Botenstoff nachempfunden sind.
+
+> **Vollständige Referenzen:**
+> - Module (alle 26): [`kontinuum-core/docs/MODULES.md`](https://github.com/Chance-Konstruktion/kontinuum-core/blob/main/docs/MODULES.md)
+> - Pipeline & Snapshot-Felder: [`kontinuum-core/docs/PIPELINE.md`](https://github.com/Chance-Konstruktion/kontinuum-core/blob/main/docs/PIPELINE.md)
+> - Einstellungen/Cortex (diese Integration): [`SETTINGS.md`](SETTINGS.md)
+>
+> Der folgende Text beschreibt den ursprünglichen 8-Modul-Kern und den Datenfluss; er gilt weiterhin, ist aber nur ein Ausschnitt des heutigen Modul-Sets.
 
 ## Datenfluss
 

@@ -14,6 +14,13 @@
   - Klarere Schritt-Beschreibungen (Cortex ist optional; bis zu 4 Agents) und
     ein 🧠-Titel.
 
+### Docs
+- **`docs/SETTINGS.md`** neu — vollständige Einstellungs-Referenz (Presets,
+  Betriebsmodi, Tracking/Labels, Home-Only, Gerätetypen, **Cortex inkl.
+  OpenCLAW**, Services, Events, Sensoren).
+- `docs/ARCHITECTURE.md`: veralteten „8 Module"-Stand korrigiert + Verweise auf
+  die Core-Modul-/Pipeline-Referenz.
+
 ## v0.27.0 – Erweiterte Hirnareale & Botenstoffe (2026-06-15)
 
 > Baut auf v0.26.0 auf (die engine-only Observability-Entitäten wurden parallel
