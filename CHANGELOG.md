@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.28.0 – Interval Timing in der Pro-Pipeline (innere Stoppuhr) (2026-06-16)
+
+### Added
+- **Interval Timing** (aus `kontinuum-core 0.6.0`) in die Pro-Pipeline verdrahtet:
+  lernt die **Dauer zwischen Wiederholungen** eines Tokens und blendet eine
+  überfällige, regelmäßige Kadenz (z.B. „Staubsauger alle 4 Wochen") als
+  Vorhersage ein. Injektion erfolgt **nach** der Surprise-Berechnung → kein
+  Einfluss auf das Anomalie-Signal. Persistenz als eigene `interval_timing.json.gz`.
+- Ergänzt den Suprachiasmatischen Nukleus (Tagesuhr) um das **Dauer-/Kadenzgefühl**.
+
+### Changed
+- `kontinuum-core`-Anforderung auf **`>=0.6.0`** angehoben.
+
 ## v0.27.1 – Cortex-Options-Flow: klarere Texte & Feld-Hinweise (2026-06-16)
 
 ### Changed
