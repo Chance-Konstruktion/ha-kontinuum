@@ -64,6 +64,7 @@ from kontinuum_core.serotonin import Serotonin
 from kontinuum_core.acetylcholine import Acetylcholine
 from kontinuum_core.cortisol import Cortisol
 from kontinuum_core.bdnf import Bdnf
+from kontinuum_core.interval_timing import IntervalTiming
 
 from .const import DOMAIN
 from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
@@ -72,7 +73,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 # Muss mit manifest.json "version" übereinstimmen
-VERSION = "0.27.1"
+VERSION = "0.28.0"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
@@ -102,6 +103,7 @@ AUX_MODULE_FILES = {
     "acetylcholine": "acetylcholine.json.gz",
     "cortisol": "cortisol.json.gz",
     "bdnf": "bdnf.json.gz",
+    "interval_timing": "interval_timing.json.gz",
 }
 
 
@@ -338,6 +340,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         acetylcholine = Acetylcholine()         # expected uncertainty
         cortisol = Cortisol()                   # systemic stress hormone
         bdnf = Bdnf()                            # use-dependent protection
+        interval_timing = IntervalTiming()       # inner stopwatch (cadences)
         metaplasticity = MetaPlasticity(hass)
 
         # Locus Coeruleus → Reticular Formation Verbindung (Arousal moduliert Burst-Filter)
@@ -395,6 +398,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "acetylcholine": acetylcholine,
             "cortisol": cortisol,
             "bdnf": bdnf,
+            "interval_timing": interval_timing,
             "metaplasticity": metaplasticity,
             "preset": preset_key,
             "_scenes_enabled": False,
@@ -691,6 +695,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     )
                     predictions = [reflex_pred] + (predictions or [])
 
+                # Interval Timing: überfällige, regelmäßige Kadenz (z.B. „alle
+                # 4 Wochen") als Vorhersage einblenden. Das aktuelle Token ist
+                # ausgeschlossen (es feuert ja gerade); Injektion nach der
+                # Surprise-Berechnung → kein Einfluss auf das Anomalie-Signal.
+                ev_now = now.timestamp()
+                interval_due = interval_timing.due_prediction(ev_now, exclude=token_id)
+                if interval_due is not None and not any(
+                    p[0] == interval_due[0] for p in (predictions or [])
+                ):
+                    predictions = (predictions or []) + [interval_due]
+
                 if predictions:
                     predictions = _rank_with_basal_ganglia(
                         predictions, basal_ganglia, bucket,
@@ -724,6 +739,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                         "thalamus": thalamus,
                     }
                     _process_decision(hass, brain, decision, decision_ctx)
+
+                # Diese Wiederholung für die Kadenz-Erkennung festhalten
+                # (nachdem due_prediction den vorherigen Stand genutzt hat).
+                interval_timing.observe(token_id, ev_now)
 
                 # Letztes Signal + Vorhersage im Brain speichern (für Cortex-Kontext)
                 brain["_last_signal"] = signal
