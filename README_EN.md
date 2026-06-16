@@ -5,7 +5,7 @@
 **Your home learns by itself.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.26.0-blue)
+![Version](https://img.shields.io/badge/version-0.28.1-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [Deutsche Version](README.md)
@@ -87,6 +87,23 @@ Hypothalamus   Spatial     Basal Ganglia  Amygdala
 | **Basal Ganglia** | Reward learning -- Go/NoGo pathways, Q-values, habits |
 | **Amygdala** | Risk assessment -- can veto actions before something unwanted happens |
 | **Prefrontal Cortex** | Decision-making -- weighs predictions, evaluates benefit vs. risk |
+
+### Extended Areas & Neuromodulators (v0.28 -- from kontinuum-core 0.6.0)
+
+Eight further modules model the slow, previously-missing signals -- all O(1) per
+event, Raspberry-Pi-friendly, and they start neutral (no behaviour change until
+something is learned):
+
+| Module | Function |
+|--------|----------|
+| **Lateral Habenula** | Anti-reward -- suppresses repeatedly-rejected suggestions (stop nagging) |
+| **Subthalamic Nucleus** | "Hold your horses" -- waits under conflict + a thin margin instead of acting rashly |
+| **Suprachiasmatic Nucleus** | Learned daily clock -- aligns the learning rate to the household's real rhythm (±15 %) |
+| **Interval Timing** | Inner stopwatch -- learns the duration between repeats and resurfaces overdue cadences (e.g. "every 4 weeks") |
+| **Cortisol** | Stress hormone -- makes ranking more cautious during chaotic spells (up to -30 %) |
+| **Acetylcholine** | Expected uncertainty -- damps learning where noise is the norm |
+| **Serotonin** | Mood/patience -- slow baseline that tunes the STN's willingness to wait |
+| **BDNF** | Neurotrophic protection -- shields proven reflexes from blanket forgetting |
 
 ### Cortex -- Conscious Thinking (optional, LLM Agents)
 

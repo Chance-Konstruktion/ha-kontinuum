@@ -5,7 +5,7 @@
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.27.0-blue)
+![Version](https://img.shields.io/badge/version-0.28.1-blue)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [English version](README_EN.md)
@@ -117,9 +117,9 @@ Hypothalamus   Spatial     Basalganglien  Amygdala
 | **Sleep Consolidation** | Hippocampaler Replay -- konsolidiert Muster in ruhigen Phasen (schwache vergessen, starke verstärken) |
 | **Metaplastizität** | Meta-Lernen -- passt Lernraten aller Module automatisch an (alle 24h) |
 
-### Erweiterte Areale & Botenstoffe (v0.27 -- aus kontinuum-core 0.5.0)
+### Erweiterte Areale & Botenstoffe (v0.28 -- aus kontinuum-core 0.6.0)
 
-Sieben weitere Module modellieren die langsamen, bislang fehlenden Signale --
+Acht weitere Module modellieren die langsamen, bislang fehlenden Signale --
 alle O(1) pro Event, Raspberry-Pi-tauglich, starten neutral (kein verändertes
 Verhalten, bis etwas gelernt wurde):
 
@@ -128,6 +128,7 @@ Verhalten, bis etwas gelernt wurde):
 | **Laterale Habenula** | Anti-Reward -- unterdrückt wiederholt abgelehnte Vorschläge (Schluss mit "Nerven") |
 | **Nucleus Subthalamicus** | "Hold your horses" -- wartet bei Konflikt + knapper Marge, statt vorschnell zu handeln |
 | **Nucleus Suprachiasmaticus** | Gelernte innere Uhr -- richtet die Lernrate am echten Tagesrhythmus des Haushalts aus (±15 %) |
+| **Interval Timing** | Innere Stoppuhr -- lernt Dauern zwischen Wiederholungen und blendet überfällige Kadenzen ein (z.B. „alle 4 Wochen") |
 | **Cortisol** | Stress-Hormon -- macht das Ranking in chaotischen Phasen vorsichtiger (bis -30 %) |
 | **Acetylcholin** | Erwartete Unsicherheit -- dämpft Lernen in verlässlich verrauschten Kontexten |
 | **Serotonin** | Stimmung/Geduld -- langsame Baseline, steuert die Wartebereitschaft (STN) |
