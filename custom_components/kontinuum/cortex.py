@@ -41,6 +41,18 @@ _TRANSIENT_ERRORS = (
 )
 
 
+def _describe_error(e):
+    """
+    Kompakte, diagnostizierbare Fehlerbeschreibung.
+
+    Viele transiente Fehler (asyncio.TimeoutError, einige aiohttp-Fehler)
+    haben ein leeres str(e). Ohne den Exception-Typ wäre die Log-Zeile dann
+    nichtssagend ("LLM Retry 1/3 nach 1s:"). Daher immer den Typ voranstellen.
+    """
+    msg = str(e)[:100]
+    return f"{type(e).__name__}: {msg}" if msg else type(e).__name__
+
+
 async def _retry_llm_call(coro_fn, max_retries=3):
     """
     Retry-Wrapper für LLM-Calls mit exponentiellem Backoff.
@@ -60,7 +72,8 @@ async def _retry_llm_call(coro_fn, max_retries=3):
                 if attempt < max_retries - 1:
                     delay = (2 ** attempt)  # 1s, 2s, 4s
                     _LOGGER.warning("LLM Retry %d/%d nach %ds: %s",
-                                    attempt + 1, max_retries, delay, error_str[:100])
+                                    attempt + 1, max_retries, delay,
+                                    error_str[:100] or type(e).__name__)
                     await asyncio.sleep(delay)
                     continue
             # 4xx oder andere → permanent, abbrechen
@@ -69,8 +82,11 @@ async def _retry_llm_call(coro_fn, max_retries=3):
             last_error = e
             if attempt < max_retries - 1:
                 delay = (2 ** attempt)
+                # str(e) ist bei TimeoutError/manchen aiohttp-Fehlern leer –
+                # der Exception-Typ macht die Zeile trotzdem diagnostizierbar.
                 _LOGGER.warning("LLM Retry %d/%d nach %ds: %s",
-                                attempt + 1, max_retries, delay, str(e)[:100])
+                                attempt + 1, max_retries, delay,
+                                _describe_error(e))
                 await asyncio.sleep(delay)
                 continue
             raise
