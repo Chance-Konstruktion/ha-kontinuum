@@ -188,3 +188,56 @@ def test_acc_outcome_feedback_drives_cognitive_control():
         acc.observe_decision([])
     assert acc.error_rate < 0.1
     assert acc.cognitive_control < stressed   # recovers smoothly
+
+
+# ──────────────────────────────────────────────────────────────────
+# _maybe_consolidate — idle sleep-consolidation gating (shared by the
+# event path and the idle heartbeat)
+# ──────────────────────────────────────────────────────────────────
+from custom_components.kontinuum import _maybe_consolidate
+
+
+class _FakeSleepConsolidation:
+    def __init__(self, due: bool) -> None:
+        self._due = due
+        self.calls = 0
+
+    def should_consolidate(self, last_event_ts) -> bool:
+        return self._due
+
+    def consolidate(self, *args, **kwargs) -> dict:
+        self.calls += 1
+        return {"replayed": 7}
+
+
+def _consolidation_brain(sc) -> dict:
+    return {
+        "sleep_consolidation": sc,
+        "hippocampus": object(),
+        "cerebellum": object(),
+        "basal_ganglia": object(),
+        "neurorhythms": object(),
+        "bdnf": object(),
+        "_last_event_ts": 0.0,
+    }
+
+
+def test_maybe_consolidate_runs_when_due():
+    sc = _FakeSleepConsolidation(due=True)
+    brain = _consolidation_brain(sc)
+    _maybe_consolidate(brain)
+    assert sc.calls == 1
+    assert brain["_last_consolidation"] == {"replayed": 7}
+
+
+def test_maybe_consolidate_skips_when_not_due():
+    sc = _FakeSleepConsolidation(due=False)
+    brain = _consolidation_brain(sc)
+    _maybe_consolidate(brain)
+    assert sc.calls == 0
+    assert "_last_consolidation" not in brain
+
+
+def test_maybe_consolidate_safe_without_module():
+    # Missing sleep_consolidation key must not raise (defensive for partial brains).
+    _maybe_consolidate({})
