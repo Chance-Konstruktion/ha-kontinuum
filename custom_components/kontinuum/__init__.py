@@ -28,12 +28,13 @@ import shutil
 import re
 import time
 from collections import Counter, deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from homeassistant.const import EVENT_STATE_CHANGED, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant import config_entries
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_track_time_interval
 import homeassistant.helpers.config_validation as cv
 
 from kontinuum_core.thalamus import Thalamus
@@ -79,6 +80,12 @@ HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
 BRAIN_FILE_LEGACY = "brain.json"
 SAVE_INTERVAL = 600
+# Idle heartbeat: sleep consolidation is only eligible during a quiet spell
+# (≥30 min since the last event), but it was only ever *checked* on a state
+# change — never during the downtime it needs — so an idle night consolidated
+# nothing. A periodic timer runs the (self-gating, cheap) check even when no
+# events arrive. No-op unless a quiet spell is due.
+IDLE_HEARTBEAT_SECONDS = 300
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 SIGNAL_SENSORS_UPDATE = f"{DOMAIN}_sensors_update"
@@ -289,6 +296,27 @@ def _write_history_entry(data_dir: str, entry_type: str, data: dict):
 # ══════════════════════════════════════════════════════════════════
 # SETUP – Config Flow Entry Point
 # ══════════════════════════════════════════════════════════════════
+
+def _maybe_consolidate(brain: dict) -> None:
+    """Run sleep consolidation if a quiet spell is due.
+
+    Shared by the event path and the idle heartbeat so both use identical
+    gating. Self-gating and cheap: ``should_consolidate`` returns False unless
+    ≥30 min have passed since the last event (plus cooldown), so calling this
+    on a frequent timer is safe. Reads its modules from the brain dict.
+    """
+    sc = brain.get("sleep_consolidation")
+    if sc is None:
+        return
+    last_event_ts = brain.get("_last_event_ts", 0.0)
+    if sc.should_consolidate(last_event_ts):
+        stats = sc.consolidate(
+            brain["hippocampus"], brain["cerebellum"], brain["basal_ganglia"],
+            neurorhythms=brain.get("neurorhythms"), bdnf=brain.get("bdnf"),
+        )
+        brain["_last_consolidation"] = stats
+        _LOGGER.info("Sleep Consolidation: %s", stats)
+
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """YAML-basiertes Setup (Rückwärtskompatibel)."""
@@ -777,13 +805,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     brain["_last_save"] = now_ts
 
                 # ── Sleep Consolidation: In ruhigen Phasen konsolidieren ──
-                last_event_ts = brain.get("_last_event_ts", 0.0)
-                if sleep_consolidation.should_consolidate(last_event_ts):
-                    consolidation_stats = sleep_consolidation.consolidate(
-                        hippocampus, cerebellum, basal_ganglia,
-                        neurorhythms=neurorhythms, bdnf=bdnf)
-                    brain["_last_consolidation"] = consolidation_stats
-                    _LOGGER.info("Sleep Consolidation: %s", consolidation_stats)
+                # Also driven by an idle heartbeat (see below) so it still runs
+                # when no state changes arrive — the case it was missing before.
+                _maybe_consolidate(brain)
 
                 # ignore_kontinuum Labels periodisch refreshen (v0.15.0)
                 if now_ts - brain.get("_last_label_refresh", 0) > 300:
@@ -812,6 +836,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 _LOGGER.error("KONTINUUM Fehler: %s", e, exc_info=True)
 
         hass.bus.async_listen(EVENT_STATE_CHANGED, on_state_changed)
+
+        # ── Idle-Heartbeat ────────────────────────────────────
+        # Ohne diesen Timer wird Sleep Consolidation nur bei einem State-Change
+        # geprüft — also nie während der ruhigen Phase, die sie braucht. Der
+        # Heartbeat fährt den (selbst-gatenden, günstigen) Check periodisch,
+        # auch wenn keine Events kommen.
+        @callback
+        def _idle_heartbeat(_now):
+            try:
+                _maybe_consolidate(brain)
+            except Exception as e:  # noqa: BLE001 — a timer must never crash setup
+                _LOGGER.error("KONTINUUM Idle-Heartbeat Fehler: %s", e, exc_info=True)
+
+        brain["_unsub_idle"] = async_track_time_interval(
+            hass, _idle_heartbeat, timedelta(seconds=IDLE_HEARTBEAT_SECONDS)
+        )
 
         # ── Shutdown-Handler ──────────────────────────────────
         async def on_shutdown(event):
@@ -902,6 +942,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
 
     brain = hass.data.get(DOMAIN)
     if brain:
+        # Idle heartbeat abmelden, damit kein Timer den entladenen Entry weiter feuert.
+        unsub_idle = brain.pop("_unsub_idle", None)
+        if unsub_idle:
+            unsub_idle()
         data_dir = brain.get("_data_dir", hass.config.path(DATA_DIR))
         brain_path = os.path.join(data_dir, BRAIN_FILE)
         await hass.async_add_executor_job(_save_brain, brain, brain_path)

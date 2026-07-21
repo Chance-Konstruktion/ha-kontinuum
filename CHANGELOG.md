@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **Sleep Consolidation läuft jetzt auch im Leerlauf.** Die Konsolidierung ist
+  nur während einer ruhigen Phase (≥30 min seit dem letzten Event) zulässig,
+  wurde aber nur im State-Change-Handler geprüft — also nie während der ruhigen
+  Phase, die sie braucht. Eine wirklich ruhige Nacht hat null Mal konsolidiert.
+  Ein periodischer Idle-Heartbeat (`async_track_time_interval`, alle
+  `IDLE_HEARTBEAT_SECONDS` = 5 min) fährt denselben, selbst-gatenden Check nun
+  auch ohne eingehende Events. Der Timer wird beim Entladen sauber abgemeldet.
+  Die Consolidation-Logik ist in `_maybe_consolidate()` extrahiert und wird von
+  Event-Pfad und Heartbeat geteilt (identisches Gating).
+
+### Changed
+- Mindest-Abhängigkeit **kontinuum-core >= 0.6.2** (Manifest).
+
 ## v0.28.1 – Schönere Dropdowns im Config-/Options-Flow (2026-06-16)
 
 ### Changed
