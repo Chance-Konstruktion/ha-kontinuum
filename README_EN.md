@@ -427,4 +427,9 @@ The way a home should.
 
 ## License
 
-MIT License -- see [LICENSE](LICENSE)
+AGPL-3.0 -- see [LICENSE](LICENSE).
+
+This integration declares [`kontinuum-core`](https://github.com/Chance-Konstruktion/kontinuum-core)
+(AGPL-3.0) as a requirement and loads it in the same Home Assistant process.
+The distributed combined work is therefore licensed under the **AGPL-3.0**, to
+match kontinuum-core.
