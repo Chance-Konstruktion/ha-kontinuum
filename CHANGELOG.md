@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## experimental-v0.29.0 – Confirm-Queue im Dashboard (2026-07-22)
 
 ### Added
 - **Confirm-Queue im Dashboard mit Bestätigen/Ablehnen-Buttons.** Die wartenden
@@ -27,7 +27,7 @@
   Event-Pfad und Heartbeat geteilt (identisches Gating).
 
 ### Changed
-- Mindest-Abhängigkeit **kontinuum-core >= 0.6.2** (Manifest).
+- Mindest-Abhängigkeit **kontinuum-core >= 0.6.3** (Manifest).
 
 ## v0.28.1 – Schönere Dropdowns im Config-/Options-Flow (2026-06-16)
 
