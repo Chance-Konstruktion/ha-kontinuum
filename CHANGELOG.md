@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## experimental-v0.29.0 – Confirm-Queue im Dashboard (2026-07-22)
+
+### Added
+- **Confirm-Queue im Dashboard mit Bestätigen/Ablehnen-Buttons.** Die wartenden
+  Bestätigungen (`sensor.kontinuum_status` → `prefrontal.pending_confirms_list`)
+  werden in `docs/dashboard.yaml` als eigener Abschnitt „Wartende Bestätigungen"
+  gerendert — nur im Confirm-Modus (`operation_mode == confirm`), nichts in
+  Shadow/Active. Pro Eintrag rufen zwei Buttons die bestehenden Services
+  `kontinuum.confirm_action` bzw. `kontinuum.reject_action` mit der jeweiligen
+  `confirm_id` auf; ein Sammelknopf „Alle bestätigen" nutzt `confirm_all: true`.
+  Nutzt `custom:config-template-card` (neue HACS-Frontend-Abhängigkeit, im
+  Dashboard-Kopf dokumentiert), da die Queue eine JSON-Attributliste ist und
+  native Cards keine pro-Zeilen-Buttons mit Eintrags-`id` erzeugen können. Keine
+  neuen Services, keine Änderung an der Lernmechanik.
 
 ### Fixed
 - **Sleep Consolidation läuft jetzt auch im Leerlauf.** Die Konsolidierung ist
@@ -14,7 +27,7 @@
   Event-Pfad und Heartbeat geteilt (identisches Gating).
 
 ### Changed
-- Mindest-Abhängigkeit **kontinuum-core >= 0.6.2** (Manifest).
+- Mindest-Abhängigkeit **kontinuum-core >= 0.6.3** (Manifest).
 
 ## v0.28.1 – Schönere Dropdowns im Config-/Options-Flow (2026-06-16)
 

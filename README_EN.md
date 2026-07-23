@@ -5,7 +5,10 @@
 **Your home learns by itself.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.28.1-blue)
+[![HACS Validate](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/validate.yaml/badge.svg?branch=main)](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/validate.yaml)
+[![hassfest](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/hassfest.yaml/badge.svg?branch=main)](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/hassfest.yaml)
+[![Smoke Test](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/smoke.yaml/badge.svg?branch=main)](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/smoke.yaml)
+[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FChance-Konstruktion%2Fha-kontinuum%2Fmain%2Fcustom_components%2Fkontinuum%2Fmanifest.json&query=%24.version&label=version&color=blue)](custom_components/kontinuum/manifest.json)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [Deutsche Version](README.md)
