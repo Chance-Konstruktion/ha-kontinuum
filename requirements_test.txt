@@ -1,7 +1,11 @@
 ﻿# Was die Testsuite braucht -- und sonst nichts.
 #
-# kontinuum-core steht hier, weil die Tests dagegen laufen und nicht
-# dagegen tun als ob. Das Paket liegt auf PyPI; die Quelle dazu unter
+# pytest-homeassistant-custom-component bringt Home Assistant als
+# Testabhaengigkeit mit: echte Entity-Registry, echtes Geraeteregister,
+# echte Config Entries. Die Tests laufen also gegen die Sache selbst
+# statt gegen eine Nachbildung davon.
+#
+# kontinuum-core liegt auf PyPI; die Quelle dazu unter
 # https://gitlab.schanz.ipv64.net/chance-konstruktion/kontinuum-core
 #
 #     pip install -r requirements_test.txt
@@ -9,6 +13,5 @@
 
 pytest
 pytest-asyncio
+pytest-homeassistant-custom-component
 kontinuum-core
-voluptuous
-pyyaml
