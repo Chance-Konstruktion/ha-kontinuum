@@ -1,0 +1,47 @@
+name: Smoke Test (Import)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  import-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # kontinuum-core IST auf PyPI (aktuell 0.6.0). Hier wird bewusst Git-`main`
+      # installiert, um den unveröffentlichten Stand zu testen. Für einen reinen
+      # "so installiert es der Nutzer"-Test stattdessen das PyPI-Paket pinnen
+      # (passend zu manifest.json, z. B. "kontinuum-core>=0.6.0").
+      - name: Install Home Assistant + kontinuum-core
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pytest homeassistant "kontinuum-core @ git+https://github.com/Chance-Konstruktion/kontinuum-core.git"
+
+      - name: Compile all Python files
+        run: python3 -m compileall -q custom_components
+
+      - name: Run wiring tests
+        run: python3 -m pytest tests/ -q
+
+      - name: Import integrations
+        run: |
+          python3 -c "import custom_components.kontinuum as k; print('kontinuum', k.VERSION)"
+          python3 -c "from custom_components.kontinuum import sensor, config_flow, const, metaplasticity, ha_scheduler, cortex; print('submodules OK')"
+
+      - name: Check VERSION matches manifest.json
+        run: |
+          python3 - <<'EOF'
+          import json, re
+          manifest = json.load(open("custom_components/kontinuum/manifest.json"))
+          src = open("custom_components/kontinuum/__init__.py").read()
+          version = re.search(r'^VERSION = "([^"]+)"', src, re.M).group(1)
+          assert version == manifest["version"], (
+              f"__init__.py VERSION ({version}) != manifest.json version ({manifest['version']})"
+          )
+          print("Version sync OK:", version)
+          EOF

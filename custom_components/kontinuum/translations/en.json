@@ -1,0 +1,102 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "KONTINUUM Setup",
+        "description": "KONTINUUM learns your home's patterns and predicts what happens next. Choose a personality that determines how fast the system learns and acts.",
+        "data": {
+          "preset": "Personality"
+        }
+      },
+      "dashboard": {
+        "title": "Dashboard",
+        "description": "KONTINUUM includes a brain visualization dashboard. If enabled, it will be auto-installed and accessible via the sidebar.",
+        "data": {
+          "enable_dashboard": "Enable Dashboard"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "KONTINUUM is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "KONTINUUM Settings",
+        "description": "Choose what to configure.",
+        "menu_options": {
+          "general": "General Settings",
+          "cortex": "Cortex Agents (LLM)",
+          "finish": "Save & Restart"
+        }
+      },
+      "general": {
+        "title": "General Settings",
+        "description": "Personality, operation mode, tracking and general options.",
+        "data": {
+          "preset": "Personality",
+          "operation_mode": "Operation Mode",
+          "track_mode": "Entity Tracking Mode",
+          "enable_dashboard": "Enable Dashboard",
+          "home_only_mode": "Home-Only Mode (pause when nobody is home)"
+        }
+      },
+      "cortex": {
+        "title": "🧠 Cortex – LLM Agents (optional)",
+        "description": "KONTINUUM learns and decides fully without an LLM. The Cortex is an optional upgrade: up to 4 agents (Comfort, Energy, Safety, Coordinator) deliberate on complex decisions.\n\nProviders: Ollama (local), OpenAI, Claude, Gemini, Grok and Custom/OpenAI-compatible (e.g. OpenCLAW).",
+        "data": {
+          "enable_cortex": "Enable Cortex",
+          "sequential_mode": "Sequential Mode",
+          "discussion_rounds": "Discussion Rounds"
+        },
+        "data_description": {
+          "enable_cortex": "Off = local learning only. On = LLM agents advise on top.",
+          "sequential_mode": "Query agents one-by-one instead of in parallel - recommended for a single GPU/Ollama instance.",
+          "discussion_rounds": "How often agents may revise on disagreement (1-3). More rounds = more thorough, but slower."
+        }
+      },
+      "agents_overview": {
+        "title": "Cortex – Agent Overview",
+        "description": "Manage your LLM agents (up to 4). Agents are preserved until you explicitly remove them.",
+        "data": {
+          "action": "Action"
+        },
+        "data_description": {
+          "action": "Add, edit or remove an agent - or go back to the menu."
+        }
+      },
+      "agent_setup": {
+        "title": "Cortex – Agent {slot} (Connection)",
+        "description": "Choose a role and provider. For Ollama just enter the host (e.g. 'localhost' or '192.168.1.100').",
+        "data": {
+          "role": "Role",
+          "provider": "Provider",
+          "url": "URL / Host",
+          "api_key": "API Key"
+        },
+        "data_description": {
+          "role": "Comfort, Energy, Safety, Coordinator - or your own role (Custom).",
+          "provider": "Ollama runs locally without a key. Cloud providers need an API key. \"Custom/OpenAI-compatible\" for your own endpoints like OpenCLAW.",
+          "url": "Base URL only (e.g. http://192.168.1.50:8080). \"/v1/chat/completions\" is appended automatically - do not enter it yourself. Empty = provider default.",
+          "api_key": "Only needed for cloud/custom providers. Leave empty for Ollama."
+        }
+      },
+      "agent_model": {
+        "title": "Cortex – Agent {slot} (Model)",
+        "description": "{status}",
+        "data": {
+          "model": "Model",
+          "system_prompt": "System Prompt"
+        },
+        "data_description": {
+          "model": "For Ollama a dropdown of installed models. For cloud/custom enter the model name (e.g. gpt-4o-mini or your OpenCLAW model).",
+          "system_prompt": "Optional - overrides the default prompt of the chosen role. Empty = default."
+        }
+      }
+    },
+    "error": {
+      "ollama_unreachable": "Cannot reach Ollama at this address. Check if Ollama is running and the URL is correct."
+    }
+  }
+}
