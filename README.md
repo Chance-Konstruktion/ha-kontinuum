@@ -5,16 +5,14 @@
 **Dein Zuhause lernt selbst.**
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![HACS Validate](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/validate.yaml/badge.svg?branch=main)](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/validate.yaml)
-[![hassfest](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/hassfest.yaml/badge.svg?branch=main)](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/hassfest.yaml)
-[![Smoke Test](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/smoke.yaml/badge.svg?branch=main)](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/workflows/smoke.yaml)
+[![Pipeline](https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-kontinuum/badges/main/pipeline.svg)](https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-kontinuum/-/pipelines)
 [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FChance-Konstruktion%2Fha-kontinuum%2Fmain%2Fcustom_components%2Fkontinuum%2Fmanifest.json&query=%24.version&label=version&color=blue)](custom_components/kontinuum/manifest.json)
 ![HA](https://img.shields.io/badge/Home%20Assistant-2024.1+-green)
 
 > [English version](README_EN.md)
 
 > **Teil der 3-Repo-Familie:**
-> [`kontinuum-core`](https://github.com/Chance-Konstruktion/kontinuum-core) (HA-freie Lern-Engine, PyPI) ·
+> [`kontinuum-core`](https://gitlab.schanz.ipv64.net/chance-konstruktion/kontinuum-core) (HA-freie Lern-Engine, PyPI) ·
 > [`ha-kontinuum-lite`](https://github.com/Chance-Konstruktion/ha-kontinuum-lite) (schlanke HA-Integration ohne UI) ·
 > **ha-kontinuum** (volle Pro-Integration, dieses Repo)
 
@@ -171,7 +169,7 @@ Wenn aktiviert, können bis zu **4 LLM-Agents** konfiguriert werden:
 ### HACS (Custom Repository)
 
 1. HACS öffnen --> Integrationen --> Drei-Punkte-Menü --> Custom Repositories
-2. URL: `https://github.com/Chance-Konstruktion/ha-kontinuum`
+2. URL: `https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-kontinuum`
 3. Kategorie: Integration
 4. Installieren und neustarten
 
@@ -531,7 +529,7 @@ So wie ein Zuhause es sollte.
 
 AGPL-3.0 -- siehe [LICENSE](LICENSE).
 
-Diese Integration bindet [`kontinuum-core`](https://github.com/Chance-Konstruktion/kontinuum-core)
+Diese Integration bindet [`kontinuum-core`](https://gitlab.schanz.ipv64.net/chance-konstruktion/kontinuum-core)
 (AGPL-3.0) als Requirement ein und lädt es im selben Home-Assistant-Prozess.
 Das verteilte Gesamtwerk steht daher unter der **AGPL-3.0** -- passend zur
 Lizenz von kontinuum-core.

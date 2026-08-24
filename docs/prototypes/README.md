@@ -10,7 +10,7 @@ They were the only surviving copies of three prototype ideas that lived in
 old, now-obsolete feature branches (`claude/add-widget-prose-QKShq`,
 `claude/review-codex-improvements-fDna0`, the `codex/…autonomous-action-loop…`
 series). Those branches predate the extraction of the neuro-modules into the
-[`kontinuum-core`](https://github.com/Chance-Konstruktion/kontinuum-core)
+[`kontinuum-core`](https://gitlab.schanz.ipv64.net/chance-konstruktion/kontinuum-core)
 package, so they can no longer be merged. Harvesting these files first means
 the branches can be deleted without losing the ideas.
 

@@ -17,7 +17,7 @@
 > + Tag-1-Priors, abgesichertes Cortex-Safety-Gate, sowie eine erweiterte
 > Areal-/Botenstoff-Schicht (Habenula, STN, SCN, Cortisol, Acetylcholin,
 > Serotonin, BDNF, Interval Timing). Vollständige Referenz:
-> [`kontinuum-core/docs/MODULES.md`](https://github.com/Chance-Konstruktion/kontinuum-core/blob/main/docs/MODULES.md).
+> [`kontinuum-core/docs/MODULES.md`](https://gitlab.schanz.ipv64.net/chance-konstruktion/kontinuum-core/-/blob/main/docs/MODULES.md).
 
 ---
 
@@ -114,7 +114,7 @@ Schlanke HA-Integration im eigenen Repo, delegiert vollständig an `KontinuumEng
 
 `kontinuum-core` exportiert die Engine + Daten-Typen + den LLM-/Priors-Vertrag
 (siehe `kontinuum_core/__init__.py`). Vollständige Referenz:
-[`docs/PIPELINE.md`](https://github.com/Chance-Konstruktion/kontinuum-core/blob/main/docs/PIPELINE.md).
+[`docs/PIPELINE.md`](https://gitlab.schanz.ipv64.net/chance-konstruktion/kontinuum-core/-/blob/main/docs/PIPELINE.md).
 
 ```python
 class KontinuumEngine:
