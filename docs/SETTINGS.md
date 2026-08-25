@@ -4,8 +4,8 @@ Alle Optionen der Integration, was sie bewirken und empfohlene Werte.
 Erreichbar über **Einstellungen → Geräte & Dienste → KONTINUUM → Konfigurieren**.
 
 Die Gehirn-Module selbst sind in der Engine `kontinuum-core` dokumentiert:
-[MODULES.md](https://github.com/Chance-Konstruktion/kontinuum-core/blob/main/docs/MODULES.md) ·
-[PIPELINE.md](https://github.com/Chance-Konstruktion/kontinuum-core/blob/main/docs/PIPELINE.md).
+[MODULES.md](https://gitlab.schanz.ipv64.net/chance-konstruktion/kontinuum-core/-/blob/main/docs/MODULES.md) ·
+[PIPELINE.md](https://gitlab.schanz.ipv64.net/chance-konstruktion/kontinuum-core/-/blob/main/docs/PIPELINE.md).
 
 ---
 
