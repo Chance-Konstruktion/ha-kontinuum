@@ -1,0 +1,27 @@
+# Ausnahmen fuer die Geheimnis-Suche.
+#
+# Drei Fundstellen, alle dasselbe: ein Home-Assistant-Langzeittoken in
+# kontinuum.html, Zeile 372. Es kam mit der GitHub-Historie in dieses
+# Repo, die am 03.09.2026 uebernommen wurde.
+#
+# Der Fund war ECHT, kein Fehlalarm:
+#   Format   HS256-JWT, Home-Assistant-Langzeittoken
+#   Gueltig  26.02.2026 bis 24.02.2036
+#   Lage     aus dem aktuellen Stand entfernt, in der Historie enthalten
+#   Sichtbar das Repo war auf GitHub oeffentlich -- rund ein halbes Jahr
+#
+# **Das Token ist am 03.09.2026 in Home Assistant widerrufen worden.**
+# Damit ist der Wert entwertet und die Fundstelle nur noch Geschichte.
+# Erst danach ist diese Datei angelegt worden -- eine Ausnahme vor dem
+# Widerruf waere Zudecken statt Beheben gewesen.
+#
+# Die Historie selbst wird bewusst nicht umgeschrieben: Das Token war
+# oeffentlich, ein Rewrite holt es nicht zurueck, und die Vorgeschichte
+# des Projekts ist mehr wert als eine kosmetisch saubere Historie.
+#
+# Jeder Eintrag nagelt Commit, Datei, Regel und Zeile fest. Ein neues
+# Token in derselben Datei wuerde gemeldet, weil es anderswo stuende.
+
+0e877de4ed7c05762831647947f5be5c7be6a2a4:custom_components/kontinuum/assets/kontinuum.html:jwt:372
+51b91219f10f29259175df75bed9559c367005d0:www/kontinuum.html:jwt:372
+3b4be160a7709824e12153f91c604f23da41032e:kontinuum.html:jwt:372
