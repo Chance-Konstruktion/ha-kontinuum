@@ -25,6 +25,18 @@
   auch ohne eingehende Events. Der Timer wird beim Entladen sauber abgemeldet.
   Die Consolidation-Logik ist in `_maybe_consolidate()` extrahiert und wird von
   Event-Pfad und Heartbeat geteilt (identisches Gating).
+- **Jeder State-Change lief in einen TypeError.** `_maybe_consolidate()` rief
+  `should_consolidate(last_event_ts)` mit einem Argument auf, seit
+  kontinuum-core 0.6.3 die Gates auf Event-Zeit umgestellt hat und
+  `should_consolidate(now_ts, last_event_ts)` erwartet. Der Wert rutschte in den
+  `now_ts`-Platz, `last_event_ts` fehlte — jeder Zustandswechsel und jeder
+  Idle-Heartbeat endete in `KONTINUUM Fehler: ... missing 1 required positional
+  argument`, und konsolidiert wurde nie. Der Aufruf reicht jetzt beide Werte
+  durch und gibt dieselbe Zeit auch an `consolidate(now_ts=...)`, damit
+  Cooldown-Stempel und Gate auf einer Uhr rechnen. Der Test dazu hatte einen
+  handgeschriebenen Ersatz mit der alten Signatur und blieb deshalb grün; er
+  spiegelt jetzt die echte Signatur und prüft sie per `inspect.signature`
+  gegen `kontinuum_core`.
 
 ### Changed
 - Mindest-Abhängigkeit **kontinuum-core >= 0.6.3** (Manifest).

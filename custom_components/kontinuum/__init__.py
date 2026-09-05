@@ -297,22 +297,32 @@ def _write_history_entry(data_dir: str, entry_type: str, data: dict):
 # SETUP – Config Flow Entry Point
 # ══════════════════════════════════════════════════════════════════
 
-def _maybe_consolidate(brain: dict) -> None:
+def _maybe_consolidate(brain: dict, now_ts: float | None = None) -> None:
     """Run sleep consolidation if a quiet spell is due.
 
     Shared by the event path and the idle heartbeat so both use identical
     gating. Self-gating and cheap: ``should_consolidate`` returns False unless
     ≥30 min have passed since the last event (plus cooldown), so calling this
     on a frequent timer is safe. Reads its modules from the brain dict.
+
+    ``now_ts`` is the current time on the same clock as ``_last_event_ts``
+    (epoch float). kontinuum-core gates consolidation in that time base and
+    takes it as an explicit argument — passing it here keeps the cooldown
+    stamp (``consolidate``) and the gate (``should_consolidate``) on one
+    clock. Defaults to the wall clock, which is what the event path writes
+    into ``_last_event_ts``.
     """
     sc = brain.get("sleep_consolidation")
     if sc is None:
         return
+    if now_ts is None:
+        now_ts = time.time()
     last_event_ts = brain.get("_last_event_ts", 0.0)
-    if sc.should_consolidate(last_event_ts):
+    if sc.should_consolidate(now_ts, last_event_ts):
         stats = sc.consolidate(
             brain["hippocampus"], brain["cerebellum"], brain["basal_ganglia"],
             neurorhythms=brain.get("neurorhythms"), bdnf=brain.get("bdnf"),
+            now_ts=now_ts,
         )
         brain["_last_consolidation"] = stats
         _LOGGER.info("Sleep Consolidation: %s", stats)
@@ -807,7 +817,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 # ── Sleep Consolidation: In ruhigen Phasen konsolidieren ──
                 # Also driven by an idle heartbeat (see below) so it still runs
                 # when no state changes arrive — the case it was missing before.
-                _maybe_consolidate(brain)
+                _maybe_consolidate(brain, now_ts)
 
                 # ignore_kontinuum Labels periodisch refreshen (v0.15.0)
                 if now_ts - brain.get("_last_label_refresh", 0) > 300:
