@@ -6,6 +6,7 @@ der Verdrahtung verifiziert wird – nicht nur Mock-Verhalten.
 
 Benötigt installiertes homeassistant + kontinuum-core (wie die Smoke-CI).
 """
+import inspect
 from types import SimpleNamespace
 
 from kontinuum_core.anterior_cingulate import AnteriorCingulateCortex
@@ -198,15 +199,25 @@ from custom_components.kontinuum import _maybe_consolidate
 
 
 class _FakeSleepConsolidation:
+    """Stand-in with the *real* SleepConsolidation signature.
+
+    The signature is asserted against kontinuum_core below — a fake that
+    quietly drifts from the real one is how the missing ``now_ts`` argument
+    stayed green in CI while every state change raised a TypeError in HA.
+    """
+
     def __init__(self, due: bool) -> None:
         self._due = due
         self.calls = 0
+        self.seen = None
 
-    def should_consolidate(self, last_event_ts) -> bool:
+    def should_consolidate(self, now_ts, last_event_ts) -> bool:
+        self.seen = (now_ts, last_event_ts)
         return self._due
 
     def consolidate(self, *args, **kwargs) -> dict:
         self.calls += 1
+        self.consolidate_kwargs = kwargs
         return {"replayed": 7}
 
 
@@ -241,3 +252,26 @@ def test_maybe_consolidate_skips_when_not_due():
 def test_maybe_consolidate_safe_without_module():
     # Missing sleep_consolidation key must not raise (defensive for partial brains).
     _maybe_consolidate({})
+
+
+def test_maybe_consolidate_passes_now_and_last_event_ts():
+    # kontinuum-core gates in event time: it needs *both* the current
+    # timestamp and the previous event's. Passing only one shifted every
+    # argument by one slot and raised TypeError on each state change.
+    sc = _FakeSleepConsolidation(due=True)
+    brain = _consolidation_brain(sc)
+    brain["_last_event_ts"] = 1000.0
+    _maybe_consolidate(brain, 5000.0)
+    assert sc.seen == (5000.0, 1000.0)
+    # The cooldown stamp must land on the same clock as the gate.
+    assert sc.consolidate_kwargs["now_ts"] == 5000.0
+
+
+def test_fake_matches_real_sleep_consolidation_signature():
+    # Contract test: the fake above may only stay a valid stand-in as long as
+    # it takes what the real class takes.
+    from kontinuum_core.sleep_consolidation import SleepConsolidation
+
+    real = inspect.signature(SleepConsolidation.should_consolidate)
+    fake = inspect.signature(_FakeSleepConsolidation.should_consolidate)
+    assert list(real.parameters) == list(fake.parameters)
