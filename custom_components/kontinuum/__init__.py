@@ -69,12 +69,13 @@ from kontinuum_core.interval_timing import IntervalTiming
 
 from .const import DOMAIN
 from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
+from .cortex_organ import anlass as cortex_anlass
 from .metaplasticity import MetaPlasticity
 from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 # Muss mit manifest.json "version" übereinstimmen
-VERSION = "0.29.1-experimental"
+VERSION = "0.30.0-experimental"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
@@ -510,6 +511,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if new_state == old_state:
                     return
 
+                # Cortex-Nachhall: Tat der Mensch gerade, was eine offene
+                # Beratung als Option hatte? (Stufe 3a, Lernen aus dem Ergebnis)
+                brain["cortex"].nachhall.beobachte(entity_id, new_state, time.time())
+
                 # KONTINUUM-eigene Sensoren ignorieren
                 if entity_id.startswith("sensor.kontinuum_"):
                     return
@@ -787,6 +792,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 brain["_last_predictions"] = predictions
                 brain["_last_event_ts"] = time.time()
 
+                # ── Cortex als Organ (Stufe 3a) ──
+                # Gefragt wird nur bei echtem Anlass: Die Engine ist unsicher
+                # (knappe Marge) oder überrascht (Anomalie) – nie im
+                # Kaltstart und höchstens alle 15 Minuten. Die Beratung läuft
+                # als eigene Aufgabe, der Event-Pfad wartet nicht darauf.
+                organ = brain["cortex"]
+                if organ.enabled and not organ.beschaeftigt:
+                    grund = cortex_anlass(
+                        hippocampus.total_events, predictions, anomaly_flag,
+                        time.time(), organ.letzte_beratung)
+                    if grund:
+                        hass.async_create_task(_run_cortex(hass, brain, grund))
+
                 # Sensoren updaten (native Entitäten via Dispatcher)
                 async_dispatcher_send(
                     hass, SIGNAL_SENSORS_UPDATE,
@@ -854,6 +872,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         # auch wenn keine Events kommen.
         @callback
         def _idle_heartbeat(_now):
+            try:
+                brain["cortex"].nachhall.abschliessen(time.time())
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.error("KONTINUUM Nachhall Fehler: %s", e)
             try:
                 _maybe_consolidate(brain)
             except Exception as e:  # noqa: BLE001 — a timer must never crash setup
@@ -1354,6 +1376,93 @@ def _cortex_action_to_decision(brain, action, entity, confidence):
     decision.source = "cortex"
     decision.stage = Decision.CONFIRM
     return decision
+
+
+async def _run_cortex(hass, brain, anlass):
+    """Eine Cortex-Beratung samt Verlauf, Meldung, Brücke ins Gehirn und
+    Confirm/Execute-Pipeline. Aufgerufen vom Dienst (``anlass="von Hand"``)
+    und aus dem Event-Pfad, wenn ``cortex_organ.anlass`` einen Grund nennt."""
+    cortex = brain["cortex"]
+    if not cortex.enabled:
+        _LOGGER.warning("Cortex nicht konfiguriert – nutze kontinuum.configure_agent")
+        return
+
+    result = await cortex.consult(brain, anlass=anlass)
+
+    # Agent-Sensoren updaten (unabhängig vom Ergebnis)
+    async_dispatcher_send(hass, SIGNAL_CORTEX_UPDATE)
+
+    if not result:
+        return
+
+    # ── History: Vollständige Diskussion loggen ────────
+    data_dir = brain.get("_data_dir", hass.config.path(DATA_DIR))
+    history_entry = {
+        "type": "cortex_consult",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "anlass": anlass,
+        "context": cortex._build_context(brain),
+        "menue": result.get("menue", []),
+        "wahl": result.get("wahl"),
+        "gestrichen": result.get("gestrichen", []),
+        "proposals": result.get("proposals", []),
+        "consensus": {
+            "action": result.get("consensus_action"),
+            "entity": result.get("consensus_entity"),
+            "reason": result.get("consensus_reason"),
+            "vetoed": result.get("vetoed", False),
+        },
+        "agents": [
+            {"name": a.name, "provider": a.provider,
+             "model": a.model}
+            for a in cortex.agents
+        ],
+    }
+    await hass.async_add_executor_job(
+        _write_history_entry, data_dir, "cortex_consult", history_entry
+    )
+
+    proposals_text = "\n".join(
+        f"- **{p.get('agent', '?')}**: Wahl {p.get('wahl', 0)} – {p.get('reason', '?')} "
+        f"(Sicherheit: {p.get('priority', 0)})"
+        + (f", streicht {p['gestrichen']}" if p.get("gestrichen") else "")
+        for p in result.get("proposals", [])
+    )
+    menue_zeilen = "\n".join(
+        f"{o['id']}: {o['text']}" for o in result.get("menue", []))
+
+    # Aus eigenem Anlass nur melden, wenn eine Aktion gewählt wurde – sonst
+    # stünde bei jeder knappen Vorhersage eine Meldung „nichts tun“ da.
+    if anlass != "von Hand" and not result.get("consensus_action"):
+        return
+
+    await hass.services.async_call("persistent_notification", "create", {
+        "title": f"KONTINUUM Cortex – Beratung ({anlass})",
+        "message": (
+            f"**Konsens:** {result.get('consensus_action') or 'Keine Aktion'}\n"
+            f"**Entity:** {result.get('consensus_entity') or '–'}\n"
+            f"**Grund:** {result.get('consensus_reason', '?')}\n"
+            f"**Gestrichen:** {result.get('gestrichen') or '–'}\n\n"
+            f"**Menü:**\n{menue_zeilen}\n\n"
+            f"**Stimmen:**\n{proposals_text}\n\n"
+            f"*Vollständiges Protokoll: /config/kontinuum/history/*"
+        ),
+        "notification_id": "kontinuum_cortex_result",
+    })
+
+    # ── Cortex → Gehirn: Ergebnisse integrieren ──────────
+    bridge_result = cortex.integrate_into_brain(brain, result)
+    if bridge_result.get("integrated"):
+        _LOGGER.info("Cortex Bridge: %s",
+                     ", ".join(bridge_result.get("actions", [])))
+
+    # Konsens-Aktion: validieren und gemäß Betriebsmodus durch die
+    # Confirm/Execute-Pipeline routen — NIE mehr ein ungeprüfter, den Modus
+    # ignorierender Service-Call (der vorher sogar im Shadow-Modus feuerte).
+    action = result.get("consensus_action")
+    entity = result.get("consensus_entity")
+    if action and entity and not result.get("vetoed"):
+        await _handle_cortex_action(hass, brain, action, entity, result)
 
 
 async def _handle_cortex_action(hass, brain, action, entity, result):
@@ -1865,85 +1974,7 @@ def _register_services(hass, brain):
         Löst manuell eine Cortex-Beratung aus.
         Service: kontinuum.cortex_consult
         """
-        cortex = brain["cortex"]
-        if not cortex.enabled:
-            _LOGGER.warning("Cortex nicht konfiguriert – nutze kontinuum.configure_agent")
-            return
-
-        result = await cortex.consult(brain)
-
-        # Agent-Sensoren updaten (unabhängig vom Ergebnis)
-        async_dispatcher_send(hass, SIGNAL_CORTEX_UPDATE)
-
-        if not result:
-            return
-
-        # ── History: Vollständige Diskussion loggen ────────
-        data_dir = brain.get("_data_dir", hass.config.path(DATA_DIR))
-        history_entry = {
-            "type": "cortex_consult",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "context": cortex._build_context(brain),
-            "discussion_rounds": result.get("discussion_rounds", 1),
-            "proposals": result.get("proposals", []),
-            "revisions": result.get("revisions", []),
-            "consensus": {
-                "action": result.get("consensus_action"),
-                "entity": result.get("consensus_entity"),
-                "reason": result.get("consensus_reason"),
-                "vetoed": result.get("vetoed", False),
-            },
-            "agents": [
-                {"name": a.name, "provider": a.provider,
-                 "model": a.model}
-                for a in cortex.agents
-            ],
-        }
-        await hass.async_add_executor_job(
-            _write_history_entry, data_dir, "cortex_consult", history_entry
-        )
-
-        proposals_text = "\n".join(
-            f"- **{p.get('agent', '?')}**: {p.get('reason', '?')} "
-            f"(Priorität: {p.get('priority', 0)})"
-            for p in result.get("proposals", [])
-        )
-
-        revisions_text = ""
-        if result.get("revisions"):
-            revisions_text = "\n\n**Revisionen (Runde 2):**\n" + "\n".join(
-                f"- **{r.get('agent', '?')}**: {r.get('reason', '?')} "
-                f"(Priorität: {r.get('priority', 0)})"
-                for r in result.get("revisions", [])
-            )
-
-        await hass.services.async_call("persistent_notification", "create", {
-            "title": f"KONTINUUM Cortex – Beratung ({result.get('discussion_rounds', 1)} Runden)",
-            "message": (
-                f"**Konsens:** {result.get('consensus_action') or 'Keine Aktion'}\n"
-                f"**Entity:** {result.get('consensus_entity') or '–'}\n"
-                f"**Grund:** {result.get('consensus_reason', '?')}\n"
-                f"**Veto:** {'JA' if result.get('vetoed') else 'Nein'}\n\n"
-                f"**Vorschläge (Runde 1):**\n{proposals_text}"
-                f"{revisions_text}\n\n"
-                f"*Vollständiges Protokoll: /config/kontinuum/history/*"
-            ),
-            "notification_id": "kontinuum_cortex_result",
-        })
-
-        # ── Cortex → Gehirn: Ergebnisse integrieren ──────────
-        bridge_result = cortex.integrate_into_brain(brain, result)
-        if bridge_result.get("integrated"):
-            _LOGGER.info("Cortex Bridge: %s",
-                         ", ".join(bridge_result.get("actions", [])))
-
-        # Konsens-Aktion: validieren und gemäß Betriebsmodus durch die
-        # Confirm/Execute-Pipeline routen — NIE mehr ein ungeprüfter, den Modus
-        # ignorierender Service-Call (der vorher sogar im Shadow-Modus feuerte).
-        action = result.get("consensus_action")
-        entity = result.get("consensus_entity")
-        if action and entity and not result.get("vetoed"):
-            await _handle_cortex_action(hass, brain, action, entity, result)
+        await _run_cortex(hass, brain, "von Hand")
 
     async def handle_set_mode(call):
         """

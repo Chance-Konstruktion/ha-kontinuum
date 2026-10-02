@@ -1,5 +1,47 @@
 # Changelog
 
+## experimental-v0.30.0 – Der Cortex wird zum Organ (unveröffentlicht)
+
+Die erste echte Beratung mit einem lokalen Modell (qwen3:8b über Ollama) endete
+im Konsens aller vier Agenten, einen Tür-Schalter zu betätigen, „um
+nachzusehen“. Gefragt wurde ohne Anlass, die Modelle durften jede Entität
+nennen und schrieben die Vorlage `"service.call"` wörtlich ab. Diese Version
+baut den Cortex um (neues Modul `cortex_organ.py`).
+
+### Changed
+- **Anlass statt Knopf.** Der Cortex wird jetzt aus dem Event-Pfad heraus
+  gefragt, wenn die Engine unsicher ist (die ersten beiden Vorhersagen liegen
+  näher als 0,10 beieinander, die erste zwischen 30 und 75 %) oder eine
+  Anomalie meldet. Das gilt nie im Kaltstart (unter 300 gelernten Ereignissen)
+  und höchstens alle 15 Minuten. `kontinuum.cortex_consult` funktioniert
+  weiter von Hand.
+- **Wählen statt Erfinden.** Die Agenten bekommen ein Menü aus echten
+  (Dienst, Entität)-Paaren, die die Engine selbst vorhergesagt hat. Option 0
+  heißt „nichts tun“. Was die Amygdala mit VETO belegt, kommt nicht ins Menü.
+  Bei Ollama erzwingt ein JSON-Schema mit `enum`, dass nur eine Menü-Nummer
+  zurückkommt. Bei allen Anbietern wird alles, was nicht im Menü steht, zu
+  „nichts tun“.
+- **„Nichts tun“ ist die Grundstellung.** Eine Option gewinnt nur mit
+  absoluter Mehrheit. Der Sicherheits-Agent kann Optionen streichen, bevor
+  gezählt wird. Die Diskussionsrunde entfällt, sie erzeugte Gruppendenken.
+  Auch der Koordinator wird im Organ-Modus nicht mehr gefragt.
+- **Ohne Denkmodus und ohne Doppelanfragen.** Ollama bekommt `think: false`.
+  Eine Zeitüberschreitung wird nicht mehr wiederholt, weil das dieselbe Frage
+  ein zweites Mal in die GPU-Schlange stellte. Das Zeitlimit je Agent liegt
+  bei 90 s.
+- Aus eigenem Anlass erscheint eine Meldung nur, wenn eine Aktion gewählt
+  wurde. Der Verlauf in `/config/kontinuum/history/` enthält jetzt Anlass,
+  Menü, Wahl und Streichungen.
+
+### Added
+- **Lernen aus dem Ergebnis (Nachhall).** Nach jeder Beratung wird
+  15 Minuten lang beobachtet, ob der Mensch eine der Optionen selbst
+  ausführt. Daraus entsteht eine Trefferquote je Agent, für den Konsens und
+  für zwei feste Gegner: `engine` (wählt immer die Top-Vorhersage) und
+  `nichts`. Ein Modell lohnt sich nur, wenn es beide schlägt. Die Quoten
+  stehen in den Cortex-Statistiken (`trefferquoten`) und überstehen einen
+  Neustart.
+
 ## experimental-v0.29.1 – Sleep Consolidation läuft wieder (2026-10-02)
 
 Wartungsrelease. v0.29.0 wurde am 23.07. ohne diesen Fix veröffentlicht. Seitdem

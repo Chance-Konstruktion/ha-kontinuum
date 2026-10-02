@@ -32,6 +32,16 @@ import aiohttp
 
 from kontinuum_core import build_llm_context, normalize_proposal, render_llm_context
 
+from .cortex_organ import (
+    NICHTS,
+    Nachhall,
+    antwort_schema,
+    baue_menue,
+    entscheide,
+    lies_wahl,
+    menue_text,
+)
+
 # ── Transiente Fehler für Retry ──────────────────────────────
 _TRANSIENT_ERRORS = (
     aiohttp.ClientError,
@@ -77,6 +87,12 @@ async def _retry_llm_call(coro_fn, max_retries=3):
                     await asyncio.sleep(delay)
                     continue
             # 4xx oder andere → permanent, abbrechen
+            raise
+        except (asyncio.TimeoutError, TimeoutError):
+            # Ein Modell, das das Zeitlimit reisst, rechnet meist noch: Eine
+            # Wiederholung stellt dieselbe Frage ein zweites Mal in die GPU-
+            # Schlange und verdoppelt die Last, statt zu helfen. In der ersten
+            # Beratung mit qwen3:8b wurde ein Agent so dreimal gefragt.
             raise
         except _TRANSIENT_ERRORS as e:
             last_error = e
@@ -179,13 +195,50 @@ DEFAULT_PROMPTS = {
 }
 
 
+# Rollen-Prompts für den Organ-Modus (Stufe 3a). Der Agent erfindet keine
+# Aktion mehr, er wählt eine Nummer aus dem Menü, das die Engine vorgibt.
+# Gemeinsam ist allen: „nichts tun“ ist richtig, solange keine Option klar
+# besser ist – ein Haus, das zu oft schaltet, nervt mehr als eines, das zu
+# selten schaltet.
+_ORGAN_GRUNDREGEL = (
+    "Du wählst aus einem Menü, das KONTINUUM dir vorlegt. Erfinde nichts: "
+    "Jede Option ist eine Vorhersage der Engine über das, was die Bewohner "
+    "gleich selbst tun würden. Option 0 heißt nichts tun. Wähle 0, wenn keine "
+    "Option klar besser ist oder dir Informationen fehlen. Antworte nur mit "
+    'JSON: {"wahl": <Nummer>, "grund": "ein Satz", "sicherheit": 0-100}'
+)
+ORGAN_PROMPTS = {
+    "energy": "Du bist der Energie-Agent von KONTINUUM. Du achtest auf "
+              "Verbrauch, Solar und Batterie. " + _ORGAN_GRUNDREGEL,
+    "comfort": "Du bist der Komfort-Agent von KONTINUUM. Du achtest darauf, "
+               "dass die Bewohner nichts selbst tun müssen, was sie "
+               "erwartbar gleich tun würden. " + _ORGAN_GRUNDREGEL,
+    "safety": "Du bist der Sicherheits-Agent von KONTINUUM. Du darfst "
+              "Optionen streichen, die riskant sind (Türen, Heizung bei "
+              "Abwesenheit, alles, was Menschen gefährden oder aussperren "
+              "könnte). " + _ORGAN_GRUNDREGEL[:-1]
+              + ', "veto": [Nummern, die gestrichen werden]}',
+}
+
+
+def organ_prompt(name: str) -> str:
+    return ORGAN_PROMPTS.get(name, "Du bist ein Agent von KONTINUUM. "
+                             + _ORGAN_GRUNDREGEL)
+
+
 # ══════════════════════════════════════════════════════════════════
 # LLM Provider – Pure HTTP, keine SDKs
 # ══════════════════════════════════════════════════════════════════
 
 async def _call_ollama(session, url, model, system_prompt, user_msg,
-                      keep_alive=None, timeout=30):
-    """Ollama /api/chat endpoint."""
+                      keep_alive=None, timeout=30, fmt=None, think=None):
+    """Ollama /api/chat endpoint.
+
+    ``fmt`` ist ein JSON-Schema (Ollama hält sich beim Erzeugen daran) oder
+    None für einfaches JSON. ``think=False`` schaltet den Denkmodus von
+    Modellen wie qwen3 ab – sonst denkt jedes Modell vor einer Menüwahl
+    mehrere tausend Zeichen lang.
+    """
     payload = {
         "model": model,
         "messages": [
@@ -193,8 +246,10 @@ async def _call_ollama(session, url, model, system_prompt, user_msg,
             {"role": "user", "content": user_msg},
         ],
         "stream": False,
-        "format": "json",
+        "format": fmt if fmt is not None else "json",
     }
+    if think is not None:
+        payload["think"] = think
     # keep_alive=0 → Modell sofort aus VRAM entladen nach Antwort
     if keep_alive is not None:
         payload["keep_alive"] = keep_alive
@@ -290,12 +345,19 @@ async def _call_gemini(session, url, api_key, model, system_prompt, user_msg):
 # ══════════════════════════════════════════════════════════════════
 
 async def _call_llm(session, provider, url, api_key, model,
-                    system_prompt, user_msg, keep_alive=None, timeout=30):
-    """Dispatcht den LLM-Call an den richtigen Provider (mit Retry)."""
+                    system_prompt, user_msg, keep_alive=None, timeout=30,
+                    fmt=None, think=None):
+    """Dispatcht den LLM-Call an den richtigen Provider (mit Retry).
+
+    ``fmt`` und ``think`` versteht nur Ollama; die Cloud-Anbieter bekommen
+    das Antwortformat über den Prompt und ``lies_wahl`` fängt alles ab, was
+    nicht im Menü steht.
+    """
     async def _do_call():
         if provider == "ollama":
             return await _call_ollama(session, url, model, system_prompt, user_msg,
-                                      keep_alive=keep_alive, timeout=timeout)
+                                      keep_alive=keep_alive, timeout=timeout,
+                                      fmt=fmt, think=think)
         elif provider in ("openai", "grok"):
             return await _call_openai(session, url, api_key, model,
                                       system_prompt, user_msg)
@@ -376,6 +438,34 @@ class CortexAgent:
                     "reason": str(e)[:100], "priority": 0, "veto": False,
                     "valid": False}
 
+    async def waehle(self, frage: str, menue: list,
+                     session: aiohttp.ClientSession,
+                     keep_alive=None, timeout=90) -> dict:
+        """Lässt den Agent eine Nummer aus dem Menü wählen (Organ-Modus)."""
+        self.last_call_time = time.time()
+        self.total_calls += 1
+        sicherheit = self.name == "safety"
+        try:
+            roh = await _call_llm(
+                session, self.provider, self.url, self.api_key, self.model,
+                organ_prompt(self.name), frage,
+                keep_alive=keep_alive, timeout=timeout,
+                fmt=antwort_schema(menue, mit_veto=sicherheit), think=False,
+            )
+        except Exception as e:  # noqa: BLE001 – ein Agent darf die Runde nicht sprengen
+            self.total_errors += 1
+            _LOGGER.error("Cortex %s Fehler: %s", self.name, _describe_error(e))
+            return {"agent": self.name, "wahl": NICHTS, "grund": _describe_error(e),
+                    "sicherheit": 0, "veto": [], "gueltig": False}
+        stimme = lies_wahl(roh, menue, agent=self.name)
+        if not sicherheit:
+            stimme["veto"] = []
+        if not stimme["gueltig"]:
+            self.total_errors += 1
+            _LOGGER.warning("Cortex %s: keine gültige Wahl: %s", self.name, str(roh)[:200])
+        self.last_response = stimme
+        return stimme
+
     @property
     def stats(self) -> dict:
         return {
@@ -420,6 +510,11 @@ class Cortex:
         self.total_discussions = 0
         self.last_consensus = None
         self._session = None
+        # Organ-Modus (Stufe 3a)
+        self.zeitlimit = 90           # Sekunden je Agent, ohne Wiederholung
+        self.letzte_beratung = 0.0    # für den Mindestabstand aus eigenem Anlass
+        self.nachhall = Nachhall()
+        self.beschaeftigt = False
 
     def configure(self, agent_configs: list):
         """
@@ -452,131 +547,101 @@ class Cortex:
 
     # ── Hauptmethode ────────────────────────────────────────────
 
-    async def consult(self, brain: dict) -> dict:
-        """
-        Befragt alle Agents in 2 Runden und gibt Konsens zurück.
+    async def consult(self, brain: dict, anlass: str = "von Hand") -> dict:
+        """Eine Beratung im Organ-Modus.
 
-        Runde 1: Jeder Agent analysiert den Haus-Zustand
-        Runde 2: Agents sehen alle Vorschläge und können revidieren
-        Final:   KONTINUUM (Prefrontal) entscheidet
+        Das Menü kommt aus den letzten Vorhersagen der Engine. Jeder
+        Fach-Agent wählt einmal, unabhängig von den anderen (keine
+        Diskussionsrunde – die erzeugte in der ersten Beratung Gruppendenken).
+        Die Sicherheit kann Optionen streichen. Gezählt wird mit
+        ``entscheide``: Ohne absolute Mehrheit für eine Option bleibt es bei
+        „nichts tun“. Ein Koordinator wird im Organ-Modus nicht gefragt.
 
-        Returns: {
-            "consensus_action": str or None,
-            "consensus_entity": str or None,
-            "consensus_reason": str,
-            "proposals": [Runde-1-Vorschläge],
-            "revisions": [Runde-2-Revisionen],
-            "discussion_rounds": int,
-            "vetoed": bool,
-        }
+        Das Ergebnis hat dieselben Schlüssel wie früher
+        (``consensus_action`` …), damit Verlauf, Benachrichtigung und die
+        Confirm/Execute-Pipeline unverändert weiterarbeiten.
         """
         now = time.time()
-        if now - self.last_run < self.MIN_INTERVAL:
+        if now - self.last_run < self.MIN_INTERVAL or not self.agents or self.beschaeftigt:
             return None
 
-        if not self.agents:
-            return None
-
+        menue = baue_menue(
+            brain.get("_last_predictions") or [], brain["thalamus"],
+            getattr(brain.get("prefrontal"), "amygdala", None),
+        )
         self.last_run = now
+        self.letzte_beratung = now
         self.total_consultations += 1
 
-        context = self._build_context(brain)
+        if len(menue) < 2:
+            ergebnis = self._ergebnis(menue, [], {
+                "wahl": NICHTS, "gestrichen": [],
+                "grund": "kein Menü: die Engine sagt gerade nichts Ausführbares voraus",
+            }, anlass)
+            self.last_consensus = ergebnis
+            return ergebnis
+
+        frage = (
+            self._zustand_text(brain)
+            + f"Anlass der Frage: {anlass}\n\n"
+            + "Menü (wähle genau eine Nummer):\n" + menue_text(menue)
+        )
 
         if not self._session or self._session.closed:
             self._session = aiohttp.ClientSession()
 
-        # Coordinator separieren (nimmt nicht an Runde 1 teil)
-        worker_agents = [a for a in self.agents if a.name != "coordinator"]
-        coordinator = next(
-            (a for a in self.agents if a.name == "coordinator"), None
-        )
+        fach = [a for a in self.agents if a.name != "coordinator"] or self.agents
+        self.beschaeftigt = True
+        try:
+            stimmen = []
+            for agent in fach:
+                # Nacheinander: eine GPU, ein Modell zur Zeit. keep_alive=0
+                # nur im sequentiellen Modus (dann teilen sich mehrere
+                # Modelle den Speicher), sonst bleibt das Modell warm.
+                ka = 0 if (agent.provider == "ollama" and self.sequential_mode) else None
+                stimmen.append(await agent.waehle(frage, menue, self._session,
+                                                  keep_alive=ka, timeout=self.zeitlimit))
+        finally:
+            self.beschaeftigt = False
 
-        # ── Runde 1: Initiale Vorschläge (nur Worker-Agents) ───
-        # Prepend the core LLM-context block: labeled brain state WITH the
-        # anomaly/surprise signal and explicit 0–1 scales, so the agents reason
-        # over interpretable data instead of bare numbers.
-        context_msg = self._brain_state_block(brain) + self._format_context(context)
-        active_agents = worker_agents or self.agents
+        entscheidung = entscheide(stimmen, menue)
+        self.nachhall.merke(now, menue, stimmen, entscheidung)
+        ergebnis = self._ergebnis(menue, stimmen, entscheidung, anlass)
+        self.last_consensus = ergebnis
+        _LOGGER.info("Cortex (%s): Wahl %s – %s", anlass, entscheidung["wahl"],
+                     entscheidung["grund"][:100])
+        return ergebnis
 
-        if self.sequential_mode:
-            # v0.18.0: Sequentiell – für Single-GPU/Ollama-Instanzen
-            # v0.21.0: keep_alive=0 im Chat-Payload → VRAM sofort frei nach Antwort
-            proposals = []
-            for agent in active_agents:
-                ka = 0 if agent.provider == "ollama" else None
-                result = await agent.think(context_msg, self._session,
-                                           keep_alive=ka)
-                proposals.append(result)
-        else:
-            tasks = [
-                agent.think(context_msg, self._session)
-                for agent in active_agents
-            ]
-            proposals = await asyncio.gather(*tasks)
+    @staticmethod
+    def _ergebnis(menue, stimmen, entscheidung, anlass):
+        option = next((o for o in menue if o["id"] == entscheidung["wahl"]), None)
+        aktion = option.get("aktion") if option else None
+        return {
+            "consensus_action": aktion,
+            "consensus_entity": option.get("entity_id") if aktion else None,
+            "consensus_reason": entscheidung["grund"],
+            "proposals": [
+                {"agent": st["agent"], "wahl": st["wahl"], "reason": st["grund"],
+                 "priority": st["sicherheit"], "gestrichen": st["veto"],
+                 "veto": False, "action": None}
+                for st in stimmen
+            ],
+            "revisions": [],
+            "discussion_rounds": 1,
+            "vetoed": False,
+            "anlass": anlass,
+            "wahl": entscheidung["wahl"],
+            "gestrichen": entscheidung["gestrichen"],
+            "menue": menue,
+        }
 
-        _LOGGER.info(
-            "Cortex Runde 1: %d Vorschläge erhalten",
-            len([p for p in proposals if p.get("action")])
-        )
-
-        # ── Runde 2: Diskussion (nur wenn >1 Worker-Agent) ─────
-        revisions = []
-        active_agents = worker_agents or self.agents
-        needs_discussion = (
-            self.discussion_rounds >= 2
-            and len(active_agents) > 1
-            and self._has_disagreement(proposals)
-        )
-
-        if needs_discussion:
-            self.total_discussions += 1
-            discussion_msg = self._format_discussion(context, proposals)
-
-            if self.sequential_mode:
-                revisions = []
-                for agent in active_agents:
-                    ka = 0 if agent.provider == "ollama" else None
-                    result = await agent.think(discussion_msg, self._session,
-                                               keep_alive=ka)
-                    revisions.append(result)
-            else:
-                tasks = [
-                    agent.think(discussion_msg, self._session)
-                    for agent in active_agents
-                ]
-                revisions = await asyncio.gather(*tasks)
-
-            _LOGGER.info(
-                "Cortex Runde 2 (Diskussion): %d Revisionen",
-                len([r for r in revisions if r.get("action")])
-            )
-
-        # ── Finale Entscheidung ─────────────────────────────────
-        final_proposals = revisions if revisions else proposals
-
-        if coordinator:
-            # Coordinator entscheidet via LLM
-            consensus = await self._coordinator_decide(
-                coordinator, context, final_proposals
-            )
-        else:
-            # Algorithmischer Konsens (Prefrontal = Leader)
-            consensus = self._resolve_consensus(final_proposals)
-        consensus["proposals"] = proposals
-        consensus["revisions"] = revisions
-        consensus["discussion_rounds"] = 2 if needs_discussion else 1
-
-        self.last_consensus = consensus
-
-        _LOGGER.info(
-            "Cortex Konsens (%d Runden): action=%s, reason=%s, vetoed=%s",
-            consensus["discussion_rounds"],
-            consensus.get("consensus_action"),
-            consensus.get("consensus_reason", "")[:80],
-            consensus.get("vetoed", False),
-        )
-
-        return consensus
+    def _zustand_text(self, brain: dict) -> str:
+        """Zustand für den Prompt – ohne die Liste „Known entities you may
+        control“: Im Organ-Modus steht im Menü, was geht, und sonst nichts."""
+        try:
+            return render_llm_context(build_llm_context(brain)) + "\n\n"
+        except Exception:  # noqa: BLE001
+            return ""
 
     # ── Kontext-Aufbau ──────────────────────────────────────────
 
@@ -673,269 +738,6 @@ class Cortex:
             f"\nWas schlägst du vor?"
         )
 
-    def _format_discussion(self, context: dict,
-                           proposals: list) -> str:
-        """
-        Formatiert die Diskussions-Nachricht für Runde 2.
-        Jeder Agent sieht ALLE Vorschläge der anderen.
-        """
-        lines = [
-            "DISKUSSIONSRUNDE – Du siehst jetzt die Vorschläge aller Agents.",
-            "Überdenke deinen eigenen Vorschlag im Licht der anderen.",
-            "Du darfst deine Meinung ändern oder bekräftigen.",
-            "",
-            "=== Aktueller Haus-Zustand ===",
-            f"Modus: {context.get('mode', '?')} | "
-            f"Risiko: {context.get('risk', 0):.2f} | "
-            f"Energie: {context.get('energy', '?')} | "
-            f"Dopamin: {context.get('dopamine', 0):.3f}",
-            "",
-            "=== Vorschläge der anderen Agents ===",
-        ]
-
-        for p in proposals:
-            agent_name = p.get("agent", "?")
-            action = p.get("action") or "keine Aktion"
-            entity = p.get("entity_id") or ""
-            reason = p.get("reason", "?")
-            priority = p.get("priority", 0)
-            veto = p.get("veto", False)
-
-            lines.append(
-                f"  [{agent_name}] → {action} {entity} "
-                f"(Priorität: {priority}"
-                f"{', VETO!' if veto else ''}) "
-                f"Grund: {reason}"
-            )
-
-        lines.extend([
-            "",
-            "Basierend auf diesen Informationen: "
-            "Was ist dein revidierter Vorschlag?",
-            "Antworte mit dem gleichen JSON-Format.",
-        ])
-
-        return "\n".join(lines)
-
-    # ── Diskussion nötig? ───────────────────────────────────────
-
-    def _has_disagreement(self, proposals: list) -> bool:
-        """
-        Prüft ob die Agents sich widersprechen → Diskussion nötig.
-
-        Uneinig wenn:
-        - Verschiedene Actions vorgeschlagen werden
-        - Prioritäten >30 Punkte auseinander liegen
-        - Ein Agent VETO hat, andere nicht
-        """
-        actions = set()
-        priorities = []
-        has_veto = False
-        has_no_veto = False
-
-        for p in proposals:
-            action = p.get("action")
-            if action:
-                actions.add(action)
-            priorities.append(p.get("priority", 0))
-
-            if p.get("veto"):
-                has_veto = True
-            else:
-                has_no_veto = True
-
-        # Veto-Konflikt
-        if has_veto and has_no_veto:
-            _LOGGER.info("Cortex: Diskussion nötig – Veto-Konflikt")
-            return True
-
-        # Verschiedene Actions
-        if len(actions) > 1:
-            _LOGGER.info("Cortex: Diskussion nötig – verschiedene Actions: %s",
-                         actions)
-            return True
-
-        # Große Prioritäts-Unterschiede
-        if priorities and (max(priorities) - min(priorities)) > 30:
-            _LOGGER.info("Cortex: Diskussion nötig – Prioritäts-Spread: %d",
-                         max(priorities) - min(priorities))
-            return True
-
-        return False
-
-    # ── Konsens-Bildung (KONTINUUM ist Leader) ──────────────────
-
-    async def _coordinator_decide(self, coordinator, context, proposals):
-        """Coordinator-Agent trifft finale Entscheidung über alle Vorschläge."""
-        # Safety-Veto prüfen (hat immer absoluten Vorrang, auch vor Coordinator)
-        for p in proposals:
-            if p.get("veto", False):
-                _LOGGER.warning("Cortex VETO (vor Coordinator): %s", p.get("reason"))
-                return {
-                    "consensus_action": None,
-                    "consensus_entity": None,
-                    "consensus_reason": (
-                        f"VETO von {p.get('agent', '?')}: {p.get('reason', '')}"
-                    ),
-                    "vetoed": True,
-                }
-
-        # Coordinator bekommt Kontext + alle Vorschläge
-        lines = [
-            "=== HAUS-ZUSTAND ===",
-            self._format_context(context),
-            "",
-            "=== VORSCHLÄGE DER AGENTS ===",
-        ]
-        for p in proposals:
-            agent_name = p.get("agent", "?")
-            action = p.get("action") or "keine Aktion"
-            entity = p.get("entity_id") or ""
-            reason = p.get("reason", "?")
-            priority = p.get("priority", 0)
-            lines.append(
-                f"  [{agent_name}] → {action} {entity} "
-                f"(Priorität: {priority}) Grund: {reason}"
-            )
-        lines.extend([
-            "",
-            "Du bist der Coordinator. Triff die finale Entscheidung.",
-            "Wähle den besten Vorschlag oder kombiniere sie.",
-            "Antworte NUR mit JSON: "
-            '{"action": "...", "entity_id": "...", "reason": "...", "priority": 0-100}',
-        ])
-
-        # Coordinator: keep_alive=0 (VRAM freigeben) + 90s Timeout (großer Prompt)
-        ka = 0 if coordinator.provider == "ollama" else None
-        decision = await coordinator.think(
-            "\n".join(lines), self._session,
-            keep_alive=ka, timeout=90,
-        )
-
-        action = decision.get("action")
-        entity = decision.get("entity_id")
-        reason = decision.get("reason", "")
-
-        # Fallback: Wenn Coordinator leer antwortet, besten Vorschlag nehmen
-        if not action or not reason:
-            valid = [p for p in proposals if p.get("action") and not p.get("veto")]
-            if valid:
-                best = max(valid, key=lambda p: p.get("priority", 0))
-                action = action or best.get("action")
-                entity = entity or best.get("entity_id")
-                reason = reason or (
-                    f"Fallback: {best.get('agent', '?')} "
-                    f"(Prio {best.get('priority', 0)}): {best.get('reason', '?')}"
-                )
-                _LOGGER.info(
-                    "Cortex Coordinator-Fallback: %s → %s (Coordinator war leer)",
-                    action, entity,
-                )
-
-        result = {
-            "consensus_action": action,
-            "consensus_entity": entity,
-            "consensus_reason": f"Coordinator: {reason}" if reason else "Coordinator: keine Entscheidung",
-            "vetoed": False,
-        }
-
-        _LOGGER.info("Cortex Coordinator-Entscheidung: %s", result["consensus_reason"][:80])
-        return result
-
-    def _resolve_consensus(self, proposals: list) -> dict:
-        """
-        KONTINUUM (Prefrontal) als Leader – entscheidet ohne extra LLM.
-
-        Algorithmus:
-        1. Safety-Veto hat absoluten Vorrang
-        2. Einigkeit → sofort übernehmen
-        3. Mehrheit → Mehrheitsentscheid
-        4. Keine Mehrheit → höchste Priorität gewinnt
-        """
-        result = {
-            "consensus_action": None,
-            "consensus_entity": None,
-            "consensus_reason": "Kein Vorschlag",
-            "proposals": proposals,
-            "revisions": [],
-            "discussion_rounds": 1,
-            "vetoed": False,
-        }
-
-        # 1. Safety-Veto hat absoluten Vorrang
-        for p in proposals:
-            if p.get("veto", False):
-                result["vetoed"] = True
-                result["consensus_reason"] = (
-                    f"VETO von {p.get('agent', '?')}: {p.get('reason', '')}"
-                )
-                _LOGGER.warning("Cortex VETO: %s",
-                                result["consensus_reason"])
-                return result
-
-        # Nur actionable Vorschläge betrachten
-        actionable = [
-            p for p in proposals
-            if p.get("action") and p.get("priority", 0) > 0
-        ]
-
-        if not actionable:
-            result["consensus_reason"] = (
-                "Alle Agents: keine Aktion nötig"
-            )
-            return result
-
-        # 2. Einigkeit prüfen (alle gleiche Action?)
-        actions = {}
-        for p in actionable:
-            key = f"{p.get('action')}|{p.get('entity_id', '')}"
-            actions.setdefault(key, []).append(p)
-
-        if len(actions) == 1:
-            # Einigkeit! Durchschnittliche Priorität
-            group = list(actions.values())[0]
-            winner = max(group, key=lambda x: x.get("priority", 0))
-            reasons = [
-                f"{p.get('agent', '?')}: {p.get('reason', '?')}"
-                for p in group
-            ]
-            result["consensus_action"] = winner.get("action")
-            result["consensus_entity"] = winner.get("entity_id")
-            result["consensus_reason"] = (
-                f"Einigkeit ({len(group)}/{len(proposals)}): "
-                + " | ".join(reasons)
-            )
-            return result
-
-        # 3. Mehrheitsentscheid
-        biggest_group = max(actions.values(), key=len)
-        if len(biggest_group) > len(proposals) / 2:
-            winner = max(biggest_group,
-                         key=lambda x: x.get("priority", 0))
-            reasons = [
-                f"{p.get('agent', '?')}: {p.get('reason', '?')}"
-                for p in biggest_group
-            ]
-            result["consensus_action"] = winner.get("action")
-            result["consensus_entity"] = winner.get("entity_id")
-            result["consensus_reason"] = (
-                f"Mehrheit ({len(biggest_group)}/{len(proposals)}): "
-                + " | ".join(reasons)
-            )
-            return result
-
-        # 4. Keine Mehrheit → höchste Priorität gewinnt
-        actionable.sort(key=lambda x: x.get("priority", 0), reverse=True)
-        winner = actionable[0]
-        result["consensus_action"] = winner.get("action")
-        result["consensus_entity"] = winner.get("entity_id")
-        result["consensus_reason"] = (
-            f"Priorität ({winner.get('priority', 0)}): "
-            f"{winner.get('agent', '?')}: {winner.get('reason', '')}"
-        )
-
-        return result
-
     # ── Session / Lifecycle ─────────────────────────────────────
 
     async def close(self):
@@ -951,6 +753,7 @@ class Cortex:
             "total_consultations": self.total_consultations,
             "total_discussions": self.total_discussions,
             "last_consensus": self.last_consensus,
+            "trefferquoten": self.nachhall.quoten(),
         }
 
     def to_dict(self) -> dict:
@@ -960,6 +763,8 @@ class Cortex:
             "sequential_mode": self.sequential_mode,
             "discussion_rounds": self.discussion_rounds,
             "agent_stats": [a.stats for a in self.agents],
+            "letzte_beratung": self.letzte_beratung,
+            "nachhall": self.nachhall.to_dict(),
         }
 
     # ── Bridge: Cortex-Ergebnisse ins Gehirn einbinden ────────
@@ -1108,6 +913,8 @@ class Cortex:
         self.total_discussions = data.get("total_discussions", 0)
         self.sequential_mode = data.get("sequential_mode", False)
         self.discussion_rounds = data.get("discussion_rounds", self.MAX_DISCUSSION_ROUNDS)
+        self.letzte_beratung = data.get("letzte_beratung", 0.0)
+        self.nachhall.from_dict(data.get("nachhall"))
 
     # ── Brain Review: Periodische Gehirn-Analyse durch LLM ────
 
