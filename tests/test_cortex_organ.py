@@ -9,6 +9,11 @@ Modell: Vier Agenten einigten sich darauf, einen Tür-Schalter zu betätigen,
 - „nichts tun“ gewinnt, solange keine Option eine absolute Mehrheit hat;
 - eine Zeitüberschreitung wird nicht wiederholt;
 - aus dem, was der Mensch danach tut, entsteht eine Trefferquote.
+
+
+Die asynchronen Tests laufen über pytest-asyncio, nicht über asyncio.run():
+asyncio.run() schließt die Ereignisschleife, und die Fixtures von
+pytest-homeassistant-custom-component scheitern danach in jedem weiteren Test.
 """
 import asyncio
 
@@ -212,13 +217,14 @@ def _brain(t, preds):
     return {"thalamus": t, "_last_predictions": preds, "prefrontal": _Pfc()}
 
 
-def test_beratung_waehlt_aus_dem_menue(haus):
+@pytest.mark.asyncio
+async def test_beratung_waehlt_aus_dem_menue(haus):
     t, preds = haus
     c = Cortex()
     c.agents = [_Agent("energy", 1), _Agent("comfort", 1), _Agent("safety", 0),
                 _Agent("coordinator", 2)]
     c.enabled = True
-    erg = asyncio.run(c.consult(_brain(t, preds), anlass="knapp"))
+    erg = await c.consult(_brain(t, preds), anlass="knapp")
     assert erg["wahl"] == 1
     assert erg["consensus_action"] == "light.turn_on"
     assert erg["consensus_entity"] == "light.wohnzimmer"
@@ -230,19 +236,21 @@ def test_beratung_waehlt_aus_dem_menue(haus):
     assert len(c.nachhall.offen) == 1
 
 
-def test_beratung_ohne_menue_fragt_niemanden():
+@pytest.mark.asyncio
+async def test_beratung_ohne_menue_fragt_niemanden():
     t = _thalamus({})
     c = Cortex()
     a = _Agent("energy", 1)
     c.agents, c.enabled = [a], True
-    erg = asyncio.run(c.consult(_brain(t, []), anlass="anomalie"))
+    erg = await c.consult(_brain(t, []), anlass="anomalie")
     assert erg["wahl"] == NICHTS and erg["consensus_action"] is None
     assert a.fragen == []
 
 
 # ── Keine Wiederholung bei Zeitüberschreitung ────────────────────
 
-def test_zeitueberschreitung_wird_nicht_wiederholt():
+@pytest.mark.asyncio
+async def test_zeitueberschreitung_wird_nicht_wiederholt():
     aufrufe = []
 
     async def langsam():
@@ -250,11 +258,12 @@ def test_zeitueberschreitung_wird_nicht_wiederholt():
         raise asyncio.TimeoutError()
 
     with pytest.raises(asyncio.TimeoutError):
-        asyncio.run(cortex_mod._retry_llm_call(langsam))
+        await cortex_mod._retry_llm_call(langsam)
     assert len(aufrufe) == 1
 
 
-def test_ollama_bekommt_schema_und_kein_denken():
+@pytest.mark.asyncio
+async def test_ollama_bekommt_schema_und_kein_denken():
     gesendet = {}
 
     class _Antwort:
@@ -275,7 +284,7 @@ def test_ollama_bekommt_schema_und_kein_denken():
             return _Antwort()
 
     schema = antwort_schema(MENUE)
-    roh = asyncio.run(cortex_mod._call_ollama(
-        _Sitzung(), "http://x", "m", "sys", "frage", fmt=schema, think=False))
+    roh = await cortex_mod._call_ollama(
+        _Sitzung(), "http://x", "m", "sys", "frage", fmt=schema, think=False)
     assert gesendet["format"] == schema and gesendet["think"] is False
     assert lies_wahl(roh, MENUE)["wahl"] == 1
