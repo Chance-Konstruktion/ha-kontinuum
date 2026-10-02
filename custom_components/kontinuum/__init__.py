@@ -74,7 +74,7 @@ from .config_flow import PRESETS
 
 _LOGGER = logging.getLogger(__name__)
 # Muss mit manifest.json "version" übereinstimmen
-VERSION = "0.29.0-experimental"
+VERSION = "0.29.1-experimental"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
