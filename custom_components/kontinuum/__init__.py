@@ -825,8 +825,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                     _check_accuracy_milestone(hass, brain)
 
                 if now_ts - brain["_last_save"] > SAVE_INTERVAL:
-                    hass.async_add_executor_job(_save_brain, brain, brain_path)
-                    hass.async_add_executor_job(_save_aux_modules, hass, brain)
+                    _save_brain_im_takt(hass, brain, brain_path)
+                    _save_aux_modules_im_takt(hass, brain)
                     # Entorhinal: Alte Transitionen prunen (täglich)
                     if now_ts - entorhinal.last_prune_ts > 86400:
                         entorhinal.prune_old_transitions(0.05)
@@ -863,7 +863,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             except Exception as e:
                 _LOGGER.error("KONTINUUM Fehler: %s", e, exc_info=True)
 
-        hass.bus.async_listen(EVENT_STATE_CHANGED, on_state_changed)
+        # Abmeldefunktion NICHT wegwerfen: beim Entry anmelden. Ohne diese
+        # Bindung blieb der Listener nach jedem Neuladen (Optionsänderung)
+        # hängen — zwei Gehirne hörten parallel, und das alte schrieb beim
+        # Stopp sein veraltetes brain.json.gz mit (Durchsicht 04.10., Punkt 1).
+        entry.async_on_unload(
+            hass.bus.async_listen(EVENT_STATE_CHANGED, on_state_changed)
+        )
 
         # ── Idle-Heartbeat ────────────────────────────────────
         # Ohne diesen Timer wird Sleep Consolidation nur bei einem State-Change
@@ -891,10 +897,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             await cortex.close()
             await metaplasticity.async_stop()
             await metaplasticity.async_save()
-            await hass.async_add_executor_job(_save_brain, brain, brain_path)
-            await hass.async_add_executor_job(_save_aux_modules, hass, brain)
+            await _async_save_brain(hass, brain, brain_path)
+            await _async_save_aux_modules(hass, brain)
 
-        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_shutdown)
+        # Ebenfalls an den Entry gebunden (siehe STATE_CHANGED oben): beim
+        # Entladen abmelden, damit beim Stopp nur das AKTUELLE Gehirn schreibt.
+        entry.async_on_unload(
+            hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_shutdown)
+        )
 
         _LOGGER.info(
             "KONTINUUM v%s gestartet: %d Entities, %d Tokens, %d Räume, Preset '%s'",
@@ -978,9 +988,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
         unsub_idle = brain.pop("_unsub_idle", None)
         if unsub_idle:
             unsub_idle()
+        # MetaPlasticity anhalten — derselbe Grundsatz wie beim Heartbeat:
+        # Der 24-h-Timer gehört zum Leben dieses Entries. Ohne Stopp
+        # überlebte er das Entladen, lief nach einem Neuladen (Options-
+        # änderung) als Timer des ALTEN Entries weiter und meldete sich
+        # in der Test-Home als nachhängender Timer.
+        metaplasticity = brain.get("metaplasticity")
+        if metaplasticity:
+            await metaplasticity.async_stop()
         data_dir = brain.get("_data_dir", hass.config.path(DATA_DIR))
         brain_path = os.path.join(data_dir, BRAIN_FILE)
-        await hass.async_add_executor_job(_save_brain, brain, brain_path)
+        await _async_save_brain(hass, brain, brain_path)
 
     # Dashboard-Panel entfernen
     try:
@@ -2331,65 +2349,139 @@ def _update_persons_sensor(hass):
 # BRAIN PERSISTENCE
 # ══════════════════════════════════════════════════════════════════
 
-def _save_brain(brain, path=None):
-    """Speichert das Gehirn komprimiert als JSON.gz (RPi-SD-Card-schonend)."""
-    if not path:
-        return
+def _snapshot_brain(brain) -> bytes:
+    """Die Momentaufnahme des Gehirns — entsteht IM EREIGNIS-TAKT.
 
+    to_dict() aller Module liest Zustände, die die Ereignis-Schleife
+    gleichzeitig verändert. Im Executor-Faden gerannt, war das eine
+    Rennbahn: inkonsistente Momentaufnahme oder „dictionary changed
+    size during iteration“, still verworfen (Durchsicht 04.10.,
+    Punkt 2). Deshalb entsteht die Momentaufnahme hier — im selben
+    Faden, der die Module verändert — inklusive json.dumps. Zurück
+    kommen fertige Byte; gzippen und Schreiben gehört in den Executor
+    (_write_brain_gz).
+    """
+    data = {
+        "version": VERSION,
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+        "preset": brain.get("preset", "ausgeglichen"),
+        "thalamus": brain["thalamus"].to_dict(),
+        "hippocampus": brain["hippocampus"].to_dict(),
+        "hypothalamus": brain["hypothalamus"].to_dict(),
+        "spatial": brain["spatial"].to_dict(),
+        "insula": brain["insula"].to_dict(),
+        "amygdala": brain["amygdala"].to_dict(),
+        "cerebellum": brain["cerebellum"].to_dict(),
+        "basal_ganglia": brain["basal_ganglia"].to_dict(),
+        "prefrontal": brain["prefrontal"].to_dict(),
+        "cortex": brain["cortex"].to_dict(),
+        "cortex_agents": brain.get("_cortex_agents", {}),
+        "cortex_patterns": brain.get("_cortex_patterns", {}),
+        "scenes_enabled": brain.get("_scenes_enabled", False),
+        "scene_config": brain.get("_scene_config", {}),
+        # v0.18.0: Notifikations-State persistieren (kein Spam bei Neustart)
+        "notified_milestones": list(brain.get("_notified_milestones", set())),
+        "notified_modes": list(brain.get("_notified_modes", set())),
+        "notified_rules": list(brain.get("_notified_rules", set())),
+    }
+    return json.dumps(data, separators=(",", ":"), default=str).encode()
+
+
+def _write_brain_gz(raw: bytes, path: str) -> None:
+    """gzip + Schreiben — der einzige Teil, der in den Executor gehört.
+
+    Die Byte sind eine fertige, konsistente Momentaufnahme aus dem Takt;
+    dieser Faden darf sie anfassen, ohne mit der Schleife zu rennen.
+    Fehler werden hier gefangen: Ein Feuer-und-vergessen-Job ohne Warten
+    hätte sonst eine nie abgeholte Aufgaben-Ausnahme hinterlassen.
+    """
     try:
-        data = {
-            "version": VERSION,
-            "saved_at": datetime.now(timezone.utc).isoformat(),
-            "preset": brain.get("preset", "ausgeglichen"),
-            "thalamus": brain["thalamus"].to_dict(),
-            "hippocampus": brain["hippocampus"].to_dict(),
-            "hypothalamus": brain["hypothalamus"].to_dict(),
-            "spatial": brain["spatial"].to_dict(),
-            "insula": brain["insula"].to_dict(),
-            "amygdala": brain["amygdala"].to_dict(),
-            "cerebellum": brain["cerebellum"].to_dict(),
-            "basal_ganglia": brain["basal_ganglia"].to_dict(),
-            "prefrontal": brain["prefrontal"].to_dict(),
-            "cortex": brain["cortex"].to_dict(),
-            "cortex_agents": brain.get("_cortex_agents", {}),
-            "cortex_patterns": brain.get("_cortex_patterns", {}),
-            "scenes_enabled": brain.get("_scenes_enabled", False),
-            "scene_config": brain.get("_scene_config", {}),
-            # v0.18.0: Notifikations-State persistieren (kein Spam bei Neustart)
-            "notified_milestones": list(brain.get("_notified_milestones", set())),
-            "notified_modes": list(brain.get("_notified_modes", set())),
-            "notified_rules": list(brain.get("_notified_rules", set())),
-        }
-
         tmp_path = path + ".tmp"
-        raw = json.dumps(data, separators=(",", ":"), default=str).encode()
         with gzip.open(tmp_path, "wb", compresslevel=6) as f:
             f.write(raw)
         os.replace(tmp_path, path)
-
         _LOGGER.debug("Gehirn gespeichert (%d KB): %s", len(raw) // 1024, path)
     except Exception as e:
-        _LOGGER.error("Fehler beim Speichern: %s", e)
+        _LOGGER.error("Fehler beim Schreiben des Gehirns: %s", e)
 
 
-def _save_aux_modules(hass, brain):
-    """Speichert Aux-Module (Reticular, Accumbens, Locus, Entorhinal) in eigene .json.gz."""
+def _save_brain_im_takt(hass, brain, brain_path) -> None:
+    """Feuer-und-vergessen-Speicherung aus dem Event-Takt (Punkt 2).
+
+    Momentaufnahme hier und jetzt — im Takt —, gzip+Schreiben als
+    Executor-Job ohne Warten.
+    """
+    try:
+        raw = _snapshot_brain(brain)
+    except Exception as e:  # noqa: BLE001 — speichern darf den Takt nie killen
+        _LOGGER.error("Fehler bei der Gehirn-Momentaufnahme: %s", e)
+        return
+    hass.async_add_executor_job(_write_brain_gz, raw, brain_path)
+
+
+async def _async_save_brain(hass, brain, brain_path) -> None:
+    """Gewartete Speicherung (Entladen/Shutdown): Momentaufnahme im Takt,
+    gzip+Schreiben im Executor — erst zurück, wenn die Datei steht.
+    """
+    try:
+        raw = _snapshot_brain(brain)
+    except Exception as e:  # noqa: BLE001 — speichern darf den Takt nie killen
+        _LOGGER.error("Fehler bei der Gehirn-Momentaufnahme: %s", e)
+        return
+    await hass.async_add_executor_job(_write_brain_gz, raw, brain_path)
+
+
+def _snapshot_aux_modules(brain) -> list:
+    """Momentaufnahme der Aux-Module — im Ereignis-Takt (siehe _snapshot_brain).
+
+    Die Aux-Module (Reticular, Accumbens, Locus, Entorhinal) verändert
+    die Schleife genauso live wie das übrige Gehirn — ihre to_dict()
+    gehörte deshalb auch nicht in den Executor. Zurück kommt eine Liste
+    von (dateiname, byte)-Paaren.
+    """
+    snapshots = []
     for key, fname in AUX_MODULE_FILES.items():
         module = brain.get(key)
         if not module:
             continue
-        path = hass.config.path(fname)
+        try:
+            raw = json.dumps(module.to_dict(), separators=(",", ":")).encode()
+            snapshots.append((fname, raw))
+        except Exception as err:
+            _LOGGER.warning("Aux-Modul %s konnte nicht fotografiert werden: %s", key, err)
+    return snapshots
+
+
+def _write_aux_modules_gz(snapshots, config_dir) -> None:
+    """gzip + Schreiben der Aux-Modul-Momentaufnahmen im Executor.
+
+    Fehler werden hier gefangen (siehe _write_brain_gz): auch diese Jobs
+    laufen teils ohne Warten.
+    """
+    for fname, raw in snapshots:
+        path = os.path.join(config_dir, fname)
         tmp = path + ".tmp"
         try:
-            with gzip.open(tmp, "wt", encoding="utf-8") as f:
-                json.dump(module.to_dict(), f)
-            try:
-                os.replace(tmp, path)
-            except Exception as replace_err:
-                _LOGGER.warning("Aux-Modul %s replace fehlgeschlagen: %s", key, replace_err)
-                continue
-        except Exception as err:
-            _LOGGER.warning("Aux-Modul %s konnte nicht gespeichert werden: %s", key, err)
+            with gzip.open(tmp, "wb") as f:
+                f.write(raw)
+            os.replace(tmp, path)
+        except Exception as replace_err:
+            _LOGGER.warning("Aux-Modul %s replace fehlgeschlagen: %s", fname, replace_err)
+
+
+def _save_aux_modules_im_takt(hass, brain) -> None:
+    """Feuer-und-vergessen-Speicherung der Aux-Module aus dem Event-Takt."""
+    snapshots = _snapshot_aux_modules(brain)
+    if snapshots:
+        hass.async_add_executor_job(_write_aux_modules_gz, snapshots, hass.config.config_dir)
+
+
+async def _async_save_aux_modules(hass, brain) -> None:
+    """Gewartete Aux-Speicherung (Entladen/Shutdown): Momentaufnahme im
+    Takt, gzip+Schreiben im Executor — erst zurück, wenn die Dateien stehen."""
+    snapshots = _snapshot_aux_modules(brain)
+    if snapshots:
+        await hass.async_add_executor_job(_write_aux_modules_gz, snapshots, hass.config.config_dir)
 
 
 def _load_aux_modules(hass, brain):
