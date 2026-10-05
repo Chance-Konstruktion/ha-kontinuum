@@ -863,7 +863,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             except Exception as e:
                 _LOGGER.error("KONTINUUM Fehler: %s", e, exc_info=True)
 
-        hass.bus.async_listen(EVENT_STATE_CHANGED, on_state_changed)
+        # Abmeldefunktion NICHT wegwerfen: beim Entry anmelden. Ohne diese
+        # Bindung blieb der Listener nach jedem Neuladen (Optionsänderung)
+        # hängen — zwei Gehirne hörten parallel, und das alte schrieb beim
+        # Stopp sein veraltetes brain.json.gz mit (Durchsicht 04.10., Punkt 1).
+        entry.async_on_unload(
+            hass.bus.async_listen(EVENT_STATE_CHANGED, on_state_changed)
+        )
 
         # ── Idle-Heartbeat ────────────────────────────────────
         # Ohne diesen Timer wird Sleep Consolidation nur bei einem State-Change
@@ -894,7 +900,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             await hass.async_add_executor_job(_save_brain, brain, brain_path)
             await hass.async_add_executor_job(_save_aux_modules, hass, brain)
 
-        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_shutdown)
+        # Ebenfalls an den Entry gebunden (siehe STATE_CHANGED oben): beim
+        # Entladen abmelden, damit beim Stopp nur das AKTUELLE Gehirn schreibt.
+        entry.async_on_unload(
+            hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_shutdown)
+        )
 
         _LOGGER.info(
             "KONTINUUM v%s gestartet: %d Entities, %d Tokens, %d Räume, Preset '%s'",
@@ -978,6 +988,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
         unsub_idle = brain.pop("_unsub_idle", None)
         if unsub_idle:
             unsub_idle()
+        # MetaPlasticity anhalten — derselbe Grundsatz wie beim Heartbeat:
+        # Der 24-h-Timer gehört zum Leben dieses Entries. Ohne Stopp
+        # überlebte er das Entladen, lief nach einem Neuladen (Options-
+        # änderung) als Timer des ALTEN Entries weiter und meldete sich
+        # in der Test-Home als nachhängender Timer.
+        metaplasticity = brain.get("metaplasticity")
+        if metaplasticity:
+            await metaplasticity.async_stop()
         data_dir = brain.get("_data_dir", hass.config.path(DATA_DIR))
         brain_path = os.path.join(data_dir, BRAIN_FILE)
         await hass.async_add_executor_job(_save_brain, brain, brain_path)
