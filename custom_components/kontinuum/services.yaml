@@ -110,6 +110,8 @@ configure_agent:
     Konfiguriert einen LLM-Agent für den KONTINUUM Cortex.
     Bis zu 4 Agents möglich (Slots 1-4). Slot 4 ist ideal für den Coordinator.
     Provider: ollama, openai, claude, gemini, grok.
+    API-Schlüssel nimmt nur der Config-Flow an (Einstellungen → KONTINUUM → Agents),
+    nie dieser Dienst — sonst reist der Schlüssel als Klartext über den Event-Bus.
   fields:
     slot:
       name: Slot
@@ -152,12 +154,6 @@ configure_agent:
       description: API-URL (bei Ollama z.B. http://192.168.1.100:11434)
       required: false
       example: "http://localhost:11434"
-      selector:
-        text:
-    api_key:
-      name: API Key
-      description: API-Schlüssel (nur für Cloud-Provider)
-      required: false
       selector:
         text:
     prompt:
