@@ -107,7 +107,7 @@ kern-pypi:
       print(req)
       PY
       )
-    - echo "Kern nach Manifest-Regel: $KERN"
+    - 'echo "Kern nach Manifest-Regel: $KERN"'
     - pip install -q "$KERN"
   script:
     # Beweis, WELCHE Kern-Fassung wirklich gefahren ist:
