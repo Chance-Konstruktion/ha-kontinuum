@@ -107,16 +107,17 @@ async def test_stopp_schreibt_nur_das_aktuelle_gehirn(
     Vor dem Fix schrieben das alte und das neue on_shutdown beide die
     selbe brain.json.gz — zwei Gehirne, eine Datei, das Rennen entscheidet.
     """
-    # _save_brain mitzählen (der Aufruf läuft über den Modulnamen,
-    # deshalb greift die Ersetzung).
+    # Die Momentaufnahme mitzählen (der Aufruf läuft über den Modulnamen,
+    # deshalb greift die Ersetzung; seit Punkt 2 fotografiert _snapshot_brain,
+    # das Schreiben läuft separat — für diesen Test zählt das Foto).
     schreibungen = []
-    original = kontinuum_init._save_brain
+    original = kontinuum_init._snapshot_brain
 
-    def _zaehl_speicherung(brain, path):
+    def _zaehl_speicherung(brain):
         schreibungen.append(id(brain))
-        return original(brain, path)
+        return original(brain)
 
-    monkeypatch.setattr(kontinuum_init, "_save_brain", _zaehl_speicherung)
+    monkeypatch.setattr(kontinuum_init, "_snapshot_brain", _zaehl_speicherung)
 
     # Setup → Entladen → Setup: der Neulade-Unfall aus dem Ticket.
     assert await hass.config_entries.async_setup(entry.entry_id)

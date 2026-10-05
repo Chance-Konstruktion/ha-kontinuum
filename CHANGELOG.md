@@ -55,6 +55,16 @@ baut den Cortex um (neues Modul `cortex_organ.py`).
 - **Der MetaPlasticity-Timer überlebte das Entladen.** Der 24-Stunden-Timer
   lief nach dem Entladen weiter und gehörte danach dem alten Entry. Er wird
   jetzt beim Entladen gestoppt — derselbe Grundsatz wie beim Idle-Heartbeat.
+- **Die Momentaufnahme des Gehirns entsteht im Ereignis-Takt (Punkt 2).**
+  `_save_brain` lief als Executor-Job und rief dort `to_dict()` aller Module
+  auf, während die Schleife dieselben Module weiter veränderte — eine
+  Rennbahn mit still verworfenen Ergebnissen („dictionary changed size
+  during iteration“). Jetzt fotografiert `_snapshot_brain` im Takt
+  (einschließlich `json.dumps`), und nur gzippen und Schreiben laufen im
+  Executor (`_write_brain_gz`). Die Aux-Module (Reticular, Locus,
+  Entorhinal …) folgen demselben Muster. Eine plat-zende Momentaufnahme
+  wird gefangen und protokolliert, statt den Takt zu gefährden; vier neue
+  Tests wiegen Takt-Faden, Executor-Faden, Fehler-Toleranz und Ladbarkeit.
 
 ## experimental-v0.29.1 – Sleep Consolidation läuft wieder (2026-10-02)
 
