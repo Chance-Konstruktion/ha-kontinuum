@@ -72,6 +72,7 @@ from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
 from .cortex_organ import anlass as cortex_anlass
 from .metaplasticity import MetaPlasticity
 from .config_flow import PRESETS
+from .zustands_abo import async_register_zustands_abo
 
 _LOGGER = logging.getLogger(__name__)
 # Muss mit manifest.json "version" übereinstimmen
@@ -144,6 +145,19 @@ def _install_dashboard(hass):
         _LOGGER.info("KONTINUUM Dashboard installiert: %s", dst)
     else:
         _LOGGER.debug("KONTINUUM Dashboard bereits aktuell")
+
+    # Die Datenschicht reist mit dem Dashboard (Durchsicht 04.10.,
+    # Punkt 7): kontinuum-daten.js trägt das WebSocket-Abo und den
+    # REST-Notausgang. Gleiche Frisch-Regel wie das Dashboard selbst.
+    js_src = os.path.join(assets, "kontinuum-daten.js")
+    if os.path.isfile(js_src):
+        js_dst = os.path.join(dst_dir, "kontinuum-daten.js")
+        if (
+            not os.path.isfile(js_dst)
+            or os.path.getmtime(js_src) > os.path.getmtime(js_dst)
+        ):
+            shutil.copy2(js_src, js_dst)
+            _LOGGER.info("KONTINUUM Datenschicht installiert: %s", js_dst)
 
     # Schriften mitliefern (Durchsicht 04.10., Punkt 4): das Dashboard lädt
     # Orbitron und JetBrains Mono jetzt lokal von /local/kontinuum-fonts/ —
@@ -354,6 +368,12 @@ def _maybe_consolidate(brain: dict, now_ts: float | None = None) -> None:
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """YAML-basiertes Setup (Rückwärtskompatibel)."""
+    # Das WebSocket-Abonnement für das Dashboard (Durchsicht 04.10.,
+    # Punkt 7): statt alle 3 s ALLE Zustände zu holen, abonniert der
+    # Client einmal die Kontinuum-Entitäten. Die Registrierung gehört
+    # hierher — async_setup läuft je HA-Start einmal, das Abo überlebt
+    # Option-Neuladungen und ist idempotent.
+    async_register_zustands_abo(hass)
     return True
 
 

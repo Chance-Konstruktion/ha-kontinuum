@@ -680,6 +680,7 @@
 
 </div>
 
+<script src="kontinuum-daten.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════
 // KONTINUUM Dashboard – Real HA Integration
@@ -800,7 +801,9 @@ function discoverSensors(states) {
   return found;
 }
 
-const POLL_INTERVAL = 3000; // ms
+// (POLL_INTERVAL ist weg — Durchsicht 04.10., Punkt 7: das
+// WebSocket-Abo ersetzt den 3-Sekunden-Takt; die Datenschicht
+// kontinuum-daten.js trägt ihn und ihren eigenen REST-Notausgang.)
 
 // ── State ──
 let prevEvent = '';
@@ -850,58 +853,41 @@ function setConn(state) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// HA REST API Polling
+// HA-Datenschicht: WebSocket-Abo (Punkt 7), REST nur Notausgang
 // ══════════════════════════════════════════════════════════════
+// Die Schicht (kontinuum-daten.js) besorgt Verbindung, Handshake,
+// Abo (`kontinuum/abonniere`), Cache, Ruhepause und Wiederverbindung —
+// sie weiss nichts vom DOM. Hier wird sie ans Gehirn-Panel verdrahtet:
+// Entdeckung und Zeichnung bleiben, wo sie waren — nur der Takt ist weg.
 
-async function fetchSensors() {
-  if (!HA_TOKEN) {
-    // Token noch nicht gefunden – erneut versuchen (Mobile App braucht manchmal etwas)
-    if (_tokenRetries < 10) {
-      _tokenRetries++;
-      if (_refreshToken()) return fetchSensors();
-      if (_tokenRetries <= 1) setConn('wait');
-      if (_tokenRetries >= 5) {
-        setConn('err');
-        log('Auth-Token nicht gefunden – HA-Seite neu laden oder App neu starten', 'var(--red)');
-      }
-    }
-    return;
-  }
-  try {
-    const resp = await fetch(HA_BASE + '/api/states', {
-      headers: { 'Authorization': 'Bearer ' + HA_TOKEN, 'Content-Type': 'application/json' }
-    });
+function _connVomDaten(status) {
+  connected = (status === 'ok');
+  setConn(status);
+}
 
-    if (!resp.ok) {
-      if (resp.status === 401) {
-        // Token abgelaufen – neu lesen
-        if (_refreshToken()) return fetchSensors();
-      }
-      if (!connected) setConn('err');
-      return;
-    }
-
-    const states = await resp.json();
-    if (!connected) {
-      connected = true; setConn('ok');
-      log('Verbunden mit Home Assistant', 'var(--green)');
-      // Beim ersten Connect: Sensor-Discovery loggen
-      const discovered = discoverSensors(states);
-      const keys = Object.keys(discovered);
+let _ersterStand = true;
+const daten = new KontinuumDatenSchicht({
+  haBase: HA_BASE,
+  holeToken: () => HA_TOKEN,
+  frischerToken: _refreshToken,
+  beiZustaenden: (zustaende) => {
+    if (_ersterStand) {
+      _ersterStand = false;
+      const gefunden = discoverSensors(zustaende);
+      const keys = Object.keys(gefunden);
       if (keys.length > 0) {
         log(keys.length + ' KONTINUUM Sensoren gefunden', 'var(--cyan)');
       } else {
         log('Keine KONTINUUM Sensoren gefunden – Integration geladen?', 'var(--amber)');
       }
     }
-
     // Dynamische Sensor-Erkennung statt hardcoded entity_ids
-    const data = discoverSensors(states);
+    const data = discoverSensors(zustaende);
     updateDashboard(data);
-  } catch (e) {
-    if (connected) { connected = false; setConn('err'); log('Verbindung verloren: ' + e.message, 'var(--red)'); }
-  }
-}
+  },
+  log,
+  setConn: _connVomDaten,
+});
 
 // Helper: Prüft ob ein Sensor-State gültig ist
 function _valid(s) {
@@ -1255,11 +1241,12 @@ async function callService(service, data) {
       };
       const label = svcLabels[service] || `${service} erfolgreich`;
       dbgLog(`<span class="ok">${label}</span>`, '');
-      // Nach kurzer Pause Sensor-Update holen
+      // Sensor-Update kommt vom Abo (Punkt 7): der Dienst bewegt
+      // Kontinuum-Zustände, die Ereignisse reisen von selbst — nur
+      // die Cortex-Anzeige wird nochmal aus dem (frischen) Cache gelesen.
       if (service === 'cortex_consult' || service === 'brain_review') {
         dbgLog('Ergebnis wird als History-Datei gespeichert – Warte auf Antwort…');
         setTimeout(async () => {
-          await fetchSensors();
           updateCortexStatus();
           const svc = service === 'cortex_consult' ? 'Beratung' : 'Analyse';
           dbgLog(`<span class="ok">${svc} abgeschlossen</span> → Ergebnis in Cortex Status sichtbar`);
@@ -1479,14 +1466,15 @@ function renderPendingConfirms(list) {
 async function confirmOne(confirmId) {
   if (!confirmId) return;
   await callService('confirm_action', { confirm_id: confirmId });
-  // Sofort UI refreshen damit der Card verschwindet
-  setTimeout(fetchSensors, 400);
+  // Die Karte verschwindet, sobald der Status-Sensor die Bestätigung
+  // meldet — das Abo zeichnet von selbst neu (Punkt 7), kein erzwungener
+  // Abruf mehr.
 }
 
 async function rejectOne(confirmId) {
   if (!confirmId) return;
   await callService('reject_action', { confirm_id: confirmId });
-  setTimeout(fetchSensors, 400);
+  // Wie confirmOne: das Abo übernimmt die Neuzeichnung.
 }
 
 // ── Mode Buttons ──
@@ -1534,10 +1522,9 @@ function animateBrainRegions() {
   }
 }
 
-// ── Start Polling ──
+// ── Start: das Abo ersetzt den Takt (Punkt 7) ──
 setConn('wait');
-fetchSensors();
-setInterval(fetchSensors, POLL_INTERVAL);
+daten.start();
 setInterval(animateBrainRegions, 5000);
 
 </script>
