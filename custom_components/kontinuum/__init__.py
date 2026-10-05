@@ -120,8 +120,9 @@ AUX_MODULE_FILES = {
 # ══════════════════════════════════════════════════════════════════
 
 def _install_dashboard(hass):
-    """Kopiert kontinuum.html nach /config/www/community/kontinuum/ falls nötig."""
-    src = os.path.join(os.path.dirname(__file__), "assets", "kontinuum.html")
+    """Kopiert kontinuum.html und die Schriften nach /config/www/ falls nötig."""
+    assets = os.path.join(os.path.dirname(__file__), "assets")
+    src = os.path.join(assets, "kontinuum.html")
     if not os.path.isfile(src):
         _LOGGER.warning("KONTINUUM Dashboard HTML nicht gefunden – übersprungen")
         return False
@@ -143,6 +144,28 @@ def _install_dashboard(hass):
         _LOGGER.info("KONTINUUM Dashboard installiert: %s", dst)
     else:
         _LOGGER.debug("KONTINUUM Dashboard bereits aktuell")
+
+    # Schriften mitliefern (Durchsicht 04.10., Punkt 4): das Dashboard lädt
+    # Orbitron und JetBrains Mono jetzt lokal von /local/kontinuum-fonts/ —
+    # kein Abruf bei Googles Schriften-CDN mehr, der IP und User-Agent
+    # gemeldet hätte. Gleiche Frisch-Regel wie beim Dashboard selbst.
+    fonts_src = os.path.join(assets, "fonts")
+    fonts_dst = os.path.join(dst_dir, "kontinuum-fonts")
+    if os.path.isdir(fonts_src):
+        os.makedirs(fonts_dst, exist_ok=True)
+        kopiert = 0
+        for name in os.listdir(fonts_src):
+            if not name.endswith(".woff2"):
+                continue
+            quelle = os.path.join(fonts_src, name)
+            ziel = os.path.join(fonts_dst, name)
+            if not os.path.isfile(ziel) or os.path.getmtime(quelle) > os.path.getmtime(ziel):
+                shutil.copy2(quelle, ziel)
+                kopiert += 1
+        if kopiert:
+            _LOGGER.info(
+                "KONTINUUM Schriften installiert: %d Dateien nach %s", kopiert, fonts_dst
+            )
 
     return True
 
