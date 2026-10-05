@@ -65,6 +65,16 @@ baut den Cortex um (neues Modul `cortex_organ.py`).
   Entorhinal …) folgen demselben Muster. Eine plat-zende Momentaufnahme
   wird gefangen und protokolliert, statt den Takt zu gefährden; vier neue
   Tests wiegen Takt-Faden, Executor-Faden, Fehler-Toleranz und Ladbarkeit.
+- **Der Kern hat eine Obergrenze — und die CI prüft die Fassung, die
+  Installationen wirklich bekommen (Punkt 0a+0b).** Das Manifest fordert
+  jetzt `kontinuum-core>=0.6.3,<0.7` statt jede neue Kern-Version zu
+  nehmen; ein Kern-Wechsel ist damit wieder eine bewusste Handlung. Der
+  neue CI-Job `kern-pypi` liest die Regel aus dem Manifest (eine Quelle
+  der Wahrheit — Job und Manifest können nicht auseinanderlaufen) und
+  fährt die Suite gegen die PyPI-Fassung, die die Regel erlaubt. Der
+  normale pytest-Job bleibt bewusst unangepinnt als Ausguck in die
+  Zukunft. Zwei neue Tests bewachen die Regel selbst (Fussboden UND
+  Obergrenze; genau eine Nebenlinie Abstand).
 
 ## experimental-v0.29.1 – Sleep Consolidation läuft wieder (2026-10-02)
 
