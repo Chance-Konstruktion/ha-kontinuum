@@ -75,6 +75,14 @@ baut den Cortex um (neues Modul `cortex_organ.py`).
   normale pytest-Job bleibt bewusst unangepinnt als Ausguck in die
   Zukunft. Zwei neue Tests bewachen die Regel selbst (Fussboden UND
   Obergrenze; genau eine Nebenlinie Abstand).
+- **Die Schriften reisen mit (Punkt 4).** Das Dashboard lud Orbitron und
+  JetBrains Mono von Googles CDN — jeder Panel-Aufruf meldete IP und
+  User-Agent, bevor ein Buchstabe stand. Beide Familien (SIL Open Font
+  License 1.1) liegen jetzt als WOFF2 neben dem Dashboard (latin und
+  latin-ext, 9 Dateien, ~190 KB), die Installation legt sie unter
+  `/local/kontinuum-fonts/` ab, und die Lizenztexte reisen mit. Vier
+  neue Tests bewachen: keine externen Abrufe mehr, jedes geladene Font
+  im Gepäck, Lizenzen dabei, Installation vollständig.
 
 ## experimental-v0.29.1 – Sleep Consolidation läuft wieder (2026-10-02)
 
