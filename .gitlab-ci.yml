@@ -73,6 +73,55 @@ pytest:
     - exists:
         - tests/**/*.py
 
+# ── Kern-Kompatibilitaet: die PyPI-Fassung, die die Manifest-Regel erlaubt ──
+# Durchsicht 04.10., Punkt 0b. Der TypeError vom Juli (should_consolidate
+# mit einem Argument gegen eine Zwei-Argument-Signatur des Kerns 0.6.3)
+# lebte in der Luecke zwischen dem Kern, den der Entwickler lokal hatte,
+# und dem Kern, den die Installationen wirklich bekamen. Dieser Job
+# installiert den Kern NACH DER MANIFEST-REGEL -- ausgelesen aus
+# manifest.json, damit Job und Manifest nie auseinanderlaufen koennen --
+# und faehrt die Suite dagegen. Die Signatur-Waechter und
+# Konsolidierungs-Tests (test_wiring.py) haetten den Juli-Bruch hier
+# sofort gezeigt.
+#
+# Der normale pytest-Job (ueber requirements_test.txt) bleibt bewusst
+# unangepinnt: Er ist der Ausguck gegen die Zukunft -- kommt eine
+# Kern-Version heraus, die unsere Regel nicht mehr erlaubt, wird ER rot
+# und wir heben die Obergrenze bewusst an, statt sie still zu verlieren.
+kern-pypi:
+  stage: test
+  image: python:3.13
+  cache:
+    key: pip-kern-pypi
+    paths:
+      - .cache/pip
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq nodejs
+    - pip install -q pytest pytest-asyncio pytest-homeassistant-custom-component
+    # Die Kern-Regel aus dem Manifest ist die einzige Quelle der Wahrheit:
+    - |
+      KERN=$(python - <<'PY'
+      import json
+      m = json.load(open("custom_components/kontinuum/manifest.json"))
+      req = next((r for r in m.get("requirements", []) if r.startswith("kontinuum-core")), "")
+      print(req)
+      PY
+      )
+    - echo "Kern nach Manifest-Regel: $KERN"
+    - pip install -q "$KERN"
+  script:
+    # Beweis, WELCHE Kern-Fassung wirklich gefahren ist:
+    - pip freeze | grep -i kontinuum
+    - python -m pytest -q -rs --junitxml=report-kern-pypi.xml
+  artifacts:
+    when: always
+    expire_in: 30 days
+    reports:
+      junit: report-kern-pypi.xml
+  rules:
+    - exists:
+        - tests/**/*.py
+
 # ── hassfest ──────────────────────────────────────────────────────────
 # Home Assistants eigener Manifest-Pruefer, aus dem offiziellen Image.
 # Prueft jede Integration unterhalb von custom_components/ einzeln.

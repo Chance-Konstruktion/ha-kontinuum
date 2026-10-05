@@ -8,6 +8,13 @@
 # kontinuum-core liegt auf PyPI; die Quelle dazu unter
 # https://gitlab.schanz.ipv64.net/chance-konstruktion/kontinuum-core
 #
+# Bewusst UNANGEPINNT: Der normale pytest-Job ist der Ausguck gegen die
+# Zukunft -- kommt eine Kern-Version heraus, die die Manifest-Regel nicht
+# mehr erlaubt, wird er rot, und wir heben die Obergrenze bewusst an.
+# WELCHE Fassung die Installationen wirklich bekommen, prueft der CI-Job
+# kern-pypi: Er installiert den Kern nach der Regel aus manifest.json
+# und faehrt dieselbe Suite dagegen.
+#
 #     pip install -r requirements_test.txt
 #     pytest
 
