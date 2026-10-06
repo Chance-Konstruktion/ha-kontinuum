@@ -486,10 +486,48 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         await metaplasticity.async_load()
         await metaplasticity.async_start(interval_hours=24)
 
+        # ── Cortex: Schluessel-Wanderung, dann Config Entry ──────
+        # Durchsicht 04.10., Punkt 6: Der API-Schluessel wohnt NUR im
+        # Config-Entry (Config-/Options-Flow), nie im Gehirn. Alte
+        # Installationen trugen ihn in brain.json.gz — die Wanderung
+        # hier bring ihn heim, bevor das naechste Speichern die Datei
+        # schluesselfrei neu schreibt.
+        alt_schluessel = brain.pop("_cortex_schluessel_alt", {})
+        if alt_schluessel:
+            entry_agents_alt = entry.data.get("cortex_agents", {})
+            gewandert = {}
+            for slot, schluessel in alt_schluessel.items():
+                if schluessel and not entry_agents_alt.get(
+                        slot, {}).get("api_key"):
+                    agent = dict(entry_agents_alt.get(slot)
+                                 or brain.get("_cortex_agents", {}).get(slot)
+                                 or {})
+                    agent["api_key"] = schluessel
+                    gewandert[slot] = agent
+            if gewandert:
+                zusammen = dict(entry_agents_alt)
+                zusammen.update(gewandert)
+                neue_daten = dict(entry.data)
+                neue_daten["cortex_agents"] = zusammen
+                hass.config_entries.async_update_entry(entry,
+                                                       data=neue_daten)
+                _LOGGER.info(
+                    "Cortex: %d API-Schluessel aus dem alten Gehirn in "
+                    "den Config-Entry ueberfuehrt (Durchsicht 04.10., "
+                    "Punkt 6) — brain.json.gz schreibt sich beim naechsten "
+                    "Speichern schluesselfrei neu",
+                    len(gewandert),
+                )
+            # Schluessel, die schon im Entry wohnen, verfallen still —
+            # der Entry ist die einzige Wahrheit.
+
         # ── Cortex aus Config Entry konfigurieren ────────────────
         entry_agents = entry.data.get("cortex_agents", {})
         if entry_agents and entry.data.get("enable_cortex", False):
-            brain["_cortex_agents"] = entry_agents
+            # Das Gehirn speichert die Agent-Form OHNE Schluessel; die
+            # Schluessel-Exemplare der Agents (configure) bekommen ihn
+            # aus dem Entry mitgegeben.
+            brain["_cortex_agents"] = _agents_ohne_schluessel(entry_agents)
             cortex.configure(list(entry_agents.values()))
             # Sequential Mode + Diskussionsrunden aus Config
             cortex.sequential_mode = entry.data.get("sequential_mode", False)
@@ -499,6 +537,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 len(cortex.agents), cortex.sequential_mode,
                 cortex.discussion_rounds,
             )
+        else:
+            # Agent-Form aus dem Gehirn (z. B. per Dienst gepflegt oder
+            # aus einer Zeit ohne Entry-Agents geladen), Schluessel aus
+            # dem Entry — so bleibt der Cortex auch auf dem alten Weg
+            # schluesselversorgt, ohne dass das Gehirn ihn traegt.
+            cortex.configure(_agents_mit_schluesseln(entry, brain))
 
         # ── Entities entdecken ────────────────────────────────
         await _discover_entities(hass, thalamus)
@@ -514,7 +558,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
         # ── Services registrieren ─────────────────────────────
-        _register_services(hass, brain)
+        _register_services(hass, brain, entry)
 
         # ── Event-Listener ────────────────────────────────────
         @callback
@@ -1800,8 +1844,13 @@ def _notify_unassigned_entities(hass, thalamus):
 # SERVICES
 # ══════════════════════════════════════════════════════════════════
 
-def _register_services(hass, brain):
-    """Registriert KONTINUUM Services in HA."""
+def _register_services(hass, brain, entry):
+    """Alle KONTINUUM-Dienste anmelden.
+
+    entry: der Config-Entry — die Cortex-Dienste brauchen ihn, um die
+    API-Schluessel aus dem Entry zu holen (Durchsicht 04.10., Punkt 6:
+    der Schluessel wohnt im Entry, nie im Gehirn).
+    """
 
     async def handle_enable_scenes(call):
         brain["_scenes_enabled"] = True
@@ -1965,7 +2014,12 @@ def _register_services(hass, brain):
         Konfiguriert einen Cortex-Agent.
         Service: kontinuum.configure_agent
         Data: {slot: 1-4, name: "comfort", provider: "ollama",
-               model: "llama3.2", url: "http://...", api_key: "", prompt: "..."}
+               model: "llama3.2", url: "http://...", prompt: "..."}
+
+        Durchsicht 04.10., Punkt 6: api_key gehoert NICHT mehr in die
+        Dienstdaten — er reiste als call_service-Ereignis ueber den
+        Event-Bus. Schluessel nimmt nur der Config-/Options-Flow an;
+        ein hier mitgegebener Schluessel verfaellt laut.
         """
         cortex = brain["cortex"]
         slot = int(call.data.get("slot", 1))
@@ -1978,23 +2032,30 @@ def _register_services(hass, brain):
             _LOGGER.warning("Cortex: Unbekannter Provider '%s'", provider)
             return
 
+        if call.data.get("api_key"):
+            _LOGGER.warning(
+                "Cortex: api_key im Dienst wird IGNORIERT — API-Schluessel "
+                "nur ueber den Config-/Options-Flow annehmen "
+                "(Durchsicht 04.10., Punkt 6)"
+            )
+
         provider_info = PROVIDERS[provider]
         name = call.data.get("name", f"agent_{slot}")
         model = call.data.get("model", provider_info["default_model"])
         url = call.data.get("url", provider_info["default_url"])
-        api_key = call.data.get("api_key", "")
         prompt = call.data.get("prompt", DEFAULT_PROMPTS.get(name, ""))
 
-        # Agent-Config im Brain speichern
+        # Agent-Config im Brain speichern — OHNE API-Schluessel
+        # (der wohnt im Config-Entry, nie im Gehirn)
         agents = dict(brain.get("_cortex_agents", {}))
         agents[str(slot)] = {
             "name": name, "provider": provider, "model": model,
-            "url": url, "api_key": api_key, "system_prompt": prompt,
+            "url": url, "system_prompt": prompt,
         }
         brain["_cortex_agents"] = agents
 
-        # Cortex neu konfigurieren
-        cortex.configure(list(agents.values()))
+        # Cortex neu konfigurieren — die Schluessel kommen aus dem Entry
+        cortex.configure(_agents_mit_schluesseln(entry, brain))
 
         _LOGGER.info("Cortex Agent %d konfiguriert: %s (%s/%s)",
                      slot, name, provider, model)
@@ -2005,7 +2066,9 @@ def _register_services(hass, brain):
                 f"**{name}** ({provider_info['label']})\n"
                 f"Modell: {model}\n"
                 f"URL: {url}\n"
-                f"Agents aktiv: {len(cortex.agents)}"
+                f"Agents aktiv: {len(cortex.agents)}\n\n"
+                f"API-Schlüssel nimmt nur der Config-Flow an "
+                f"(Einstellungen → KONTINUUM → Agents)."
             ),
             "notification_id": "kontinuum_cortex_config",
         })
@@ -2106,7 +2169,10 @@ def _register_services(hass, brain):
         if slot in agents:
             del agents[slot]
             brain["_cortex_agents"] = agents
-            brain["cortex"].configure(list(agents.values()))
+            # Schluesselfrei neu konfigurieren — die verbleibenden Agenten
+            # bekommen ihre API-Schluessel aus dem Entry
+            # (Durchsicht 04.10., Punkt 6)
+            brain["cortex"].configure(_agents_mit_schluesseln(entry, brain))
             _LOGGER.info("Cortex Agent %s entfernt", slot)
 
     async def handle_cortex_sequential(call):
@@ -2372,6 +2438,45 @@ def _update_persons_sensor(hass):
 # BRAIN PERSISTENCE
 # ══════════════════════════════════════════════════════════════════
 
+def _agents_ohne_schluessel(agents: dict) -> dict:
+    """Agent-Configs ohne API-Schluessel — das Gehirn traegt ihn nie.
+
+    Durchsicht 04.10., Punkt 6: Der Dienst ``configure_agent`` nahm
+    ``api_key`` als Dienstdaten an — damit reiste der Schluessel als
+    ``call_service``-Ereignis ueber den Event-Bus — und das Gehirn
+    schrieb ihn im Klartext in ``brain.json.gz``. Beides ist verboten:
+    Der Schluessel wohnt im Config-Entry (Config-/Options-Flow) und
+    sonst nirgends. Diese Kopie ist der Weg, das Gehirn schluesselfrei
+    zu halten: Agent-Form (Name, Provider, Modell, URL, Prompt) bleibt
+    im Gehirn, der Schluessel nicht.
+    """
+    return {
+        str(slot): {k: v for k, v in agent.items() if k != "api_key"}
+        for slot, agent in agents.items()
+    }
+
+
+def _agents_mit_schluesseln(entry, brain) -> list:
+    """Agent-Configs aus dem Gehirn, Schluessel aus dem Config-Entry.
+
+    Zur Laufzeit braucht der Cortex beides: die Agent-Form aus dem
+    Gehirn (vom Dienst gepflegt, vom Gehirn gespeichert) und den
+    API-Schluessel aus dem Entry (vom Flow gepflegt). Hier fließen sie
+    fuer ``cortex.configure()`` zusammen — ohne dass der Schluessel
+    je im Gehirn landet.
+    """
+    eintraege = entry.data.get("cortex_agents", {}) if entry else {}
+    configs = []
+    for slot, agent in _agents_ohne_schluessel(
+            brain.get("_cortex_agents", {})).items():
+        schluessel = eintraege.get(slot, {}).get("api_key", "")
+        voll = dict(agent)
+        if schluessel:
+            voll["api_key"] = schluessel
+        configs.append(voll)
+    return configs
+
+
 def _snapshot_brain(brain) -> bytes:
     """Die Momentaufnahme des Gehirns — entsteht IM EREIGNIS-TAKT.
 
@@ -2398,7 +2503,9 @@ def _snapshot_brain(brain) -> bytes:
         "basal_ganglia": brain["basal_ganglia"].to_dict(),
         "prefrontal": brain["prefrontal"].to_dict(),
         "cortex": brain["cortex"].to_dict(),
-        "cortex_agents": brain.get("_cortex_agents", {}),
+        # Durchsicht 04.10., Punkt 6: Agent-Form ja, API-Schluessel nein —
+        # der wohnt im Config-Entry, nie in brain.json.gz
+        "cortex_agents": _agents_ohne_schluessel(brain.get("_cortex_agents", {})),
         "cortex_patterns": brain.get("_cortex_patterns", {}),
         "scenes_enabled": brain.get("_scenes_enabled", False),
         "scene_config": brain.get("_scene_config", {}),
@@ -2561,11 +2668,24 @@ def _load_brain(brain, path):
         brain["basal_ganglia"].from_dict(data.get("basal_ganglia", {}))
         brain["prefrontal"].from_dict(data.get("prefrontal", {}))
         brain["cortex"].from_dict(data.get("cortex", {}))
-        # Cortex-Agent-Config wiederherstellen
+        # Cortex-Agent-Config wiederherstellen — OHNE API-Schluessel
+        # (Durchsicht 04.10., Punkt 6): Der Schluessel wohnt im Config-
+        # Entry. Steht noch einer in der alten Datei, hebt ihn das Laden
+        # in die Uebergangstasche ``_cortex_schluessel_alt`` — das Setup
+        # bring ihn in den Entry (einmalige Wanderung), und das naechste
+        # Speichern schreibt brain.json.gz schluesselfrei neu.
         cortex_agents = data.get("cortex_agents", {})
         if cortex_agents:
-            brain["_cortex_agents"] = cortex_agents
-            brain["cortex"].configure(list(cortex_agents.values()))
+            alt = {
+                str(slot): agent.get("api_key", "")
+                for slot, agent in cortex_agents.items()
+                if agent.get("api_key")
+            }
+            if alt:
+                brain["_cortex_schluessel_alt"] = alt
+            brain["_cortex_agents"] = _agents_ohne_schluessel(cortex_agents)
+            brain["cortex"].configure(
+                list(brain["_cortex_agents"].values()))
         brain["_cortex_patterns"] = data.get("cortex_patterns", {})
         brain["_scenes_enabled"] = data.get("scenes_enabled", False)
         brain["_scene_config"] = data.get("scene_config", _default_scene_config())

@@ -401,7 +401,12 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
 
             self._current_provider = provider
             self._current_url = url
-            self._current_api_key = user_input.get("api_key", "")
+            # Durchsicht 04.10., Punkt 6: Der Schluessel bleibt im Entry.
+            # Das Formular ECHOt ihn nicht zurueck (kein Klartext im
+            # Formular-DOM) — ein LEERES Feld bedeutet daher "vorhandenen
+            # Schluessel behalten", ein ausgefuelltes ueberschreibt.
+            vorhandener = self._agents.get(str(slot), {}).get("api_key", "")
+            self._current_api_key = user_input.get("api_key") or vorhandener
             self._current_role = user_input.get("role", "comfort")
 
             # Verbindungstest bei Ollama
@@ -435,7 +440,11 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
                 ): str,
                 vol.Optional(
                     "api_key",
-                    description={"suggested_value": existing.get("api_key", "")},
+                    # Durchsicht 04.10., Punkt 6: nie den gespeicherten
+                    # Schluessel als Vorschlag zurueckechoen — das Feld
+                    # bleibt leer; die Uebersetzung sagt, dass leer =
+                    # vorhandener Schluessel bleibt.
+                    description={"suggested_value": ""},
                 ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
             }),
             errors=errors,

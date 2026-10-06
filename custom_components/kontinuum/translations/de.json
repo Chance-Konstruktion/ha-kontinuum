@@ -79,7 +79,7 @@
           "role": "Comfort, Energy, Safety, Coordinator – oder eine eigene Rolle (Custom).",
           "provider": "Ollama läuft lokal ohne Key. Cloud-Provider brauchen einen API-Key. „Custom/OpenAI-kompatibel“ für eigene Endpunkte wie OpenCLAW.",
           "url": "Nur die Basis-URL (z. B. http://192.168.1.50:8080). „/v1/chat/completions“ wird automatisch angehängt – nicht selbst eintragen. Leer = Standard des Providers.",
-          "api_key": "Nur für Cloud-/Custom-Provider nötig. Bei Ollama leer lassen."
+          "api_key": "Nur für Cloud-/Custom-Provider nötig. Bei Ollama leer lassen. Beim Bearbeiten eines bestehenden Agents bleibt ein leeres Feld = gespeicherter Schlüssel bleibt."
         }
       },
       "agent_model": {
