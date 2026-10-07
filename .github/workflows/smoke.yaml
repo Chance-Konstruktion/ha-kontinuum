@@ -32,8 +32,7 @@ jobs:
       - name: Run wiring tests (ohne HA-Testplugin)
         run: |
           python3 -m pip install pytest-asyncio
-          ign=$(grep -l pytest_homeassistant_custom_component tests/*.py | sed 's/^/--ignore=/' | tr '
-' ' ')
+          ign=$(grep -l pytest_homeassistant_custom_component tests/*.py | sed 's/^/--ignore=/' | paste -sd' ' -)
           echo "ignoriert: $ign"
           python3 -m pytest tests/ -q $ign
 
