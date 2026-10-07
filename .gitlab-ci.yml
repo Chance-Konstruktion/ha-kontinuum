@@ -28,6 +28,13 @@ variables:
 # Node wird ausdruecklich installiert. Tests, die Node brauchen,
 # ueberspringen sich sonst selbst -- die Pipeline waere gruen, ohne dass
 # sie je gelaufen waeren. -rs schreibt jede Auslassung samt Grund ins Log.
+#
+# DIE BELEGTE UMGEBUNG (ha-kontinuum #2): python:3.13-Image plus die
+# gepinnten Fassungen aus requirements_test.txt (Home Assistant 2026.2.3,
+# pytest 9.0.0, pytest-asyncio 1.3.0 -- belegt durch das Artefakt
+# installierte-pakete.txt der Pipeline 18153). Wer woanders rot sieht
+# (Claudes pve-Morgen mit Python 3.11 am 06.10.), hat eine andere
+# Umgebung vor sich -- diese hier ist die, die zaehlt.
 pytest:
   stage: test
   image: python:3.13

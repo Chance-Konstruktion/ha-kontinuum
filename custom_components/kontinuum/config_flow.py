@@ -214,8 +214,13 @@ class KontinuumConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        """Options Flow für nachträgliche Änderungen."""
-        return KontinuumOptionsFlow()
+        """Options Flow für nachträgliche Änderungen.
+
+        Der Entry reist im Konstruktor mit: Home Assistant setzt
+        OptionsFlow.config_entry erst ab 2024.11 selbst — ha-kontinuum
+        verspricht in hacs.json aber 2024.1.0 (#2).
+        """
+        return KontinuumOptionsFlow(config_entry)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -236,8 +241,17 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
     durch vergessene Checkboxen.
     """
 
-    def __init__(self):
-        """Init."""
+    def __init__(self, config_entry=None):
+        """Init — der Entry reist mit (#2).
+
+        Home Assistant setzt OptionsFlow.config_entry erst ab 2024.11
+        selbst (früher als Attribute gar nicht vorhanden, heute als
+        Property mit _config_entry_id). Der hier mitgereiste Entry ist
+        auf jeder Fassung die erste Adresse; die Property bleibt der
+        Rückfall, falls jemand den Flow ohne Entry baut.
+        """
+        # Eigener Name — HA nutzt _config_entry selbst (Property-Rücken).
+        self._entry = config_entry
         self._data = {}
         self._agents = {}
         # Temporäre Daten für den aktuellen Agent-Schritt
@@ -248,13 +262,26 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         self._discovered_models = []
         self._editing_slot = 0
 
+    @property
+    def eintrag(self):
+        """Der Config-Entry dieses Flows — auf jeder HA-Fassung.
+
+        Vor 2024.11 existierte OptionsFlow.config_entry nicht (der
+        AttributeError aus ha-kontinuum #2); ab 2024.11 setzt HA ihn
+        selbst. Der im Konstruktor mitgereiste Entry kommt zuerst,
+        die HA-Property bleibt der Rückfall.
+        """
+        if self._entry is not None:
+            return self._entry
+        return self.config_entry  # HA ab 2024.11
+
     # ── Menu (Hauptnavigation) ────────────────────────────────────
 
     async def async_step_init(self, user_input=None):
         """Hauptmenü: Allgemein | Cortex Agents | Fertig."""
         # Beim ersten Aufruf: bestehende Agents laden
         if not self._data:
-            self._data = dict(self.config_entry.data)
+            self._data = dict(self.eintrag.data)
             self._agents = dict(self._data.get("cortex_agents", {}))
 
         return self.async_show_menu(
@@ -546,7 +573,7 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
 
         op_mode = self._data.get("operation_mode", "shadow")
         new_data = {
-            **self.config_entry.data,
+            **self.eintrag.data,
             "preset": preset_key,
             "operation_mode": op_mode,
             "shadow_mode": op_mode == "shadow",
@@ -566,9 +593,9 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             new_data.pop("cortex_agents", None)
 
         self.hass.config_entries.async_update_entry(
-            self.config_entry, data=new_data
+            self.eintrag, data=new_data
         )
 
-        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+        await self.hass.config_entries.async_reload(self.eintrag.entry_id)
 
         return self.async_create_entry(title="", data={})
