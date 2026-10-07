@@ -25,8 +25,17 @@ jobs:
       - name: Compile all Python files
         run: python3 -m compileall -q custom_components
 
-      - name: Run wiring tests
-        run: python3 -m pytest tests/ -q
+      # Die Tests, die pytest-homeassistant-custom-component brauchen, laufen
+      # in der GitLab-CI (gepinnte Umgebung, requirements_test.txt). Hier
+      # bleiben nur die Tests ohne diese Abhaengigkeit -- die Auswahl wird
+      # aus dem Quelltext abgeleitet, damit keine Dateiliste veraltet.
+      - name: Run wiring tests (ohne HA-Testplugin)
+        run: |
+          python3 -m pip install pytest-asyncio
+          ign=$(grep -l pytest_homeassistant_custom_component tests/*.py | sed 's/^/--ignore=/' | tr '
+' ' ')
+          echo "ignoriert: $ign"
+          python3 -m pytest tests/ -q $ign
 
       - name: Import integrations
         run: |
