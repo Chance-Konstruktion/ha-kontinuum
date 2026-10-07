@@ -8,17 +8,27 @@
 # kontinuum-core liegt auf PyPI; die Quelle dazu unter
 # https://gitlab.schanz.ipv64.net/chance-konstruktion/kontinuum-core
 #
-# Bewusst UNANGEPINNT: Der normale pytest-Job ist der Ausguck gegen die
-# Zukunft -- kommt eine Kern-Version heraus, die die Manifest-Regel nicht
-# mehr erlaubt, wird er rot, und wir heben die Obergrenze bewusst an.
-# WELCHE Fassung die Installationen wirklich bekommen, prueft der CI-Job
-# kern-pypi: Er installiert den Kern nach der Regel aus manifest.json
-# und faehrt dieselbe Suite dagegen.
+# kontinuum-core bleibt BEWUSST UNANGEPINNT: Der normale pytest-Job ist
+# der Ausguck gegen die Zukunft -- kommt eine Kern-Version heraus, die
+# die Manifest-Regel nicht mehr erlaubt, wird er rot, und wir heben die
+# Obergrenze bewusst an. WELCHE Fassung die Installationen wirklich
+# bekommen, prueft der CI-Job kern-pypi: Er installiert den Kern nach
+# der Regel aus manifest.json und faehrt dieselbe Suite dagegen.
+#
+# Das WERKZEUG (pytest, pytest-asyncio, pytest-homeassistant-custom-
+# component) dagegen ist GEPINNT (ha-kontinuum #2, Claudes Order vom
+# 06.10.: "niemand raet mehr, welche Umgebung stimmt"). Belegt ist die
+# Umgebung aus dem Artefakt installierte-pakete.txt der Pipeline 18153
+# (python:3.13-Image): Home Assistant 2026.2.3, pytest 9.0.0,
+# pytest-asyncio 1.3.0. Claudes Morgen-Irrtum vom 06.10. (5 rote Tests
+# auf pve mit Python 3.11, CI gruen) war genau diese Rate-Falle. Ein
+# Sprung auf ein neues HA geschieht ab jetzt BEWUSST: Pin anheben,
+# Pipeline laufen lassen, Ergebnis in der Merge-Notiz nennen.
 #
 #     pip install -r requirements_test.txt
 #     pytest
 
-pytest
-pytest-asyncio
-pytest-homeassistant-custom-component
+pytest==9.0.0
+pytest-asyncio==1.3.0
+pytest-homeassistant-custom-component==0.13.316
 kontinuum-core
