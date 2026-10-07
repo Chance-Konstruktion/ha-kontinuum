@@ -1713,6 +1713,11 @@ def _execute_decision(hass, brain, decision):
     """Führt eine bestätigte Entscheidung tatsächlich aus (+ Outcome-Tracking)."""
     prefrontal = brain["prefrontal"]
     cerebellum = brain["cerebellum"]
+    # Der Outcome-Check unten braucht beide; ohne sie warf er drei Sekunden
+    # nach jeder autonomen Aktion einen NameError, und ACC wie Dopamin
+    # bekamen nie eine Rückmeldung (ruff F821).
+    acc = brain["acc"]
+    neurorhythms = brain["neurorhythms"]
     service_call = prefrontal.get_service_call(decision)
 
     if not service_call or not decision.entity_id:
