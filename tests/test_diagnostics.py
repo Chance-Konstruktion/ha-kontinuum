@@ -213,7 +213,7 @@ async def test_diagnose_ohne_laufendes_gehirn(
     diag = await async_get_config_entry_diagnostics(hass, entry)
 
     assert diag["gehirn"] is None
-    assert diag["versionen"]["integration"] == "0.30.0-experimental"
+    assert diag["versionen"]["integration"] == "0.31.0-experimental"
 
 
 async def test_integration_diagnose_listet_alle_entries(

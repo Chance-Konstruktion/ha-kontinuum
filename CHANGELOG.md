@@ -1,5 +1,56 @@
 # Changelog
 
+## experimental-v0.31.0 – Das Lagebild (unveröffentlicht)
+
+KONTINUUM soll verstehen, was mehrere Geräte **zusammen** sagen: Auto weg (die
+Reifendrucksensoren melden sich ab), Fernseher aus, PC an heißt etwas anderes
+als dasselbe mit laufendem Fernseher und PC im Standby. Diese Version bindet
+Stufe 3 aus kontinuum-core 0.7.0 an (Leit-Ticket kontinuum-core#2). Mit dem
+Kern 0.6.3 bleibt alles wie bisher, siehe „Aktivierung“.
+
+### Added
+- **Lagebild** (neues Modul `lagebild.py`, im Kern `AssociationCortex`). Es
+  sitzt ganz vorn im Ereignispfad, vor Burst-Filter, Home-Only und Thalamus,
+  und hört jede Zustandsänderung: auch `unavailable` (Zustand `weg`) und den
+  ersten Zustand nach dem Start, den der übrige Pfad mangels `old_state`
+  verwirft. Leistungen bekommen gelernte Gerätestufen statt fester
+  Watt-Eimer (3 W Standby und 100 W Betrieb sind für den Thalamus beide
+  „niedrig“). KONTINUUMs eigene Sensoren lernt es nie.
+- **Anwesenheit aus der Lage.** `sensor.kontinuum_lagebild` zeigt, wie viele
+  Personen die Lage für daheim hält; in den Attributen stehen je Person
+  Wahrscheinlichkeit und Belege, dazu die stärksten Zusammenhänge der
+  Paar-Tafel („wenn A, dann B“). Für jede gelernte Person entsteht
+  `sensor.kontinuum_anwesenheit_<person>` in Prozent. Geschlossen wird allein
+  aus Geräten; die Tracker der Person sind das Etikett, nie ein Indiz. So
+  entsteht eine zweite Meinung, die dem Handy widerspricht, wenn es im Büro
+  liegt, und die einspringt, wenn es schweigt. Ziele sind Personen und ihre
+  eigenen Tracker (`device_trackers` der Person); alle anderen Tracker (eine
+  Router-Integration legt einen je Gerät an) bleiben Indizien.
+- **Vorhersage-Börse** (im Kern `Claustrum`): `sensor.kontinuum_prediction`
+  zeigt jetzt die Vorhersage der Börse; das Attribut `boerse` trägt ihre
+  Trefferquote und die gelernten Gewichte. Gemessen auf den fünf CASAS-Häusern
+  liegt die Börse an jedem Ursprung 9 bis 14 Punkte Top-1 über der besten
+  dummen Regel und 4 bis 12 Punkte über der alten Kette.
+
+### Changed
+- **Vorhersage und Vorschlag sind getrennt.** Die Börse sagt vorher, was als
+  Nächstes geschieht. Was KONTINUUM davon vorschlägt, wägt weiter das
+  Ranking mit den Rückmeldungen ab (die Habenula unterdrückt Abgelehntes,
+  Accumbens und Basalganglien bevorzugen Bewährtes), jetzt auf den
+  Kandidaten der Börse.
+- Eine überfällige Kadenz (Intervall-Uhr) und ein sicherer Reflex, den die
+  Börse nicht ohnehin führt, stehen höchstens auf dem letzten Platz der
+  Liste, statt sich vorzudrängeln.
+- Lagebild und Börse werden wie die übrigen Aux-Module in eigenen Dateien
+  gespeichert (`association_cortex.json.gz`, `claustrum.json.gz`).
+
+### Aktivierung
+Die Manifest-Regel bleibt `kontinuum-core>=0.6.3,<0.7`, genau eine
+Nebenlinie (`test_kern_regel.py`). Stufe 3 wird mit dem bewussten Sprung auf
+`>=0.7.0,<0.8` aktiv, sobald kontinuum-core 0.7.0 auf PyPI liegt. Dann fährt
+`kern-pypi` die Suite gegen den neuen Kern, einschließlich
+`test_lagebild_ha.py`, das sich bis dahin mit Grund überspringt.
+
 ## experimental-v0.30.0 – Der Cortex wird zum Organ (unveröffentlicht)
 
 Die erste echte Beratung mit einem lokalen Modell (qwen3:8b über Ollama) endete
