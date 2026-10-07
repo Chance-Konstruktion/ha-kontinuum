@@ -23,6 +23,7 @@ SIGNAL_PERSONS_UPDATE = f"{DOMAIN}_persons_update"
 
 
 SIGNAL_CORTEX_UPDATE = f"{DOMAIN}_cortex_update"
+SIGNAL_LAGEBILD_UPDATE = f"{DOMAIN}_lagebild_update"
 
 
 async def async_setup_entry(
@@ -64,6 +65,12 @@ async def async_setup_entry(
         KontinuumActivitySensor(brain, entry, "acc", "mdi:head-sync"),
         KontinuumActivitySensor(brain, entry, "sleepconsolidation", "mdi:power-sleep"),
     ]
+
+    # ── Stufe 3: Lagebild (nur mit kontinuum-core >= 0.7) ─────
+    # Die Anwesenheits-Sensoren je Person entstehen, sobald das Lagebild
+    # die Person gelernt hat (siehe KontinuumLagebildSensor).
+    if brain.get("association_cortex") is not None:
+        sensors.append(KontinuumLagebildSensor(brain, entry, async_add_entities))
 
     # ── Cortex Agent-Sensoren (1 pro konfiguriertem Agent) ────
     cortex = brain.get("cortex")
@@ -353,6 +360,9 @@ class KontinuumLastEventSensor(KontinuumSensorBase):
 
 
 class KontinuumPredictionSensor(KontinuumSensorBase):
+    # Die Bilanz der Börse ändert sich mit jedem Ereignis — nicht in den Recorder.
+    _unrecorded_attributes = frozenset({"boerse"})
+
     def __init__(self, brain, entry):
         super().__init__(brain, entry, "prediction",
                          "KONTINUUM Prediction", "mdi:crystal-ball")
@@ -379,12 +389,15 @@ class KontinuumPredictionSensor(KontinuumSensorBase):
         top = self._predictions[0]
         tok_id, prob, conf, src = top[:4]
         n_obs = top[4] if len(top) > 4 else 0
+        boerse = self._brain.get("claustrum")
         return {
             "confidence": conf,
             "probability": prob,
             "token": thalamus.decode_token(tok_id),
             "source": src,
             "observations": n_obs,
+            # Stufe 3: Trefferquote und gelernte Gewichte der Börse
+            "boerse": boerse.stats if boerse is not None else None,
             "alternatives": [
                 {
                     "token": thalamus.decode_token(p[0]),
@@ -517,6 +530,103 @@ class KontinuumPersonsSensor(KontinuumSensorBase):
     @property
     def extra_state_attributes(self):
         return {"home": self._home, "away": self._away}
+
+
+class KontinuumLagebildSensor(KontinuumSensorBase):
+    """Das Lagebild (Stufe 3): Wie viele Personen hält die Lage für daheim?
+
+    Geschlossen aus allen Gerätezuständen — Auto da oder weg (die
+    Reifendrucksensoren melden sich ab), Fernseher, PC, Licht, wie lange
+    schon — gestapelt mit der Uhrzeit-Gewohnheit. Je Person stehen
+    Wahrscheinlichkeit und die stärksten Belege in den Attributen; dazu die
+    stärksten Zusammenhänge („wenn A, dann B“). Legt für jede gelernte
+    Person einen eigenen Anwesenheits-Sensor an.
+    """
+
+    _unrecorded_attributes = frozenset({"anwesenheit", "zusammenhaenge", "lernstand"})
+
+    def __init__(self, brain, entry, add_entities):
+        super().__init__(brain, entry, "lagebild",
+                         "KONTINUUM Lagebild", "mdi:home-search")
+        self._attr_native_unit_of_measurement = "Personen"
+        self._signal = SIGNAL_LAGEBILD_UPDATE
+        self._entry = entry
+        self._add_entities = add_entities
+        self._personen = set()
+        self._daten = brain.get("_lagebild") or {}
+
+    @callback
+    def _handle_update(self, data=None):
+        if isinstance(data, dict):
+            self._daten = data
+        neu = []
+        for ziel in self._daten.get("anwesenheit") or {}:
+            if ziel.startswith("person.") and ziel not in self._personen:
+                self._personen.add(ziel)
+                zustand = self.hass.states.get(ziel) if self.hass else None
+                name = (zustand.attributes.get("friendly_name")
+                        if zustand is not None else None) or ziel.split(".", 1)[-1]
+                neu.append(KontinuumAnwesenheitSensor(
+                    self._brain, self._entry, ziel, name))
+        if neu:
+            self._add_entities(neu)
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        anwesenheit = self._daten.get("anwesenheit") or {}
+        return sum(1 for ziel, a in anwesenheit.items()
+                   if ziel.startswith("person.") and a.get("zuhause", 0.0) >= 0.5)
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "anwesenheit": self._daten.get("anwesenheit") or {},
+            "zusammenhaenge": self._daten.get("zusammenhaenge") or [],
+            "lernstand": self._daten.get("stats") or {},
+        }
+
+
+class KontinuumAnwesenheitSensor(KontinuumSensorBase):
+    """Wie wahrscheinlich ist diese Person daheim — aus der Lage geschlossen.
+
+    Der eigene Tracker der Person zählt dabei NICHT als Indiz: Der Sensor
+    ist eine zweite Meinung. Schweigt das Handy (``unknown``), ist er die
+    einzige; liegt das Handy im Büro, widerspricht er ihm."""
+
+    _unrecorded_attributes = frozenset({"belege"})
+
+    def __init__(self, brain, entry, ziel, name):
+        objekt = ziel.split(".", 1)[-1]
+        super().__init__(brain, entry, f"anwesenheit_{objekt}",
+                         f"KONTINUUM Anwesenheit {name}", "mdi:home-account")
+        self._ziel = ziel
+        self._attr_native_unit_of_measurement = "%"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._signal = SIGNAL_LAGEBILD_UPDATE
+        self._daten = ((brain.get("_lagebild") or {}).get("anwesenheit") or {}).get(ziel) or {}
+
+    @callback
+    def _handle_update(self, data=None):
+        if isinstance(data, dict):
+            self._daten = (data.get("anwesenheit") or {}).get(self._ziel) or {}
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        p = self._daten.get("zuhause")
+        return None if p is None else round(100 * p)
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "person": self._ziel,
+            "wahrscheinlichster": self._daten.get("wahrscheinlichster"),
+            "meldet": self._daten.get("meldet"),
+            "belege": self._daten.get("belege") or [],
+            "uhrzeit": self._daten.get("uhrzeit"),
+            "takte": self._daten.get("takte", 0),
+        }
 
 
 class KontinuumUnknownEntitiesSensor(KontinuumSensorBase):

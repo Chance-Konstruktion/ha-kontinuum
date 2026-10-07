@@ -35,6 +35,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant import config_entries
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.util import dt as dt_util
 import homeassistant.helpers.config_validation as cv
 
 from kontinuum_core.thalamus import Thalamus
@@ -73,10 +74,11 @@ from .cortex_organ import anlass as cortex_anlass
 from .metaplasticity import MetaPlasticity
 from .config_flow import PRESETS
 from .zustands_abo import async_register_zustands_abo
+from . import lagebild
 
 _LOGGER = logging.getLogger(__name__)
 # Muss mit manifest.json "version" übereinstimmen
-VERSION = "0.30.0-experimental"
+VERSION = "0.31.0-experimental"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
@@ -93,6 +95,11 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 SIGNAL_SENSORS_UPDATE = f"{DOMAIN}_sensors_update"
 SIGNAL_PERSONS_UPDATE = f"{DOMAIN}_persons_update"
 SIGNAL_CORTEX_UPDATE = f"{DOMAIN}_cortex_update"
+SIGNAL_LAGEBILD_UPDATE = f"{DOMAIN}_lagebild_update"
+# Das Lagebild meldet höchstens so oft an die Sensoren (Sekunden); dazu
+# kommt der Idle-Heartbeat. Die Anwesenheit soll rasch folgen, der Recorder
+# aber nicht jede Sekunde schreiben.
+LAGEBILD_TAKT_S = 60
 
 # Aux-Module Persistenz-Dateien
 AUX_MODULE_FILES = {
@@ -113,6 +120,9 @@ AUX_MODULE_FILES = {
     "cortisol": "cortisol.json.gz",
     "bdnf": "bdnf.json.gz",
     "interval_timing": "interval_timing.json.gz",
+    # Stufe 3 (kontinuum-core >= 0.7.0): Lagebild + Vorhersage-Börse
+    "association_cortex": "association_cortex.json.gz",
+    "claustrum": "claustrum.json.gz",
 }
 
 
@@ -423,6 +433,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         cortisol = Cortisol()                   # systemic stress hormone
         bdnf = Bdnf()                            # use-dependent protection
         interval_timing = IntervalTiming()       # inner stopwatch (cadences)
+        # Stufe 3: Lagebild + Börse (None mit einem Kern < 0.7). Ziele der
+        # Anwesenheit sind Personen und ihre eigenen Tracker; die Menge lebt
+        # und wird mit den person-Entitäten nachgeführt.
+        ziel_tracker = lagebild.ziel_tracker_aus(
+            (st.entity_id, st.attributes) for st in hass.states.async_all("person"))
+        association_cortex, claustrum = lagebild.baue(ziel_tracker)
         metaplasticity = MetaPlasticity(hass)
 
         # Locus Coeruleus → Reticular Formation Verbindung (Arousal moduliert Burst-Filter)
@@ -481,6 +497,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             "cortisol": cortisol,
             "bdnf": bdnf,
             "interval_timing": interval_timing,
+            "association_cortex": association_cortex,
+            "claustrum": claustrum,
+            "_ziel_tracker": ziel_tracker,
             "metaplasticity": metaplasticity,
             "preset": preset_key,
             "_scenes_enabled": False,
@@ -588,6 +607,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 entity_id = event.data.get("entity_id", "")
                 new_state_obj = event.data.get("new_state")
                 old_state_obj = event.data.get("old_state")
+
+                # ── Lagebild (Stufe 3): ganz vorn ──────────────
+                # Vor Burst-Filter, Home-Only und Thalamus — das Lagebild
+                # braucht auch die Abwesenheit, ``unavailable`` (Reifen-
+                # drucksensoren, die wegfahren) und den ersten Zustand nach
+                # dem Start (old_state fehlt dann). Ortszeit, damit Stunde
+                # und Wochenende im Haus gelten, nicht in UTC.
+                if association_cortex is not None and new_state_obj is not None:
+                    lagebild.fuettern(
+                        association_cortex, thalamus, entity_id,
+                        new_state_obj.state,
+                        dt_util.as_local(new_state_obj.last_changed))
+                    if (time.time() - brain.get("_last_lagebild_update", 0)
+                            > LAGEBILD_TAKT_S):
+                        _lagebild_melden(hass, brain)
 
                 if not new_state_obj or not old_state_obj:
                     return
@@ -831,28 +865,44 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 # Surprise-Berechnung → kein Einfluss auf das Anomalie-Signal.
                 ev_now = now.timestamp()
                 interval_due = interval_timing.due_prediction(ev_now, exclude=token_id)
+                faellig = None
                 if interval_due is not None and not any(
                     p[0] == interval_due[0] for p in (predictions or [])
                 ):
                     predictions = (predictions or []) + [interval_due]
+                    faellig = interval_due[0]
 
-                if predictions:
-                    predictions = _rank_with_basal_ganglia(
-                        predictions, basal_ganglia, bucket,
+                def _gerankt(liste):
+                    return _rank_with_basal_ganglia(
+                        liste, basal_ganglia, bucket,
                         thalamus, accumbens, room, insula.current_mode,
                         locus.get_arousal(), acc,
                         brain.get("_expected_next_room"),
                         habenula, cortisol)
 
+                if claustrum is not None:
+                    # Stufe 3: Die Börse sagt vorher, was als Nächstes
+                    # geschieht (Hippocampus und Reflex sind Stimmen im Rat).
+                    # Was KONTINUUM davon vorschlägt, wägt weiter das Ranking
+                    # mit den Rückmeldungen ab (Habenula, Accumbens, Q-Werte).
+                    predictions = lagebild.vorhersage(
+                        claustrum, token_id, dt_util.as_local(now), semantic,
+                        raw_predictions, fired_rule, faellig)
+                    entscheidungsliste = _gerankt(predictions) if predictions else predictions
+                else:
+                    if predictions:
+                        predictions = _gerankt(predictions)
+                    entscheidungsliste = predictions
+
                 # PFC entscheidet (mit Q-Value Boost aus Basalganglien)
                 decision = prefrontal.evaluate(
-                    predictions, thalamus, basal_ganglia, bucket)
+                    entscheidungsliste, thalamus, basal_ganglia, bucket)
 
                 # ACC: Konflikt zwischen den Modul-Stimmen messen.
                 # Fließt über cognitive_control als Confidence-Dämpfung
                 # in das Ranking der nächsten Events ein (EMA-geglättet).
                 acc.observe_decision(_build_acc_proposals(
-                    raw_predictions, predictions, fired_rule,
+                    raw_predictions, entscheidungsliste, fired_rule,
                     decision, thalamus))
                 if decision:
                     # Basalganglien: Aktion registrieren für Outcome-Tracking
@@ -973,6 +1023,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 _maybe_consolidate(brain)
             except Exception as e:  # noqa: BLE001 — a timer must never crash setup
                 _LOGGER.error("KONTINUUM Idle-Heartbeat Fehler: %s", e, exc_info=True)
+            try:
+                # Zeit vergeht auch ohne Ereignis: „Fernseher seit drei
+                # Stunden aus“ ist ein anderes Indiz als „seit zwei Minuten“.
+                _lagebild_melden(hass, brain, _now)
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.error("KONTINUUM Lagebild Fehler: %s", e, exc_info=True)
 
         brain["_unsub_idle"] = async_track_time_interval(
             hass, _idle_heartbeat, timedelta(seconds=IDLE_HEARTBEAT_SECONDS)
@@ -1272,6 +1328,40 @@ def _inject_token(hass, brain, token_info, timestamp):
     ctx = time_ctx + hypo_ctx + mode_ctx
 
     hippocampus.learn(token_id, ctx, timestamp)
+
+    # Stufe 3: Die Börse lernt denselben Strom wie der Hippocampus (Raum-
+    # Übergänge, Energie-/Klima-Wechsel). Ihre Vorhersage danach misst sie
+    # am nächsten Token, angezeigt wird sie nicht.
+    claustrum = brain.get("claustrum")
+    if claustrum is not None:
+        lagebild.vorhersage(claustrum, token_id, dt_util.as_local(timestamp),
+                            token_info.get("semantic"), None, None, None)
+
+
+def _lagebild_melden(hass, brain, jetzt=None) -> None:
+    """Auskunft des Lagebilds an die Sensoren; führt dabei nach, welche
+    Tracker einer Person gehören (Ziele der Anwesenheit)."""
+    kortex = brain.get("association_cortex")
+    if kortex is None:
+        return
+    tracker = lagebild.ziel_tracker_aus(
+        (st.entity_id, st.attributes) for st in hass.states.async_all("person"))
+    ziel_tracker = brain.get("_ziel_tracker")
+    if ziel_tracker is not None and tracker != ziel_tracker:
+        ziel_tracker.clear()
+        ziel_tracker.update(tracker)
+    # Die Zusammenhänge (ganze Paar-Tafel) nur im Herzschlag, alle fünf
+    # Minuten; die Anwesenheit folgt jeder Minute.
+    alt = brain.get("_lagebild") or {}
+    voll = jetzt is not None or "zusammenhaenge" not in alt
+    daten = lagebild.auskunft(
+        kortex, dt_util.as_local(jetzt) if jetzt is not None else None,
+        zusammenhaenge=voll)
+    if not voll:
+        daten["zusammenhaenge"] = alt["zusammenhaenge"]
+    brain["_lagebild"] = daten
+    brain["_last_lagebild_update"] = time.time()
+    async_dispatcher_send(hass, SIGNAL_LAGEBILD_UPDATE, daten)
 
 
 # ══════════════════════════════════════════════════════════════════
