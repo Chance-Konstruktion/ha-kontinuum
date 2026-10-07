@@ -154,7 +154,7 @@ async def test_versionen_stehen_in_jeder_diagnose(
     manifest = json.loads(manifest_pfad.read_text(encoding="utf-8"))
     assert versionen["integration"] == manifest["version"]
     assert versionen["kern"] is not None
-    assert versionen["kern"].startswith("0.6.")
+    assert versionen["kern"].startswith("0.7.")
 
 
 async def test_datei_fakten_lesen_ohne_inhalt(

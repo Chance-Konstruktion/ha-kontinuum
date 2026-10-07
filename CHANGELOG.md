@@ -1,12 +1,12 @@
 # Changelog
 
-## experimental-v0.31.0 – Das Lagebild (unveröffentlicht)
+## experimental-v0.31.0 – Das Lagebild
 
 KONTINUUM soll verstehen, was mehrere Geräte **zusammen** sagen: Auto weg (die
 Reifendrucksensoren melden sich ab), Fernseher aus, PC an heißt etwas anderes
 als dasselbe mit laufendem Fernseher und PC im Standby. Diese Version bindet
 Stufe 3 aus kontinuum-core 0.7.0 an (Leit-Ticket kontinuum-core#2). Mit dem
-Kern 0.6.3 bleibt alles wie bisher, siehe „Aktivierung“.
+Kern 0.6.3 bleibt alles wie bisher; diese Version verlangt aber den Kern 0.7.0, siehe „Aktivierung“.
 
 ### Added
 - **Lagebild** (neues Modul `lagebild.py`, im Kern `AssociationCortex`). Es
@@ -48,11 +48,10 @@ Kern 0.6.3 bleibt alles wie bisher, siehe „Aktivierung“.
   gespeichert (`association_cortex.json.gz`, `claustrum.json.gz`).
 
 ### Aktivierung
-Die Manifest-Regel bleibt `kontinuum-core>=0.6.3,<0.7`, genau eine
-Nebenlinie (`test_kern_regel.py`). Stufe 3 wird mit dem bewussten Sprung auf
-`>=0.7.0,<0.8` aktiv, sobald kontinuum-core 0.7.0 auf PyPI liegt. Dann fährt
-`kern-pypi` die Suite gegen den neuen Kern, einschließlich
-`test_lagebild_ha.py`, das sich bis dahin mit Grund überspringt.
+Die Manifest-Regel ist jetzt `kontinuum-core>=0.7.0,<0.8`, genau eine
+Nebenlinie (`test_kern_regel.py`). kontinuum-core 0.7.0 liegt auf PyPI, damit
+ist Stufe 3 aktiv. `kern-pypi` fährt die Suite gegen den neuen Kern,
+einschließlich `test_lagebild_ha.py`.
 
 ## experimental-v0.30.0 – Der Cortex wird zum Organ (unveröffentlicht)
 
