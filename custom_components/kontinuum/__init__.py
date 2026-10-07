@@ -100,6 +100,10 @@ SIGNAL_LAGEBILD_UPDATE = f"{DOMAIN}_lagebild_update"
 # kommt der Idle-Heartbeat. Die Anwesenheit soll rasch folgen, der Recorder
 # aber nicht jede Sekunde schreiben.
 LAGEBILD_TAKT_S = 60
+# Die Zusammenhänge lesen die ganze Paar-Tafel (quadratisch: ~16 ms auf dem
+# PC, eine Viertelsekunde auf einem Pi) -- der Herzschlag rechnet sie nur
+# stündlich neu.
+LAGEBILD_ZUSAMMENHAENGE_S = 3600
 
 # Aux-Module Persistenz-Dateien
 AUX_MODULE_FILES = {
@@ -1350,14 +1354,19 @@ def _lagebild_melden(hass, brain, jetzt=None) -> None:
     if ziel_tracker is not None and tracker != ziel_tracker:
         ziel_tracker.clear()
         ziel_tracker.update(tracker)
-    # Die Zusammenhänge (ganze Paar-Tafel) nur im Herzschlag, alle fünf
-    # Minuten; die Anwesenheit folgt jeder Minute.
+    # Die Zusammenhänge (ganze Paar-Tafel) nur im Herzschlag und dort
+    # stündlich; die Anwesenheit folgt jeder Minute.
     alt = brain.get("_lagebild") or {}
-    voll = jetzt is not None or "zusammenhaenge" not in alt
+    voll = "zusammenhaenge" not in alt or (
+        jetzt is not None
+        and time.time() - brain.get("_zusammenhaenge_zeit", 0.0)
+        >= LAGEBILD_ZUSAMMENHAENGE_S)
     daten = lagebild.auskunft(
         kortex, dt_util.as_local(jetzt) if jetzt is not None else None,
         zusammenhaenge=voll)
-    if not voll:
+    if voll:
+        brain["_zusammenhaenge_zeit"] = time.time()
+    else:
         daten["zusammenhaenge"] = alt["zusammenhaenge"]
     brain["_lagebild"] = daten
     brain["_last_lagebild_update"] = time.time()
