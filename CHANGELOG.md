@@ -25,7 +25,10 @@ Kern 0.6.3 bleibt alles wie bisher, siehe „Aktivierung“.
   entsteht eine zweite Meinung, die dem Handy widerspricht, wenn es im Büro
   liegt, und die einspringt, wenn es schweigt. Ziele sind Personen und ihre
   eigenen Tracker (`device_trackers` der Person); alle anderen Tracker (eine
-  Router-Integration legt einen je Gerät an) bleiben Indizien.
+  Router-Integration legt einen je Gerät an) bleiben Indizien. Die
+  Anwesenheit folgt höchstens minütlich; die Zusammenhänge lesen die ganze
+  Paar-Tafel (quadratisch, auf einem Pi eine Viertelsekunde) und werden nur
+  stündlich im Herzschlag neu gerechnet.
 - **Vorhersage-Börse** (im Kern `Claustrum`): `sensor.kontinuum_prediction`
   zeigt jetzt die Vorhersage der Börse; das Attribut `boerse` trägt ihre
   Trefferquote und die gelernten Gewichte. Gemessen auf den fünf CASAS-Häusern
