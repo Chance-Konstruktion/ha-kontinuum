@@ -146,7 +146,7 @@ This button opens the repository in your own HACS and adds it as a custom reposi
 Or by hand:
 
 1. Open HACS --> Integrations --> Three-dot menu --> Custom Repositories
-2. URL: `https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-kontinuum`
+2. URL: `https://github.com/Chance-Konstruktion/ha-kontinuum`
 3. Category: Integration
 4. Install and restart
 

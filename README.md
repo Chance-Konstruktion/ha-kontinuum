@@ -175,7 +175,7 @@ Dieser Knopf öffnet das Repository in deiner eigenen HACS-Installation und trä
 Oder von Hand:
 
 1. HACS öffnen --> Integrationen --> Drei-Punkte-Menü --> Custom Repositories
-2. URL: `https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-kontinuum`
+2. URL: `https://github.com/Chance-Konstruktion/ha-kontinuum`
 3. Kategorie: Integration
 4. Installieren und neustarten
 
