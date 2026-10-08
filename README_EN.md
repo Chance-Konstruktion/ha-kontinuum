@@ -139,6 +139,12 @@ When enabled, up to **4 LLM Agents** can be configured:
 
 ### HACS (Custom Repository)
 
+This button opens the repository in your own HACS and adds it as a custom repository automatically:
+
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Chance-Konstruktion&repository=ha-kontinuum&category=integration)
+
+Or by hand:
+
 1. Open HACS --> Integrations --> Three-dot menu --> Custom Repositories
 2. URL: `https://gitlab.schanz.ipv64.net/chance-konstruktion/ha-kontinuum`
 3. Category: Integration
@@ -150,6 +156,8 @@ When enabled, up to **4 LLM Agents** can be configured:
 2. Restart Home Assistant
 
 ### Setup
+
+[![Open your Home Assistant instance and start setting up the integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=kontinuum)
 
 3. **Settings --> Integrations --> + Add --> KONTINUUM**
 4. Choose a personality
