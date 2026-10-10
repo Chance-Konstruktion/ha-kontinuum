@@ -1,5 +1,15 @@
 # Changelog
 
+## experimental-v0.31.1 – Dashboard verbindet wieder
+
+### Fixed
+- **Leeres Dashboard („keine Verbindung“) in großen Häusern.** Der
+  Status-Sensor gab `reticular` und `locus_coeruleus` in der Speicherform aus:
+  bis zu 30 Zeitstempel je Entität bzw. 2000 Ereignisse. Bei 1530 Entitäten
+  waren das 1,4 MB je Zustand, die das WebSocket-Abo bei jedem Ereignis
+  verschickte; HA trennte das Dashboard. Jetzt stehen dort nur Zähler, die
+  Speicherform bleibt in der Ablage.
+
 ## experimental-v0.31.0 – Das Lagebild
 
 KONTINUUM soll verstehen, was mehrere Geräte **zusammen** sagen: Auto weg (die

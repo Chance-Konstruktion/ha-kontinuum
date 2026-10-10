@@ -78,7 +78,7 @@ from . import lagebild
 
 _LOGGER = logging.getLogger(__name__)
 # Muss mit manifest.json "version" übereinstimmen
-VERSION = "0.31.0-experimental"
+VERSION = "0.31.1-experimental"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
