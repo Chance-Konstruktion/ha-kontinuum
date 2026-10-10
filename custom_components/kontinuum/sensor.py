@@ -228,10 +228,23 @@ class KontinuumStatusSensor(KontinuumSensorBase):
             attrs["anterior_cingulate"] = acc_mod.stats
         reticular = self._brain.get("reticular")
         if reticular:
-            attrs["reticular"] = reticular.to_dict()
+            # Nur Zähler, nie to_dict(): das ist die Speicherform mit bis zu
+            # 30 Zeitstempeln je Entität. Auf .247 (1530 Entitäten) waren das
+            # 1,4 MB je Zustand, bei jedem Ereignis über das WebSocket-Abo
+            # verschickt; das Dashboard bekam keine Verbindung mehr.
+            attrs["reticular"] = {
+                "filtered_events": reticular.filtered_events,
+                "total_cooldowns": reticular.total_cooldowns,
+                "tracked_entities": len(reticular.event_times),
+                "cooldowns_active": len(reticular.cooldown_until),
+            }
         locus_mod = self._brain.get("locus")
         if locus_mod:
-            attrs["locus_coeruleus"] = locus_mod.to_dict()
+            # Dito: die Ereignisliste (bis 2000) bleibt in der Ablage.
+            attrs["locus_coeruleus"] = {
+                "arousal": locus_mod.arousal,
+                "events": len(locus_mod.events),
+            }
         entorhinal = self._brain.get("entorhinal")
         if entorhinal:
             attrs["entorhinal"] = entorhinal.to_dict()
