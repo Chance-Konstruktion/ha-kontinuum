@@ -15,10 +15,20 @@ from kontinuum_core.reticular import ReticularFormation
 from custom_components.kontinuum.sensor import KontinuumStatusSensor
 
 
+class _Hirn(dict):
+    """Pflichtorgane (``brain["x"]``) als Attrappe, Kannorgane (``.get``) fehlen."""
+
+    def __missing__(self, name):
+        organ = MagicMock()
+        organ.stats = {}
+        self[name] = organ
+        return organ
+
+
 def _hirn(reticular, locus):
-    hirn = {name: MagicMock() for name in (
+    hirn = _Hirn({name: MagicMock() for name in (
         "cerebellum", "hippocampus", "thalamus", "spatial", "insula",
-        "amygdala", "prefrontal", "hypothalamus", "cortex")}
+        "amygdala", "prefrontal", "hypothalamus", "cortex")})
     hirn["cerebellum"].rules = {}
     hirn["thalamus"].entity_semantic = {}
     hirn["thalamus"].entity_room = {}
