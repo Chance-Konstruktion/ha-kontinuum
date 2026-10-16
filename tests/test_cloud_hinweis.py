@@ -14,6 +14,7 @@ Alle Tests fahren den echten Options-Flow im echten Test-Home.
 """
 
 import pytest
+from unittest.mock import patch
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -104,12 +105,19 @@ async def test_nein_fuehrt_zurueck_ins_setup(hass, enable_custom_integrations, e
 
 @pytest.mark.asyncio
 async def test_ollama_laeuft_ohne_hinweis(hass, enable_custom_integrations, entry):
-    """Der Standard bleibt unangetastet: Ollama geht direkt zur Modell-Wahl."""
+    """Der Standard bleibt unangetastet: Ollama geht direkt zur Modell-Wahl.
+    Der Verbindungsruf selbst wird gefangen — der Zeuge prüft die ROUTE,
+    nicht das Netz (pytest_socket blockt echte Sockets)."""
+    async def _verbindung_ok(url):
+        return True, "Testverbindung"
+
     flow_id = await _bis_agent_setup(hass, entry)
-    result = await hass.config_entries.options.async_configure(
-        flow_id,
-        user_input={"role": "comfort", "provider": "ollama", "url": ""},
-    )
+    with patch("custom_components.kontinuum.config_flow._test_ollama_connection",
+               _verbindung_ok):
+        result = await hass.config_entries.options.async_configure(
+            flow_id,
+            user_input={"role": "comfort", "provider": "ollama", "url": ""},
+        )
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "agent_model"
 
