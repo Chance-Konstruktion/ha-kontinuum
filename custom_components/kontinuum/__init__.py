@@ -636,10 +636,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 if new_state == old_state:
                     return
 
-                # Cortex-Nachhall: Tat der Mensch gerade, was eine offene
-                # Beratung als Option hatte? (Stufe 3a, Lernen aus dem Ergebnis)
-                brain["cortex"].nachhall.beobachte(entity_id, new_state, time.time())
-
                 # KONTINUUM-eigene Sensoren ignorieren
                 if entity_id.startswith("sensor.kontinuum_"):
                     return
@@ -648,6 +644,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
                 # Dynamischer Check: auch Labels die nach Start gesetzt werden
                 if entity_id in thalamus._ignored_entities:
                     return
+
+                # Cortex-Nachhall: Tat der Mensch gerade, was eine offene
+                # Beratung als Option hatte? (Stufe 3a, Lernen aus dem Ergebnis)
+                # Durchsicht 04.10., Punkt 8: NACH den Selbst- und Ignore-
+                # Filtern — der Nachhall liest die Bewohner des Hauses, nicht
+                # das Echo der eigenen Sensoren oder ignorierte Geräte.
+                # (Vor dem Reticular-Burst-Filter: der Mensch hat auch
+                # während eines Schwalles gehandelt.)
+                brain["cortex"].nachhall.beobachte(entity_id, new_state, time.time())
 
                 # ── Reticular Formation: Burst-Filter ──────────
                 domain = entity_id.split(".")[0] if "." in entity_id else ""
