@@ -98,5 +98,11 @@
     "error": {
       "ollama_unreachable": "Cannot reach Ollama at this address. Check if Ollama is running and the URL is correct."
     }
+  },
+  "issues": {
+    "modulfehler": {
+      "title": "KONTINUUM: module {name} failing ({stelle}, {anzahl}×)",
+      "description": "Module {name} has thrown errors during {anzahl} snapshots ({stelle}). Details are in the log; the brain keeps running, this module's snapshot rests."
+    }
   }
 }

@@ -98,5 +98,11 @@
     "error": {
       "ollama_unreachable": "Ollama nicht erreichbar. Prüfe ob Ollama läuft und die URL stimmt."
     }
+  },
+  "issues": {
+    "modulfehler": {
+      "title": "KONTINUUM: Modul {name} fehlerhaft ({stelle}, {anzahl}×)",
+      "description": "Das Modul {name} wirft seit {anzahl} Momentaufnahmen Fehler ({stelle}). Details stehen im Protokoll; das Gehirn läuft weiter, die Momentaufnahme dieses Moduls ruht."
+    }
   }
 }
