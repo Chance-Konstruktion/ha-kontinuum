@@ -167,7 +167,7 @@ keine Datei in `src/kontinuum_core/` importiert `homeassistant`.
 | Repo | LICENSE |
 |---|---|
 | `kontinuum-core` | **AGPL-3.0** |
-| `ha-kontinuum` | **MIT** |
+| `ha-kontinuum` | **AGPL-3.0** (wie LICENSE; die Phase-3-Entscheidung kann das ändern) |
 | `ha-kontinuum-lite` | **MIT** |
 
 → **Inkonsistent.** MIT-Wrapper um eine AGPL-Bibliothek sind zulässig, aber das

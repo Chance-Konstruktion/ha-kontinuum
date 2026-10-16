@@ -2601,6 +2601,45 @@ def _agents_mit_schluesseln(entry, brain) -> list:
     return configs
 
 
+# 0c (Durchsicht 04.10.): wiederholte Modulfehler werden als HA-Reparatur-
+# meldung sichtbar, nicht nur ins Log geschrieben. Die Fehlerpfade BUCHEN
+# nur (sie laufen teils im Executor ohne hass); die Verkündigung geschieht
+# im Ereignis-Takt (_modulfehler_verkünden, gerufen aus _async_save_brain).
+_MODULFEHLER: dict = {}
+_MODULFEHLER_AKTIV: set = set()
+_MODULFEHLER_SCHWELLE = 3
+
+
+def _modulfehler_buchen(stelle: str, name: str) -> None:
+    schlüssel = f"{stelle}:{name}"
+    _MODULFEHLER[schlüssel] = _MODULFEHLER.get(schlüssel, 0) + 1
+
+
+def _modulfehler_verkünden(hass) -> None:
+    try:
+        from homeassistant.helpers import issue_registry as ir
+    except Exception:  # noqa: BLE001 — Prüfungen ohne HA-Laufzeit
+        return
+    for schlüssel in list(_MODULFEHLER):
+        stelle, _, name = schlüssel.partition(":")
+        anzahl = _MODULFEHLER[schlüssel]
+        issue_id = "modulfehler_" + schlüssel.replace(":", "_")
+        if anzahl >= _MODULFEHLER_SCHWELLE and issue_id not in _MODULFEHLER_AKTIV:
+            ir.async_create_issue(
+                hass, DOMAIN, issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="modulfehler",
+                translation_placeholders={
+                    "stelle": stelle, "name": name, "anzahl": str(anzahl),
+                },
+            )
+            _MODULFEHLER_AKTIV.add(issue_id)
+        elif anzahl < _MODULFEHLER_SCHWELLE and issue_id in _MODULFEHLER_AKTIV:
+            ir.async_delete_issue(hass, DOMAIN, issue_id)
+            _MODULFEHLER_AKTIV.discard(issue_id)
+
+
 def _snapshot_brain(brain) -> bytes:
     """Die Momentaufnahme des Gehirns — entsteht IM EREIGNIS-TAKT.
 
@@ -2681,8 +2720,10 @@ async def _async_save_brain(hass, brain, brain_path) -> None:
         raw = _snapshot_brain(brain)
     except Exception as e:  # noqa: BLE001 — speichern darf den Takt nie killen
         _LOGGER.error("Fehler bei der Gehirn-Momentaufnahme: %s", e)
+        _modulfehler_buchen("snapshot", "gehirn")
         return
     await hass.async_add_executor_job(_write_brain_gz, raw, brain_path)
+    _modulfehler_verkünden(hass)
 
 
 def _snapshot_aux_modules(brain) -> list:
@@ -2703,6 +2744,7 @@ def _snapshot_aux_modules(brain) -> list:
             snapshots.append((fname, raw))
         except Exception as err:
             _LOGGER.warning("Aux-Modul %s konnte nicht fotografiert werden: %s", key, err)
+            _modulfehler_buchen("fotografieren", key)
     return snapshots
 
 
