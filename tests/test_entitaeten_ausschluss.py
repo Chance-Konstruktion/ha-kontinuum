@@ -76,10 +76,10 @@ async def registry(hass):
 async def test_standard_schliesst_betriebspersonal_aus(hass, registry):
     thalamus = ThalamusAttrappe()
     await _discover_entities(hass, thalamus, _entry(hass, "standard"))
-    assert "sensor.wohnzimmer_temperatur" in thalamus.registriert
-    assert "sensor.keller_alarm" in thalamus.registriert
+    assert "sensor.mqtt_wohnzimmer_temperatur" in thalamus.registriert
+    assert "sensor.mqtt_keller_alarm" in thalamus.registriert
     # Das Betriebspersonal: Systemüberwachung und Router bleiben draußen.
-    assert "sensor.cpu_last" not in thalamus.registriert
+    assert "sensor.system_monitor_cpu_last" not in thalamus.registriert
     assert "sensor.fritz_verkehr" not in thalamus.registriert
 
 
@@ -87,7 +87,7 @@ async def test_standard_schliesst_betriebspersonal_aus(hass, registry):
 async def test_opt_in_nimmt_nur_markierte(hass, registry):
     thalamus = ThalamusAttrappe()
     await _discover_entities(hass, thalamus, _entry(hass, "labeled"))
-    assert thalamus.registriert == ["sensor.wohnzimmer_temperatur"]
+    assert thalamus.registriert == ["sensor.mqtt_wohnzimmer_temperatur"]
 
 
 @pytest.mark.asyncio
@@ -104,7 +104,7 @@ async def test_label_gewinnt_gegen_ausschluss(hass, registry):
     )
     thalamus = ThalamusAttrappe()
     await _discover_entities(hass, thalamus, _entry(hass, "standard"))
-    assert "sensor.cpu_last" in thalamus.registriert
+    assert "sensor.system_monitor_cpu_last" in thalamus.registriert
 
 
 @pytest.mark.asyncio
@@ -113,8 +113,8 @@ async def test_ohne_entry_gilt_der_standard(hass, registry):
     Zurückfallen auf das alte Alles-Lernen."""
     thalamus = ThalamusAttrappe()
     await _discover_entities(hass, thalamus)
-    assert "sensor.wohnzimmer_temperatur" in thalamus.registriert
-    assert "sensor.cpu_last" not in thalamus.registriert
+    assert "sensor.mqtt_wohnzimmer_temperatur" in thalamus.registriert
+    assert "sensor.system_monitor_cpu_last" not in thalamus.registriert
 
 
 def test_die_ausschlussliste_ist_nur_maschine():
