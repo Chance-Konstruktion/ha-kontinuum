@@ -66,7 +66,7 @@ async def registry(hass):
     router = er.async_get_or_create(
         "sensor", "fritz", "verkehr", original_name="Fritzbox Verkehr",
     )
-    marke = lr.async_create("kontinuum")
+    marke = lr.async_get_label_by_name("kontinuum") or lr.async_create("kontinuum")
     er.async_update_entity(bewohner.entity_id, labels=[marke.label_id])
     return {"bewohner": bewohner, "alarm": alarm,
             "betriebs": betriebs, "router": router}
@@ -98,7 +98,7 @@ async def test_label_gewinnt_gegen_ausschluss(hass, registry):
 
     er = get_er(hass)
     lr = get_lr(hass)
-    marke = lr.async_create("kontinuum")
+    marke = lr.async_get_label_by_name("kontinuum") or lr.async_create("kontinuum")
     er.async_update_entity(
         registry["betriebs"].entity_id, labels=[marke.label_id],
     )
