@@ -93,6 +93,16 @@
           "model": "Bei Ollama als Dropdown der installierten Modelle. Bei Cloud/Custom den Modellnamen eintragen (z. B. gpt-4o-mini oder dein OpenCLAW-Modell).",
           "system_prompt": "Optional – überschreibt den Standard-Prompt der gewählten Rolle. Leer = Standard."
         }
+      },
+      "cloud_hinweis": {
+        "title": "Cloud-Hinweis",
+        "description": "Cloud-Anbieter: {anbieter} schickt den Hauskontext auf fremde Server. Ein Beratungsruf trägt: {felder}. Wer das nicht will, wählt unter Anbieter „Ollama (Lokal)“ — dann verlässt nichts das Haus.",
+        "data": {
+          "bestaetigt": "Hauskontext darf an {anbieter} gesendet werden"
+        },
+        "data_description": {
+          "bestaetigt": "Der Blick darauf lohnt sich: die Liste steht auch im Quelltext (config_flow.py, CLOUD_FELDER)."
+        }
       }
     },
     "error": {

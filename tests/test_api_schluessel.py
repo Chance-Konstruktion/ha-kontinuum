@@ -263,8 +263,13 @@ async def test_options_flow_leer_behaelt_den_schluessel(
                 "api_key": api_key,
             },
         )
-        # openai — kein Ollama-Verbindungstest: naechster Schritt ist
-        # das Modell-Formular.
+        # openai — kein Ollama-Verbindungstest; seit Punkt 5 der Durchsicht
+        # liegt zwischen Setup und Modell-Wahl der Cloud-Hinweis.
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "cloud_hinweis"
+        result = await hass.config_entries.options.async_configure(
+            flow_id, user_input={"bestaetigt": True},
+        )
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "agent_model"
         result = await hass.config_entries.options.async_configure(

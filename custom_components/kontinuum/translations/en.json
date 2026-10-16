@@ -93,6 +93,16 @@
           "model": "For Ollama a dropdown of installed models. For cloud/custom enter the model name (e.g. gpt-4o-mini or your OpenCLAW model).",
           "system_prompt": "Optional - overrides the default prompt of the chosen role. Empty = default."
         }
+      },
+      "cloud_hinweis": {
+        "title": "Cloud notice",
+        "description": "Cloud provider: {anbieter} sends the home context to external servers. Each consult request carries: {felder}. If you do not want this, pick “Ollama (Lokal)” as provider — then nothing leaves the house.",
+        "data": {
+          "bestaetigt": "Allow sending home context to {anbieter}"
+        },
+        "data_description": {
+          "bestaetigt": "The list also lives in the source (config_flow.py, CLOUD_FELDER)."
+        }
       }
     },
     "error": {
