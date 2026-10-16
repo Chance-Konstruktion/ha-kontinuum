@@ -48,7 +48,7 @@ async def _bis_agent_setup(hass, entry):
     )
     assert result["step_id"] == "agents_overview"
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], user_input={"action": "edit_1"},
+        result["flow_id"], user_input={"action": "add"},
     )
     assert result["step_id"] == "agent_setup"
     return result["flow_id"]
