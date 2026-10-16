@@ -588,7 +588,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             cortex.configure(_agents_mit_schluesseln(entry, brain))
 
         # ── Entities entdecken ────────────────────────────────
-        await _discover_entities(hass, thalamus)
+        await _discover_entities(hass, thalamus, entry)
 
         # ── Home-Only Mode (v0.15.0) ──────────────────────────
         home_only_mode = entry.data.get("home_only_mode", False)
@@ -2461,8 +2461,35 @@ def _refresh_labels(hass, thalamus):
 # ENTITY DISCOVERY
 # ══════════════════════════════════════════════════════════════════
 
-async def _discover_entities(hass, thalamus):
-    """Entdeckt Entities aus HA-Registries (mit Label-Support v0.14.0)."""
+#: Durchsicht 04.10., Punkt 3: Diese Plattformen SIND die Maschine selbst
+#: (Systemüberwachung, Hypervisor/Add-ons, Update-Zähler, Speedtest,
+#: Router/Netz) — sie sind das Betriebspersonal des Hauses, nicht seine
+#: Bewohner. Der Standard-Ausschluss lässt sie gar nicht erst ins Gehirn;
+#: das Opt-in (Label ``kontinuum``) und der Lern-Umfang ``labeled``
+#: gewinnen IMMER gegen den Ausschluss.
+STANDARD_AUSGESCHLOSSEN = frozenset({
+    "system_monitor",
+    "hassio", "supervisor",
+    "hacs",
+    "speedtest",
+    "unifi", "fritz", "fritzbox", "openwrt", "asuswrt", "huawei_lte", "upnp",
+})
+
+
+async def _discover_entities(hass, thalamus, entry=None):
+    """Entdeckt Entities aus HA-Registries (mit Label-Support v0.14.0).
+
+    Durchsicht 04.10., Punkt 3: Registriert wird bewusst SELECTIV —
+
+    * ``track_mode == "labeled"`` (Opt-in-Modus): nur Entities mit dem
+      Label ``kontinuum``;
+    * sonst (``standard``/``auto``): alles außer den
+      :data:`STANDARD_AUSGESCHLOSSEN` Plattformen;
+    * das Label ``kontinuum`` gewinnt in beiden Fällen gegen den
+      Ausschluss (wer es markiert, will es). ``ignore_kontinuum``
+      ändert hier nichts — es bleibt beim Kern abgemeldet, der es am
+      Ereignis verwirft; die Registry-Eintragung allein ist harmlos.
+    """
     try:
         from homeassistant.helpers.entity_registry import async_get as get_er
     except ImportError:
@@ -2486,6 +2513,7 @@ async def _discover_entities(hass, thalamus):
     dr = get_dr(hass)
 
     areas = {a.id: a.name for a in ar.async_list_areas()}
+    ausgeschlossen = {"plattform": 0, "opt_in": 0}
 
     # Label-Registry (HA 2024.1+)
     label_names = {}
@@ -2520,6 +2548,17 @@ async def _discover_entities(hass, thalamus):
                 if lid in label_names
             ]
 
+        # Punkt 3: selektiv registrieren (siehe Modul-Docstring oben).
+        include = any(n.strip().lower() == "kontinuum" for n in entity_labels)
+        umfang = entry.data.get("track_mode", "standard") if entry is not None else "standard"
+        if umfang == "labeled" and not include:
+            ausgeschlossen["opt_in"] += 1
+            continue
+        if (not include and umfang != "labeled"
+                and getattr(entity, "platform", "") in STANDARD_AUSGESCHLOSSEN):
+            ausgeschlossen["plattform"] += 1
+            continue
+
         thalamus.register_entity(
             entity_id=entity_id,
             ha_area=area_name,
@@ -2531,9 +2570,11 @@ async def _discover_entities(hass, thalamus):
         )
 
     _LOGGER.info(
-        "Entity Discovery: %d Entities in %d Räumen registriert (Labels: %d)",
+        "Entity Discovery: %d Entities in %d Räumen registriert "
+        "(Labels: %d; ausgeschlossen: %d Plattform, %d Opt-in)",
         len(thalamus.entity_semantic), len(thalamus._known_rooms),
         len(label_names),
+        ausgeschlossen["plattform"], ausgeschlossen["opt_in"],
     )
 
 
