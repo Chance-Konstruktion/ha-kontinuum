@@ -134,6 +134,23 @@ AUX_MODULE_FILES = {
 # ASYNC-SAFE HELPERS
 # ══════════════════════════════════════════════════════════════════
 
+def _asset_version() -> str:
+    """Kennung der ausgelieferten Dashboard-Dateien (für ?v= in den Adressen).
+
+    /local/ wird mit Cache ausgeliefert, und ein Strg+R lädt den Iframe und
+    seine Skripte nicht neu: ohne wechselnde Adresse lief am 17.10.2026 eine
+    reparierte kontinuum-daten.js im Browser weiter in der alten Fassung.
+    """
+    assets = os.path.join(os.path.dirname(__file__), "assets")
+    teile = []
+    for name in ("kontinuum.html", "kontinuum-daten.js"):
+        try:
+            teile.append(str(int(os.path.getmtime(os.path.join(assets, name)))))
+        except OSError:
+            teile.append("0")
+    return "-".join(teile)
+
+
 def _install_dashboard(hass):
     """Kopiert kontinuum.html und die Schriften nach /config/www/ falls nötig."""
     assets = os.path.join(os.path.dirname(__file__), "assets")
@@ -154,8 +171,16 @@ def _install_dashboard(hass):
         dst_mtime = os.path.getmtime(dst)
         needs_copy = src_mtime > dst_mtime
 
-    if needs_copy:
-        shutil.copy2(src, dst)
+    with open(src, encoding="utf-8") as f:
+        html = f.read().replace(
+            'src="kontinuum-daten.js"', f'src="kontinuum-daten.js?v={_asset_version()}"')
+    alt = None
+    if os.path.isfile(dst):
+        with open(dst, encoding="utf-8") as f:
+            alt = f.read()
+    if needs_copy or alt != html:
+        with open(dst, "w", encoding="utf-8") as f:
+            f.write(html)
         _LOGGER.info("KONTINUUM Dashboard installiert: %s", dst)
     else:
         _LOGGER.debug("KONTINUUM Dashboard bereits aktuell")
@@ -221,7 +246,7 @@ async def _register_dashboard_panel(hass):
             sidebar_title="KONTINUUM",
             sidebar_icon="mdi:brain",
             frontend_url_path=url_path,
-            config={"url": "/local/kontinuum.html"},
+            config={"url": f"/local/kontinuum.html?v={_asset_version()}"},
             require_admin=False,
         )
         _LOGGER.info("KONTINUUM Dashboard registriert (async_register_built_in_panel)")
@@ -240,7 +265,7 @@ async def _register_dashboard_panel(hass):
             sidebar_icon="mdi:brain",
             module_url="/local/kontinuum.html",
             require_admin=False,
-            config={"url": "/local/kontinuum.html"},
+            config={"url": f"/local/kontinuum.html?v={_asset_version()}"},
         )
         _LOGGER.info("KONTINUUM Dashboard registriert (panel_custom)")
         return
@@ -256,7 +281,7 @@ async def _register_dashboard_panel(hass):
                 "sidebar_title": "KONTINUUM",
                 "sidebar_icon": "mdi:brain",
                 "url_path": url_path,
-                "config": {"url": "/local/kontinuum.html"},
+                "config": {"url": f"/local/kontinuum.html?v={_asset_version()}"},
                 "require_admin": False,
             }
             _LOGGER.info("KONTINUUM Dashboard registriert (frontend_panels dict)")

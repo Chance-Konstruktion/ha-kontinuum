@@ -259,6 +259,8 @@ async def test_installation_legt_die_datenschicht_ab(
     www = Path(hass.config.config_dir) / "www"
     assert (www / "kontinuum.html").is_file()
     assert (www / "kontinuum-daten.js").is_file()
+    # Versionierte Adresse, sonst hält der Browser die alte Schicht im Cache
+    assert 'src="kontinuum-daten.js?v=' in (www / "kontinuum.html").read_text(encoding="utf-8")
 
 
 # ═════════════════════════════════════════════════════════════════
