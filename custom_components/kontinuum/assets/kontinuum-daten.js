@@ -30,7 +30,7 @@
  */
 (function (wurzel, definition) {
   'use strict';
-  var modul = definition();
+  var modul = definition(wurzel);
   if (typeof module !== 'undefined' && module.exports) {
     // Node: die Prüfung greift direkt UND über .KontinuumDatenSchicht zu
     module.exports = modul;
@@ -38,7 +38,9 @@
   } else {
     wurzel.KontinuumDatenSchicht = modul; // Browser: global, kein Modul-Laden nötig
   }
-})(typeof window !== 'undefined' ? window : globalThis, function () {
+})(typeof window !== 'undefined' ? window : globalThis, function (wurzel) {
+  // wurzel muss hier hereingereicht werden: die Standard-Fabriken unten
+  // (WebSocket, fetch) leben in dieser Funktion, nicht in der äusseren.
 
   var ABO_TYP = 'kontinuum/abonniere';
 
