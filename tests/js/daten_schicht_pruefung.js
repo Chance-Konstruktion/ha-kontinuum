@@ -313,6 +313,25 @@ async function kompletterHandschuh(s) {
       s.p.gemalt.length === gemaltVorher);
   }
 
+  // ── Die echten Fabriken (ohne Attrappen) ──
+  // Alle Prüfungen oben setzen socketFabrik/fetchFabrik; die Standardwege
+  // liefen darum nie. Am 17.10.2026 warfen sie im Browser ReferenceError
+  // (wurzel nicht im Geltungsbereich) — das Dashboard blieb auf VERBINDE.
+  {
+    const altWs = globalThis.WebSocket, altFetch = globalThis.fetch;
+    const gerufen = [];
+    globalThis.WebSocket = class { constructor(url) { gerufen.push('ws ' + url); } };
+    globalThis.fetch = (url, o) => { gerufen.push('fetch ' + url + ' ' + (o && o.headers && o.headers.Authorization)); return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve([]) }); };
+    const roh = new KontinuumDatenSchicht({ haBase: 'http://ha', holeToken: () => 't', beiZustaenden: () => {}, log: () => {}, setConn: () => {} });
+    let wurf = null;
+    try { roh._socketFabrik('ws://ha/api/websocket'); roh._fetchFabrik('http://ha/api/states', { Authorization: 'Bearer t' }); } catch (e) { wurf = e; }
+    pruefe('Standard-Fabriken werfen nicht', wurf === null, wurf && String(wurf));
+    pruefe('Standard-Fabriken nutzen das globale WebSocket und fetch',
+      gerufen.length === 2 && gerufen[0] === 'ws ws://ha/api/websocket' && gerufen[1] === 'fetch http://ha/api/states Bearer t',
+      JSON.stringify(gerufen));
+    globalThis.WebSocket = altWs; globalThis.fetch = altFetch;
+  }
+
   console.log('ZEUGNIS ' + JSON.stringify({ pruefungen: pruefungen, fehler: fehler }));
   process.exit(fehler > 0 ? 1 : 0);
 
