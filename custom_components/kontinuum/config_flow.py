@@ -47,6 +47,8 @@ CLOUD_FELDER = (
     "Modus des Hauses · Raum (wo sich KONTINUUM die Bewohner denkt) · "
     "ob Personen zuhause sind · Energie-Stand · Risiko-Einschätzung · "
     "Ereignis- und Habit-Zähler · das letzte Ereignis als Token · "
+    "Vorhersage des nächsten Ereignisses mit Sicherheit · "
+    "Gedächtnis-Genauigkeit · Dopamin-Signal · "
     "Gehirn-Zusammenfassung (Modulzustände, Anomalie-Signal, 0–1-Skalen) · "
     "bis zu 40 bekannte Entity-IDs · dein API-Schlüssel beim Anbieter"
 )
