@@ -26,21 +26,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+# Unter dem HA-Pytest-Plugin brauchen auch diese Tests eine laufende Schleife;
+# als async-Tests bekommen sie die vom Plugin (sync-Tests nach async-Tests
+# fanden "no current event loop").
+
 WURZEL = Path(__file__).resolve().parent.parent
 KOMPONENTE = WURZEL / "custom_components" / "kontinuum"
 PANEL_PY = KOMPONENTE / "panel.py"
 PANEL_JS = KOMPONENTE / "frontend" / "kontinuum-panel.js"
 
 
-
-def _lauf(coro):
-    """Eigene Schleife, ohne die globale anzufassen: asyncio.run setzt sie
-    am Ende auf None, und spaetere Tests mit get_event_loop() brechen."""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 def _panel_laden():
     """panel.py als eigenes Modul laden (ohne das Paket, das Home Assistant importiert)."""
@@ -75,9 +70,9 @@ def ha(monkeypatch):
     return SimpleNamespace(hass=hass, frontend=frontend, panel_custom=panel_custom)
 
 
-def test_panel_wird_als_custom_element_angemeldet(ha):
+async def test_panel_wird_als_custom_element_angemeldet(ha):
     p = _panel_laden()
-    assert _lauf(p.async_register_dashboard_panel(ha.hass)) is True
+    assert await (p.async_register_dashboard_panel(ha.hass)) is True
     ha.panel_custom.async_register_panel.assert_awaited_once()
     k = ha.panel_custom.async_register_panel.await_args.kwargs
     assert k["frontend_url_path"] == "kontinuum", "Adresse in der Seitenleiste bleibt /kontinuum"
@@ -91,17 +86,17 @@ def test_panel_wird_als_custom_element_angemeldet(ha):
     assert "/local/" not in json.dumps(k, default=str)
 
 
-def test_alte_registrierung_wird_vorher_entfernt(ha):
+async def test_alte_registrierung_wird_vorher_entfernt(ha):
     """Ein Neuladen des Eintrags darf nicht an dem alten Panel scheitern."""
     p = _panel_laden()
-    _lauf(p.async_register_dashboard_panel(ha.hass))
+    await (p.async_register_dashboard_panel(ha.hass))
     ha.frontend.async_remove_panel.assert_called_once_with(ha.hass, "kontinuum")
 
 
-def test_datei_wird_statisch_ausgeliefert_und_nur_einmal_angemeldet(ha):
+async def test_datei_wird_statisch_ausgeliefert_und_nur_einmal_angemeldet(ha):
     p = _panel_laden()
-    _lauf(p.async_register_dashboard_panel(ha.hass))
-    _lauf(p.async_register_dashboard_panel(ha.hass))        # Neuladen des Eintrags
+    await (p.async_register_dashboard_panel(ha.hass))
+    await (p.async_register_dashboard_panel(ha.hass))        # Neuladen des Eintrags
     anmelden = ha.hass.http.async_register_static_paths
     anmelden.assert_awaited_once()
     (liste,) = anmelden.await_args.args
@@ -112,31 +107,31 @@ def test_datei_wird_statisch_ausgeliefert_und_nur_einmal_angemeldet(ha):
     assert ha.panel_custom.async_register_panel.await_count == 2, "das Panel selbst wird bei jedem Neuladen neu gemeldet"
 
 
-def test_fehler_beim_anmelden_kippt_die_einrichtung_nicht(ha):
+async def test_fehler_beim_anmelden_kippt_die_einrichtung_nicht(ha):
     ha.panel_custom.async_register_panel.side_effect = ValueError("Panel schon da")
     p = _panel_laden()
-    assert _lauf(p.async_register_dashboard_panel(ha.hass)) is False
+    assert await (p.async_register_dashboard_panel(ha.hass)) is False
 
 
-def test_ohne_http_kein_absturz(ha):
+async def test_ohne_http_kein_absturz(ha):
     ha.hass.http = None                                   # z. B. in Tests ohne http-Komponente
     p = _panel_laden()
-    assert _lauf(p.async_register_dashboard_panel(ha.hass)) is False
+    assert await (p.async_register_dashboard_panel(ha.hass)) is False
 
 
-def test_asset_version_folgt_der_datei():
+async def test_asset_version_folgt_der_datei():
     p = _panel_laden()
     v = p.asset_version()
     assert v.isdigit() and int(v) > 0, "die Kennung muss aus dem Änderungsdatum der JS-Datei kommen"
 
 
-def test_webcomponent_name_passt_zur_js_datei():
+async def test_webcomponent_name_passt_zur_js_datei():
     p = _panel_laden()
     js = PANEL_JS.read_text(encoding="utf-8")
     assert f'customElements.define("{p.WEBCOMPONENT}"' in js
 
 
-def test_einrichtung_kopiert_nichts_mehr_und_registriert_kein_iframe():
+async def test_einrichtung_kopiert_nichts_mehr_und_registriert_kein_iframe():
     """Der Iframe-Weg ist aus __init__.py verschwunden."""
     q = (KOMPONENTE / "__init__.py").read_text(encoding="utf-8")
     assert "_install_dashboard" not in q
@@ -149,19 +144,19 @@ def test_einrichtung_kopiert_nichts_mehr_und_registriert_kein_iframe():
     assert 'component_name="iframe"' not in pq and "async_register_built_in_panel" not in pq
 
 
-def test_manifest_nennt_http_und_panel_custom():
+async def test_manifest_nennt_http_und_panel_custom():
     m = json.loads((KOMPONENTE / "manifest.json").read_text(encoding="utf-8"))
     assert set(m["after_dependencies"]) == {"http", "panel_custom"}
     assert m["dependencies"] == [], "harte Abhängigkeiten würden die Tests ohne Frontend-Paket kippen"
 
 
-def test_altes_iframe_dashboard_bleibt_unangetastet_im_repo():
+async def test_altes_iframe_dashboard_bleibt_unangetastet_im_repo():
     """Die Wächter-Tests am alten Dashboard (Schriften, Datenschicht) lesen diese Dateien weiter."""
     assert (KOMPONENTE / "assets" / "kontinuum.html").is_file()
     assert (KOMPONENTE / "assets" / "kontinuum-daten.js").is_file()
 
 
-def test_js_panel_laeuft_unter_node():
+async def test_js_panel_laeuft_unter_node():
     """Node fährt das Panel gegen Attrappen: Erkennung, Anzeigewerte, Tabs, Abo, Dienste."""
     if shutil.which("node") is None:
         pytest.skip("Node ist nicht installiert — der JS-Zeuge kann nicht fahren")
