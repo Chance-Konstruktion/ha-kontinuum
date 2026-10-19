@@ -58,14 +58,21 @@ def ha(monkeypatch):
     frontend.async_remove_panel = MagicMock()
     panel_custom = types.ModuleType("homeassistant.components.panel_custom")
     panel_custom.async_register_panel = AsyncMock()
-    komponenten = types.ModuleType("homeassistant.components")
-    komponenten.http, komponenten.frontend, komponenten.panel_custom = http, frontend, panel_custom
-    hauptmodul = types.ModuleType("homeassistant")
-    hauptmodul.components = komponenten
-    for name, m in (("homeassistant", hauptmodul), ("homeassistant.components", komponenten),
-                    ("homeassistant.components.http", http), ("homeassistant.components.frontend", frontend),
-                    ("homeassistant.components.panel_custom", panel_custom)):
+    blaetter = (("homeassistant.components.http", http), ("homeassistant.components.frontend", frontend),
+                ("homeassistant.components.panel_custom", panel_custom))
+    try:
+        # Ist Home Assistant da (CI), nur die Blaetter tauschen: ein falsches
+        # Hauptpaket bringt das HA-Pytest-Plugin um seine Schleife.
+        import homeassistant.components as komponenten
+    except ImportError:
+        komponenten = types.ModuleType("homeassistant.components")
+        hauptmodul = types.ModuleType("homeassistant")
+        hauptmodul.components = komponenten
+        monkeypatch.setitem(sys.modules, "homeassistant", hauptmodul)
+        monkeypatch.setitem(sys.modules, "homeassistant.components", komponenten)
+    for name, m in blaetter:
         monkeypatch.setitem(sys.modules, name, m)
+        monkeypatch.setattr(komponenten, name.rsplit(".", 1)[1], m, raising=False)
     hass = SimpleNamespace(data={}, http=SimpleNamespace(async_register_static_paths=AsyncMock()))
     return SimpleNamespace(hass=hass, frontend=frontend, panel_custom=panel_custom)
 
