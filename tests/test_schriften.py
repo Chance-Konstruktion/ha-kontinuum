@@ -6,9 +6,11 @@ Jeder Panel-Aufruf meldete IP und User-Agent an Google, bevor auch nur
 ein Buchstabe stand.
 
 Der Heil: Orbitron und JetBrains Mono (beide SIL Open Font License 1.1)
-reisen jetzt als WOFF2 mit der Integration — 9 Dateien, latin und
-latin-ext (die Umlaute wohnen dort), geliefert über dieselbe
-Install-Route wie das Dashboard selbst: ``/local/kontinuum-fonts/``.
+reisen als WOFF2 mit der Integration — 9 Dateien, latin und latin-ext
+(die Umlaute wohnen dort). Seit dem Umbau auf das native Panel zeigt das native Panel mit den Schriften
+von Home Assistant; die Iframe-Seite und diese Dateien bleiben im Repo
+(assets/), werden aber nicht mehr nach /local/ kopiert. Die Datei-Prüfungen
+unten gelten weiter für diese Altlast.
 """
 
 import re
@@ -55,21 +57,26 @@ def test_lizenzen_reisen_mit():
 
 
 @pytest.mark.asyncio
-async def test_installation_legt_schriften_ab(hass, enable_custom_integrations):
-    """Nach dem Setup liegen Dashboard und Schriften unter /local/."""
+async def test_einrichtung_kopiert_keine_schriften_mehr(hass, enable_custom_integrations):
+    """Seit dem Umbau auf das native Panel (natives Panel) landet nichts mehr unter /local/.
+
+    Das Panel zeichnet mit den Schriften von Home Assistant; die
+    Iframe-Seite und ihre Schriften liegen nur noch im Repo
+    (assets/), werden aber nicht mehr nach /config/www kopiert.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    import custom_components.kontinuum as kontinuum_init
+
     assert await async_setup_component(hass, "persistent_notification", {})
     entry = MockConfigEntry(domain=DOMAIN, title="KONTINUUM", data={})
     entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
+    with patch.object(
+        kontinuum_init, "async_register_dashboard_panel", AsyncMock(return_value=True)
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
 
     www = Path(hass.config.config_dir) / "www"
-    assert (www / "kontinuum.html").is_file()
-
-    gelegt = list((www / "kontinuum-fonts").glob("*.woff2"))
-    geladen = {Path(p).name for p in _geladene_schriften()}
-    assert geladen, "das Dashboard lädt gar keine Schriften (mehr)?"
-    assert geladen <= {f.name for f in gelegt}, (
-        f"nicht alle geladenen Schriften wurden installiert: "
-        f"{sorted(geladen - {f.name for f in gelegt})}"
-    )
+    assert not (www / "kontinuum.html").exists()
+    assert not (www / "kontinuum-fonts").exists()

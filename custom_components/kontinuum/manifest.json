@@ -1,6 +1,7 @@
 {
   "domain": "kontinuum",
   "name": "KONTINUUM - Neuroinspired Home Intelligence",
+  "after_dependencies": ["http", "panel_custom"],
   "codeowners": ["@Chance-Konstruktion"],
   "config_flow": true,
   "dependencies": [],
