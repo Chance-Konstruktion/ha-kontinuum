@@ -32,6 +32,16 @@ PANEL_PY = KOMPONENTE / "panel.py"
 PANEL_JS = KOMPONENTE / "frontend" / "kontinuum-panel.js"
 
 
+
+def _lauf(coro):
+    """Eigene Schleife, ohne die globale anzufassen: asyncio.run setzt sie
+    am Ende auf None, und spaetere Tests mit get_event_loop() brechen."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
 def _panel_laden():
     """panel.py als eigenes Modul laden (ohne das Paket, das Home Assistant importiert)."""
     spec = importlib.util.spec_from_file_location("kontinuum_panel_unter_test", PANEL_PY)
@@ -67,7 +77,7 @@ def ha(monkeypatch):
 
 def test_panel_wird_als_custom_element_angemeldet(ha):
     p = _panel_laden()
-    assert asyncio.run(p.async_register_dashboard_panel(ha.hass)) is True
+    assert _lauf(p.async_register_dashboard_panel(ha.hass)) is True
     ha.panel_custom.async_register_panel.assert_awaited_once()
     k = ha.panel_custom.async_register_panel.await_args.kwargs
     assert k["frontend_url_path"] == "kontinuum", "Adresse in der Seitenleiste bleibt /kontinuum"
@@ -84,14 +94,14 @@ def test_panel_wird_als_custom_element_angemeldet(ha):
 def test_alte_registrierung_wird_vorher_entfernt(ha):
     """Ein Neuladen des Eintrags darf nicht an dem alten Panel scheitern."""
     p = _panel_laden()
-    asyncio.run(p.async_register_dashboard_panel(ha.hass))
+    _lauf(p.async_register_dashboard_panel(ha.hass))
     ha.frontend.async_remove_panel.assert_called_once_with(ha.hass, "kontinuum")
 
 
 def test_datei_wird_statisch_ausgeliefert_und_nur_einmal_angemeldet(ha):
     p = _panel_laden()
-    asyncio.run(p.async_register_dashboard_panel(ha.hass))
-    asyncio.run(p.async_register_dashboard_panel(ha.hass))        # Neuladen des Eintrags
+    _lauf(p.async_register_dashboard_panel(ha.hass))
+    _lauf(p.async_register_dashboard_panel(ha.hass))        # Neuladen des Eintrags
     anmelden = ha.hass.http.async_register_static_paths
     anmelden.assert_awaited_once()
     (liste,) = anmelden.await_args.args
@@ -105,13 +115,13 @@ def test_datei_wird_statisch_ausgeliefert_und_nur_einmal_angemeldet(ha):
 def test_fehler_beim_anmelden_kippt_die_einrichtung_nicht(ha):
     ha.panel_custom.async_register_panel.side_effect = ValueError("Panel schon da")
     p = _panel_laden()
-    assert asyncio.run(p.async_register_dashboard_panel(ha.hass)) is False
+    assert _lauf(p.async_register_dashboard_panel(ha.hass)) is False
 
 
 def test_ohne_http_kein_absturz(ha):
     ha.hass.http = None                                   # z. B. in Tests ohne http-Komponente
     p = _panel_laden()
-    assert asyncio.run(p.async_register_dashboard_panel(ha.hass)) is False
+    assert _lauf(p.async_register_dashboard_panel(ha.hass)) is False
 
 
 def test_asset_version_folgt_der_datei():
