@@ -33,6 +33,26 @@ from .cortex import PROVIDERS, DEFAULT_PROMPTS
 
 _LOGGER = logging.getLogger(__name__)
 
+#: Durchsicht 04.10., Punkt 5: Diese Anbieter empfangen den Hauskontext
+#: auf ihren Servern (alles mit Schlüsselbedarf; Ollama läuft lokal).
+CLOUD_PROVIDER = frozenset(
+    name for name, info in PROVIDERS.items() if info.get("needs_key")
+)
+
+#: Die ehrliche Feldübersicht: WAS ein Beratungsruf an einen Cloud-Anbieter
+#: schickt. Gelesen aus cortex._build_context / _brain_state_block — wenn
+#: sich der Versand ändert, ändert sich dieser Text mit (der Test
+#: test_cloud_hinweis.py hält die Liste gegen den Code).
+CLOUD_FELDER = (
+    "Modus des Hauses · Raum (wo sich KONTINUUM die Bewohner denkt) · "
+    "ob Personen zuhause sind · Energie-Stand · Risiko-Einschätzung · "
+    "Ereignis- und Habit-Zähler · das letzte Ereignis als Token · "
+    "Vorhersage des nächsten Ereignisses mit Sicherheit · "
+    "Gedächtnis-Genauigkeit · Dopamin-Signal · "
+    "Gehirn-Zusammenfassung (Modulzustände, Anomalie-Signal, 0–1-Skalen) · "
+    "bis zu 40 bekannte Entity-IDs · dein API-Schlüssel beim Anbieter"
+)
+
 PRESETS = {
     "mutig": {
         "label": "🔥 Mutig – Lernt schnell, macht anfangs Fehler",
@@ -444,6 +464,11 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
                     _LOGGER.warning("Ollama nicht erreichbar unter %s: %s", url, msg)
                 else:
                     self._discovered_models = await _fetch_ollama_models(url)
+            elif provider in CLOUD_PROVIDER:
+                # Durchsicht 04.10., Punkt 5: Ein Cloud-Anbieter schickt
+                # den Hauskontext nach außen — erst der deutliche Hinweis
+                # mit der Feldübersicht, dann die Modell-Wahl.
+                return await self.async_step_cloud_hinweis()
 
             if not errors:
                 return await self.async_step_agent_model()
@@ -476,6 +501,37 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             }),
             errors=errors,
             description_placeholders={"slot": str(slot)},
+        )
+
+    # ── Cloud-Hinweis (Durchsicht 04.10., Punkt 5) ───────────────
+
+    async def async_step_cloud_hinweis(self, user_input=None):
+        """Der deutliche Hinweis, bevor ein Cloud-Anbieter konfiguriert wird.
+
+        Standard ist Ollama lokal — gut so. Wer einen Cloud-Anbieter wählt,
+        liest hier, welche Felder des Hauses auf fremde Server reisen, und
+        bestätigt das bewusst. Abbrechen führt zurück ins Setup (Ollama
+        wählen); Bestätigen führt zur Modell-Wahl.
+        """
+        if user_input is not None:
+            if user_input.get("bestaetigt"):
+                return await self.async_step_agent_model()
+            # Nein heißt nein: zurück ins Setup, der Anbieter ist nicht
+            # vorgemerkt worden (der Nutzer kann Ollama wählen oder abbrechen).
+            return await self.async_step_agent_setup()
+
+        anbieter = PROVIDERS.get(self._current_provider, {}).get(
+            "label", self._current_provider
+        )
+        return self.async_show_form(
+            step_id="cloud_hinweis",
+            data_schema=vol.Schema({
+                vol.Required("bestaetigt", default=False): bool,
+            }),
+            description_placeholders={
+                "anbieter": anbieter,
+                "felder": CLOUD_FELDER,
+            },
         )
 
     # ── Agent Model ──────────────────────────────────────────────
