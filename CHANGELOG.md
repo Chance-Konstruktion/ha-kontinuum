@@ -1,5 +1,55 @@
 # Changelog
 
+## Unveröffentlicht – Das Dashboard ist ein natives Home-Assistant-Panel
+
+### Changed
+- **Dashboard als natives Panel statt Iframe.** Der Seitenleisten-Eintrag
+  „KONTINUUM“ (`/kontinuum`, Icon `mdi:brain`) lädt jetzt ein Custom Element
+  (`frontend/kontinuum-panel.js`, über `panel_custom`) und nicht mehr
+  `/local/kontinuum.html` in einem Iframe. Das Panel bekommt `hass`, `narrow`
+  und `route` von Home Assistant und besteht aus dessen eigenen Elementen
+  (`hass-tabs-subpage`, `ha-card`, `ha-button`, `ha-alert`, `ha-dialog`,
+  `ha-switch`); auf dem Handy wandern die Tabs in die untere Leiste. Vier Tabs
+  mit eigener Adresse: **Übersicht** (`/kontinuum/uebersicht`: Kopfzahlen,
+  Sensorik, Kontext), **Gehirn** (`/kontinuum/gehirn`: die Zeichnung mit allen
+  Arealen, Tooltips, Activity Log), **Module** (`/kontinuum/module`: alle 17
+  Module mit ihren Zahlen) und **Steuerung** (`/kontinuum/steuerung`:
+  Betriebsmodus, Debug / Cortex Control mit den Diensten, Cortex-Ausgabe und
+  Cortex-Status). Wartende Aktionen stehen in jedem Tab oben.
+- **Keine eigene Anmeldung mehr.** Das Panel liest keine Token aus dem
+  Eltern-Frame oder dem Browser-Speicher und ruft nichts per `fetch` auf: die
+  Zustände kommen über `hass.connection.subscribeMessage` aus dem bestehenden
+  Abo `kontinuum/abonniere`, die Dienste über `hass.callService`. Scheitert das
+  Abo, liest das Panel ersatzweise `hass.states` und schreibt das in den
+  Activity Log.
+- **Aussehen vom Theme.** Farben kommen aus den Variablen des Themes (hell und
+  dunkel); die eigenen Schriften (Orbitron, JetBrains Mono) und das eigene
+  Farbschema entfallen. Das Gehirn und die Tooltips bleiben eigene Zeichnung.
+- Die JS-Datei wird über `async_register_static_paths` unter
+  `/kontinuum_panel/kontinuum-panel.js` ausgeliefert, mit `?v=<Änderungszeit>`
+  als Cache-Schlüssel. Es wird nichts mehr nach `/config/www` kopiert; eine dort
+  liegende alte `kontinuum.html` bleibt harmlos liegen und kann gelöscht werden.
+- `manifest.json`: `after_dependencies` nennt `http` und `panel_custom`.
+
+### Fixed
+- Im alten Dashboard fehlten beim Locus Coeruleus „arousal:“ und die
+  Ereigniszahl (Operator-Rangfolge), und der Dopamin-Burst ließ ein Areal
+  feuern, das es nicht gab (`nacc`); beides stimmt jetzt.
+
+### Added
+- „Alle bestätigen“ (führt alle wartenden Aktionen aus) fragt vorher in einem
+  Fenster nach.
+- Hinweis im Panel, wenn keine KONTINUUM-Sensoren gefunden werden oder die
+  Verbindung abreißt (früher nur im Log bzw. am Verbindungspunkt).
+
+### Tests
+- Neu: `tests/test_nativ_panel.py` (ohne Home-Assistant-Plugin lauffähig) und
+  `tests/js/panel_pruefung.js` (Node-Zeuge). Angepasst: je ein Installationstest
+  in `tests/test_schriften.py` und `tests/test_websocket_abo.py`, die das
+  Kopieren nach `/config/www` prüften. `assets/kontinuum.html`,
+  `assets/kontinuum-daten.js` und die Schriften bleiben im Repo (Wächter-Tests),
+  sind aber nicht mehr angemeldet.
+
 ## experimental-v0.31.1 – Dashboard verbindet wieder
 
 ### Fixed

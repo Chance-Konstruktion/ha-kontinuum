@@ -286,7 +286,9 @@ ollama list
 KONTINUUM enthält ein interaktives Gehirn-Visualisierungs-Dashboard. Wenn bei der Installation aktiviert, erscheint es als **Sidebar-Eintrag** in Home Assistant:
 
 - Sidebar --> **KONTINUUM** (Brain-Icon)
-- Oder direkt: `/kontinuum`
+- Oder direkt: `/kontinuum` (Tabs: `/kontinuum/uebersicht`, `/gehirn`, `/module`, `/steuerung`)
+
+Das Dashboard ist ein **natives Home-Assistant-Panel** (kein Iframe mehr): Es nutzt die Elemente und das Theme von Home Assistant, meldet sich nicht selbst an und läuft über dessen Verbindung. Die Tabs: **Übersicht** (Kopfzahlen, Sensorik, Kontext), **Gehirn** (SVG-Karte, Activity Log), **Module** und **Steuerung** (Betriebsmodus, Debug-Bereich). Wartende Aktionen erscheinen in jedem Tab oben.
 
 ### Was zeigt das Dashboard?
 
@@ -299,7 +301,7 @@ KONTINUUM enthält ein interaktives Gehirn-Visualisierungs-Dashboard. Wenn bei d
 
 ### Debug-Panel
 
-Das Dashboard hat einen integrierten **Debug-Modus** (Toggle oben rechts). Dieser zeigt:
+Der Tab **Steuerung** hat einen **Debug-Schalter** („Debug / Cortex Control“). Er blendet ein:
 
 - **Cortex-Status** -- Agents, Beratungen, Diskussionen, letzter Konsens
 - **Vorschläge und Revisionen** -- Was jeder Agent in Runde 1 und 2 vorgeschlagen hat

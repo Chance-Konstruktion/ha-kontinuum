@@ -23,10 +23,11 @@ echter WebSocket-Server, echter Client):
 4. ``test_abmeldung_raeumt_den_bus_ab`` — das Abonnement hinterlässt
    keinen Bus-Listener (Punkt 1 hat gelehrt, wie Lecks aussehen).
 
-Dazu die Wächter am Dashboard selbst: der 3-Sekunden-Takt ist WEG,
-die Datenschicht reist mit und wird installiert, und der Node-Zeuge
-fährt die JS-Schicht unverändert (Handshake, Stand, Ruhepause,
-Reconnect-Treppe, REST-Notausgang).
+Dazu die Wächter am (alten) Iframe-Dashboard: der 3-Sekunden-Takt ist
+WEG, die Datenschicht reist als eigene Datei, und der Node-Zeuge fährt
+die JS-Schicht unverändert (Handshake, Stand, Ruhepause, Reconnect-Treppe,
+REST-Notausgang). Seit dem Umbau auf das native Panel ist das Iframe-Dashboard nicht mehr
+angemeldet; das native Panel prüft tests/test_nativ_panel.py.
 """
 
 import asyncio
@@ -248,19 +249,44 @@ def test_datenschicht_abonniert_und_behaelt_den_notausgang():
 
 
 @pytest.mark.asyncio
-async def test_installation_legt_die_datenschicht_ab(
+async def test_einrichtung_meldet_natives_panel_an_und_kopiert_nichts(
     hass, enable_custom_integrations, entry
 ):
-    """Nach dem Setup liegt die Datenschicht neben dem Dashboard."""
+    """Seit dem Umbau auf das native Panel ein natives Panel: nichts mehr unter /config/www.
+
+    Früher legte die Einrichtung kontinuum.html und die Datenschicht nach
+    /config/www (Iframe auf /local/). Jetzt meldet sie das Panel über
+    panel.async_register_dashboard_panel an und kopiert keine Datei.
+    """
+    from unittest.mock import AsyncMock, patch
+
     assert await async_setup_component(hass, "persistent_notification", {})
-    assert await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
+    with patch.object(
+        kontinuum_init, "async_register_dashboard_panel", AsyncMock(return_value=True)
+    ) as anmelden:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    anmelden.assert_awaited_once_with(hass)
 
     www = Path(hass.config.config_dir) / "www"
-    assert (www / "kontinuum.html").is_file()
-    assert (www / "kontinuum-daten.js").is_file()
-    # Versionierte Adresse, sonst hält der Browser die alte Schicht im Cache
-    assert 'src="kontinuum-daten.js?v=' in (www / "kontinuum.html").read_text(encoding="utf-8")
+    assert not (www / "kontinuum.html").exists()
+    assert not (www / "kontinuum-daten.js").exists()
+
+
+@pytest.mark.asyncio
+async def test_ohne_dashboard_kein_panel(hass, enable_custom_integrations):
+    """enable_dashboard=False meldet kein Panel an."""
+    from unittest.mock import AsyncMock, patch
+
+    assert await async_setup_component(hass, "persistent_notification", {})
+    mock = MockConfigEntry(domain=DOMAIN, title="KONTINUUM", data={"enable_dashboard": False})
+    mock.add_to_hass(hass)
+    with patch.object(
+        kontinuum_init, "async_register_dashboard_panel", AsyncMock(return_value=True)
+    ) as anmelden:
+        assert await hass.config_entries.async_setup(mock.entry_id)
+        await hass.async_block_till_done()
+    anmelden.assert_not_awaited()
 
 
 # ═════════════════════════════════════════════════════════════════

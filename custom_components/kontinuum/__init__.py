@@ -74,6 +74,7 @@ from .cortex_organ import anlass as cortex_anlass
 from .metaplasticity import MetaPlasticity
 from .config_flow import PRESETS
 from .zustands_abo import async_register_zustands_abo
+from .panel import async_register_dashboard_panel
 from . import lagebild
 
 _LOGGER = logging.getLogger(__name__)
@@ -133,168 +134,6 @@ AUX_MODULE_FILES = {
 # ══════════════════════════════════════════════════════════════════
 # ASYNC-SAFE HELPERS
 # ══════════════════════════════════════════════════════════════════
-
-def _asset_version() -> str:
-    """Kennung der ausgelieferten Dashboard-Dateien (für ?v= in den Adressen).
-
-    /local/ wird mit Cache ausgeliefert, und ein Strg+R lädt den Iframe und
-    seine Skripte nicht neu: ohne wechselnde Adresse lief am 17.10.2026 eine
-    reparierte kontinuum-daten.js im Browser weiter in der alten Fassung.
-    """
-    assets = os.path.join(os.path.dirname(__file__), "assets")
-    teile = []
-    for name in ("kontinuum.html", "kontinuum-daten.js"):
-        try:
-            teile.append(str(int(os.path.getmtime(os.path.join(assets, name)))))
-        except OSError:
-            teile.append("0")
-    return "-".join(teile)
-
-
-def _install_dashboard(hass):
-    """Kopiert kontinuum.html und die Schriften nach /config/www/ falls nötig."""
-    assets = os.path.join(os.path.dirname(__file__), "assets")
-    src = os.path.join(assets, "kontinuum.html")
-    if not os.path.isfile(src):
-        _LOGGER.warning("KONTINUUM Dashboard HTML nicht gefunden – übersprungen")
-        return False
-
-    # In /config/www/ ablegen (wird von HA unter /local/ bereitgestellt)
-    dst_dir = hass.config.path("www")
-    os.makedirs(dst_dir, exist_ok=True)
-    dst = os.path.join(dst_dir, "kontinuum.html")
-
-    # Immer kopieren wenn Quelle neuer ist oder Ziel fehlt
-    needs_copy = not os.path.isfile(dst)
-    if not needs_copy:
-        src_mtime = os.path.getmtime(src)
-        dst_mtime = os.path.getmtime(dst)
-        needs_copy = src_mtime > dst_mtime
-
-    with open(src, encoding="utf-8") as f:
-        html = f.read().replace(
-            'src="kontinuum-daten.js"', f'src="kontinuum-daten.js?v={_asset_version()}"')
-    alt = None
-    if os.path.isfile(dst):
-        with open(dst, encoding="utf-8") as f:
-            alt = f.read()
-    if needs_copy or alt != html:
-        with open(dst, "w", encoding="utf-8") as f:
-            f.write(html)
-        _LOGGER.info("KONTINUUM Dashboard installiert: %s", dst)
-    else:
-        _LOGGER.debug("KONTINUUM Dashboard bereits aktuell")
-
-    # Die Datenschicht reist mit dem Dashboard (Durchsicht 04.10.,
-    # Punkt 7): kontinuum-daten.js trägt das WebSocket-Abo und den
-    # REST-Notausgang. Gleiche Frisch-Regel wie das Dashboard selbst.
-    js_src = os.path.join(assets, "kontinuum-daten.js")
-    if os.path.isfile(js_src):
-        js_dst = os.path.join(dst_dir, "kontinuum-daten.js")
-        if (
-            not os.path.isfile(js_dst)
-            or os.path.getmtime(js_src) > os.path.getmtime(js_dst)
-        ):
-            shutil.copy2(js_src, js_dst)
-            _LOGGER.info("KONTINUUM Datenschicht installiert: %s", js_dst)
-
-    # Schriften mitliefern (Durchsicht 04.10., Punkt 4): das Dashboard lädt
-    # Orbitron und JetBrains Mono jetzt lokal von /local/kontinuum-fonts/ —
-    # kein Abruf bei Googles Schriften-CDN mehr, der IP und User-Agent
-    # gemeldet hätte. Gleiche Frisch-Regel wie beim Dashboard selbst.
-    fonts_src = os.path.join(assets, "fonts")
-    fonts_dst = os.path.join(dst_dir, "kontinuum-fonts")
-    if os.path.isdir(fonts_src):
-        os.makedirs(fonts_dst, exist_ok=True)
-        kopiert = 0
-        for name in os.listdir(fonts_src):
-            if not name.endswith(".woff2"):
-                continue
-            quelle = os.path.join(fonts_src, name)
-            ziel = os.path.join(fonts_dst, name)
-            if not os.path.isfile(ziel) or os.path.getmtime(quelle) > os.path.getmtime(ziel):
-                shutil.copy2(quelle, ziel)
-                kopiert += 1
-        if kopiert:
-            _LOGGER.info(
-                "KONTINUUM Schriften installiert: %d Dateien nach %s", kopiert, fonts_dst
-            )
-
-    return True
-
-
-async def _register_dashboard_panel(hass):
-    """Registriert das KONTINUUM Dashboard als iframe-Panel in der HA Sidebar.
-
-    Nutzt mehrere Methoden als Fallback für verschiedene HA-Versionen.
-    """
-    url_path = "kontinuum"
-
-    # Panel entfernen falls es bereits existiert (bei Reload)
-    try:
-        from homeassistant.components.frontend import async_remove_panel
-        async_remove_panel(hass, url_path)
-    except Exception:
-        pass
-
-    # Methode 1: Direkte Import-Funktion (Standard in HA 2023+)
-    try:
-        from homeassistant.components.frontend import async_register_built_in_panel
-        async_register_built_in_panel(
-            hass,
-            component_name="iframe",
-            sidebar_title="KONTINUUM",
-            sidebar_icon="mdi:brain",
-            frontend_url_path=url_path,
-            config={"url": f"/local/kontinuum.html?v={_asset_version()}"},
-            require_admin=False,
-        )
-        _LOGGER.info("KONTINUUM Dashboard registriert (async_register_built_in_panel)")
-        return
-    except Exception as e:
-        _LOGGER.debug("Methode 1 fehlgeschlagen: %s", e)
-
-    # Methode 2: panel_custom Integration
-    try:
-        from homeassistant.components.panel_custom import async_register_panel
-        await async_register_panel(
-            hass,
-            frontend_url_path=url_path,
-            webcomponent_name="iframe",
-            sidebar_title="KONTINUUM",
-            sidebar_icon="mdi:brain",
-            module_url="/local/kontinuum.html",
-            require_admin=False,
-            config={"url": f"/local/kontinuum.html?v={_asset_version()}"},
-        )
-        _LOGGER.info("KONTINUUM Dashboard registriert (panel_custom)")
-        return
-    except Exception as e:
-        _LOGGER.debug("Methode 2 fehlgeschlagen: %s", e)
-
-    # Methode 3: Direkt über hass.data["frontend_panels"]
-    try:
-        key = "frontend_panels"
-        if key in hass.data:
-            hass.data[key][url_path] = {
-                "component_name": "iframe",
-                "sidebar_title": "KONTINUUM",
-                "sidebar_icon": "mdi:brain",
-                "url_path": url_path,
-                "config": {"url": f"/local/kontinuum.html?v={_asset_version()}"},
-                "require_admin": False,
-            }
-            _LOGGER.info("KONTINUUM Dashboard registriert (frontend_panels dict)")
-            return
-    except Exception as e:
-        _LOGGER.debug("Methode 3 fehlgeschlagen: %s", e)
-
-    _LOGGER.warning(
-        "KONTINUUM Dashboard konnte nicht als Sidebar-Panel registriert werden. "
-        "Dashboard erreichbar unter: /local/kontinuum.html – "
-        "Manuell als iframe-Karte in Lovelace einbinden."
-    )
-
 
 def _notify(hass, title, message, notification_id):
     """Async-safe Notification (fire-and-forget)."""
@@ -426,12 +265,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
         preset = PRESETS.get(preset_key, PRESETS["ausgeglichen"])
         config_data = {**preset, **entry.data}
 
-        # ── Dashboard Auto-Install ─────────────────────────────
+        # ── Dashboard: natives Panel in der Seitenleiste ───────
+        # (seit dem Umbau kein Iframe aus /config/www mehr, siehe panel.py)
         if entry.data.get("enable_dashboard", True):
-            installed = await hass.async_add_executor_job(_install_dashboard, hass)
-            if installed:
-                _LOGGER.info("KONTINUUM Dashboard verfügbar unter /local/kontinuum.html")
-                await _register_dashboard_panel(hass)
+            await async_register_dashboard_panel(hass)
 
         # ── Module initialisieren ─────────────────────────────
         thalamus = Thalamus()
