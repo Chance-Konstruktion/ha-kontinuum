@@ -211,3 +211,36 @@ release:
     description: "Automatisch erzeugt aus Tag $CI_COMMIT_TAG."
   rules:
     - if: $CI_COMMIT_TAG
+
+# ── Cortex-Tafel (Trockenlauf) ────────────────────────────────────────
+# Der Messanschluss des Organs (ha-kontinuum #3) braucht den Kern-Messstand
+# (Checkout: Engine UND Messstand aus EINEM Stand) und ein Modell. Hier
+# läuft der TROCKENLAUF: Drehbuch statt Modell — dieselbe Schleife,
+# derselbe echte CortexAgent-Weg, nur die Antwort kommt aus dem Skript.
+# Den echten Lauf mit Ollama fährt die Maschine, die das Modell hat; die
+# Zahlen stehen in docs/TAFEL-CORTEX.md samt Pins.
+cortex-tafel-trocken:
+  stage: test
+  image: python:3.13
+  needs: []
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git
+    - pip install -q -r requirements_test.txt
+    - git clone --depth 1 "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/chance-konstruktion/kontinuum-core.git" /tmp/kern
+      # Der Kern kommt als Checkout (nicht von PyPI): benchmarks/spur.* ist
+      # nicht Teil des Pakets, und Engine+Messstand müssen derselbe Stand sein.
+  script:
+    - echo "Kern:" && git -C /tmp/kern log --oneline -1
+    - KONTINUUM_KERN=/tmp/kern python -m pytest -q tests/test_cortex_tafel.py tests/test_cortex_tafel_messstand.py
+    - KONTINUUM_KERN=/tmp/kern python -m werkzeug.cortex_tafel --kern /tmp/kern --trocken --sim klassisch --saaten 1 --ursprunge 4 --ziel build/cortex
+    - cat build/cortex/cortex-tafel.txt
+  artifacts:
+    when: always
+    paths:
+      - build/cortex/
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
