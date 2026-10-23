@@ -38,12 +38,22 @@ if str(KERN) not in sys.path:
 if str(WURZEL) not in sys.path:
     sys.path.insert(0, str(WURZEL))
 
-from benchmarks.spur.messstand import messe_ursprung as kern_messung   # noqa: E402
+# Der Kern-Import gehoert IN die Tests: beim Sammeln gibt es hier keinen
+# Checkout (der skip greift erst beim Ausfuehren), und ein Import auf
+# Modulebene machte die ganze Suite rot — genau das ist am 23.10. in der
+# Pipeline passiert und wird hier geheilt.
 from werkzeug.cortex_berater import SkriptBerater                     # noqa: E402
-from werkzeug.cortex_tafel import aufbau_sim, messe_ursprung          # noqa: E402
+
+
+def _kern():
+    """Die zwei Kern-Stücke, erst zur Laufzeit geholt."""
+    from benchmarks.spur.messstand import messe_ursprung as kern_messung
+    from werkzeug.cortex_tafel import aufbau_sim, messe_ursprung
+    return kern_messung, aufbau_sim, messe_ursprung
 
 
 def test_sim_traegt_das_testfenster_des_messstands():
+    kern_messung, aufbau_sim, messe_ursprung = _kern()
     aufbau = aufbau_sim("klassisch", saat=1, tage=56, train_wochen=4, kern=KERN)
     tafel = messe_ursprung(
         aufbau.ereignisse, aufbau.ziele, 4, SkriptBerater([1] * 200),
@@ -61,6 +71,7 @@ def test_sim_traegt_das_testfenster_des_messstands():
 
 
 def test_echter_anlass_berät_in_der_klassischen_sim():
+    _, aufbau_sim, messe_ursprung = _kern()
     aufbau = aufbau_sim("klassisch", saat=1, tage=56, train_wochen=4, kern=KERN)
     tafel = messe_ursprung(
         aufbau.ereignisse, aufbau.ziele, 4, SkriptBerater([1] * 200),
@@ -76,6 +87,7 @@ def test_echter_anlass_berät_in_der_klassischen_sim():
 
 def test_geraete_sim_ohne_handelbare_tokens():
     """Das Geräte-Haus trägt Leistung/PV — für das Organ meist kein Menü."""
+    _, aufbau_sim, messe_ursprung = _kern()
     aufbau = aufbau_sim("geraete", saat=1, tage=56, train_wochen=4, kern=KERN)
     tafel = messe_ursprung(
         aufbau.ereignisse, aufbau.ziele, 4, SkriptBerater([1] * 200),
