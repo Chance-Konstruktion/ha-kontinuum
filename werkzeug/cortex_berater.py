@@ -242,15 +242,30 @@ class OrganBerater:
                                        "nichts Ausführbares voraus"},
                 zeit_ts=zeit_ts)
         frage = frage_fuer(self.brain, anlass, menue)
-        sitzung = self.sitzung_bauer()
-        spion = KostenSpion(sitzung)
         beginn = time.monotonic()
-        try:
-            stimmen = [self._stimme(agent, frage, menue, spion)
-                       for agent in self.agenten]
-        finally:
-            _schliesse(sitzung)
+        # Die Sitzung gehört IN den Loop: aiohttp.ClientSession() verlangt
+        # einen laufenden Ereignis-Loop (der Messlauf selbst ist synchron).
+        behaelter: dict = {}
+
+        async def runde():
+            sitzung = self.sitzung_bauer()
+            spion = KostenSpion(sitzung)
+            behaelter["spion"] = spion
+            try:
+                stimmen = []
+                for agent in self.agenten:
+                    stimmen.append(await self._stimme(agent, frage, menue,
+                                                      spion))
+                return stimmen
+            finally:
+                try:
+                    await sitzung.close()
+                except Exception:  # noqa: BLE001 — Schließen ist kein Messfehler
+                    pass
+
+        stimmen = _in_faden(runde())
         dauer = time.monotonic() - beginn
+        spion = behaelter.get("spion") or KostenSpion(None)
         entscheidung = entscheide(stimmen, menue)
         return Beratung(
             zeit_s=jetzt_s, anlass=anlass, menue=menue, stimmen=stimmen,
@@ -259,28 +274,16 @@ class OrganBerater:
             tokens_antwort=list(spion.tokens_antwort),
             ladungen=list(spion.ladungen))
 
-    def _stimme(self, agent: CortexAgent, frage: str, menue: list,
-                spion: KostenSpion) -> dict:
+    async def _stimme(self, agent: CortexAgent, frage: str, menue: list,
+                      spion: KostenSpion) -> dict:
         self.aufrufe += 1
         try:
-            return _in_faden(
-                agent.waehle(frage, menue, spion, timeout=self.zeitlimit))
+            return await agent.waehle(frage, menue, spion,
+                                      timeout=self.zeitlimit)
         except Exception as problem:  # noqa: BLE001 — eine Stimme darf die Runde nicht sprengen
             return {"agent": agent.name, "wahl": NICHTS,
                     "grund": f"{type(problem).__name__}: {problem}"[:300],
                     "sicherheit": 0, "veto": [], "gueltig": False}
-
-
-def _schliesse(sitzung) -> None:
-    schliessen = getattr(sitzung, "close", None)
-    if schliessen is None:
-        return
-    try:
-        ergebnis = schliessen()
-        if asyncio.iscoroutine(ergebnis):
-            _in_faden(ergebnis, frist=30.0)
-    except Exception:  # noqa: BLE001 — ein Schließen-Fehler ist kein Messfehler
-        pass
 
 
 def _als_beratung(jetzt_s: float, anlass: str, menue: list, wahl: int,

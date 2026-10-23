@@ -57,6 +57,7 @@ from werkzeug.cortex_berater import (                                 # noqa: E4
     frage_fuer,
 )
 from werkzeug.cortex_tafel import (                                   # noqa: E402
+    FensterWaage,
     messe_ursprung,
     tafel_json,
     ueberlagere,
@@ -581,3 +582,82 @@ def test_bericht_und_json_tragen_die_pflichtfelder():
         assert schluessel in daten, f"{schluessel} fehlt in der Tafel"
     assert "Engine" in daten["systeme"] and "Engine+Cortex" in daten["systeme"]
     assert "B2" in daten["systeme"]
+
+
+# ---------------------------------------------------------------------------
+# Die Fenster-Waage: die Grenze ist genau
+# ---------------------------------------------------------------------------
+
+MENUE = [{"id": 0, "text": "nichts tun"},
+         {"id": 1, "token": "a.light.on", "entity_id": "light.a",
+          "zustand": "on", "text": "a → on"},
+         {"id": 2, "token": "a.light.off", "entity_id": "light.a",
+          "zustand": "off", "text": "a → off"}]
+
+
+def test_fensterwaage_grenze_900_zaehlt_900_1_nicht():
+    # genau auf der Grenze: zählt
+    waage = FensterWaage(fenster_s=900.0)
+    waage.oeffne(0.0, MENUE, {"wer": 2}, [])
+    waage.beobachte("light.a", "off", 900.0)
+    geschlossen = waage.schliesse(901.0)
+    assert len(geschlossen) == 1
+    assert geschlossen[0]["wahrheit"] == 2
+    assert waage.quoten["wer"] == [1, 1]
+
+    # eine Zehntelsekunde zu spät: das Ereignis zählt NICHT mehr
+    waage = FensterWaage(fenster_s=900.0)
+    waage.oeffne(0.0, MENUE, {"wer": 2}, [])
+    waage.beobachte("light.a", "off", 900.1)
+    geschlossen = waage.schliesse(901.0)
+    assert geschlossen[0]["wahrheit"] is None, \
+        "das schließende Ereignis darf nicht als Wahrheit gelten"
+    assert waage.quoten["wer"] == [0, 1]
+
+    # nichts passiert: „nichts tun" (0) ist die Wahrheit
+    waage = FensterWaage(fenster_s=900.0)
+    waage.oeffne(0.0, MENUE, {"wer": 2}, [])
+    waage.schliesse(1000.0)
+    assert waage.quoten["wer"] == [0, 1]
+
+
+def test_fensterwaage_wahrheit_ist_das_ERSTE_ereignis_im_fenster():
+    waage = FensterWaage(fenster_s=900.0)
+    waage.oeffne(0.0, MENUE, {"wer": 1, "nichts": 0}, [])
+    waage.beobachte("light.a", "off", 100.0)     # Option 2 tritt ein ...
+    waage.beobachte("light.a", "on", 200.0)      # ... danach Option 1
+    waage.schliesse(1000.0)
+    assert waage.quoten["wer"] == [0, 1], "die erste eintretende Option ist die Wahrheit"
+    assert waage.quoten["nichts"] == [0, 1]
+
+
+def test_fensterwaage_schliesst_je_beratung_einzeln():
+    waage = FensterWaage(fenster_s=900.0)
+    waage.oeffne(0.0, MENUE, {"wer": 1}, [])
+    waage.oeffne(5000.0, MENUE, {"wer": 1}, [])
+    waage.beobachte("light.a", "on", 5500.0)
+    fertig = waage.schliesse(6000.0)
+    assert len(fertig) == 2
+    assert waage.quoten["wer"] == [1, 2]
+
+
+def test_schleife_mit_fenster_eins_laesst_nichts_als_wahrheit():
+    """Ein Fenster von 1 s kann kein Ereignis fassen (Takt 200 min):
+    also muss jedes „nichts tun" richtig sein — die Grenze wirkt."""
+    engine = baue_haus()
+    ereignisse = kurzer_strom()
+    ziele = ziele_aus(engine, ereignisse)
+    start = ereignisse[0].ts
+    grenze = start + timedelta(days=28)
+
+    def anlass_fn(i, predictions, anomalie, jetzt, letzte_beratung):
+        if grenze <= (start + timedelta(minutes=200 * i)) < grenze + timedelta(days=7) \
+                and i % 5 == 0 and jetzt - letzte_beratung >= 900:
+            return "knapp"
+        return None
+
+    tafel = messe_ursprung(ereignisse, ziele, 4, SkriptBerater([1] * 20),
+                           engine=engine, anlass_fn=anlass_fn, fenster_s=1.0)
+    treffer, n = tafel.fenster["nichts"]
+    assert n == len(tafel.beratungen) > 0
+    assert treffer == n, "bei 1 s Fenster ist nichts tun immer die Wahrheit"
