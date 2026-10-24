@@ -1,5 +1,31 @@
 # Changelog
 
+## Unveröffentlicht – Die Cortex-Tafel: der Messanschluss des Organs (#3)
+
+### Added
+- **Die Cortex-Tafel** (`werkzeug/cortex_tafel.py`, `werkzeug/cortex_berater.py`):
+  die Messung des Organs am Kern-Messstand (`kontinuum-core`,
+  `benchmarks/spur` — derselbe Stand für Engine und Messstand, per
+  `--kern`/`KONTINUUM_KERN`). Die Schleife ist die des Messstands
+  (predict-then-learn, rollierende Ursprünge, Ereigniszeit); die Beratung
+  hängt daneben, nie darin — die Engine-Zeile ist zifferngleich gegen
+  `benchmarks.spur.messstand.messe_ursprung` gepinnt.
+- **Gemessen wird das echte Organ**: `baue_menue`, `anlass`, `lies_wahl`,
+  `entscheide`, `Nachhall` aus `cortex_organ`; jeder Modellaufruf über den
+  echten `CortexAgent.waehle`/`_call_ollama`-Weg (kein zweiter Transport).
+  Die Frage ist wörtlich die von `Cortex.consult` (durch Test gepinnt).
+- **Kosten je Beratung** aus der Ollama-Antwort (prompt_eval_count,
+  eval_count, total_duration, load_duration) statt geschätzt.
+- **Abschaltprobe**: Zufallswahl aus dem Menü (gesät) als B-Gegner, dazu
+  `engine` und `nichts` in derselben Bilanz; zweite Waage im 900-s-Fenster
+  (eigene, unabhängig gerechnet — und gegen `Nachhall.quoten()` gestellt).
+- **Trockenlauf für CI** (`--trocken`, Drehbuch statt Modell) und der
+  manuelle Job `cortex-tafel-trocken`, der den Anschluss in der belegten
+  Umgebung prüft (Kern als Checkout, kein Netz, keine GPU).
+- **`docs/TAFEL-CORTEX.md`**: die Tafel mit den echten Zahlen, den Pins
+  (Kern-Commit, Modell-IDs) und dem Urteil.
+
+
 ## Unveröffentlicht – Das Dashboard ist ein natives Home-Assistant-Panel
 
 ### Changed
