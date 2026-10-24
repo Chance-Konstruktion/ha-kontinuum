@@ -104,7 +104,6 @@ class UrsprungsTafel:
     aenderungen_richtig_sofort: int = 0
     vetos_richtig_verhindert: int = 0
     vetos_falsch_verhindert: int = 0
-    sofort: Dict[str, List[int]] = field(default_factory=dict)
     fenster: Dict[str, List[int]] = field(default_factory=dict)
     fenster_organ: Dict[str, Optional[float]] = field(default_factory=dict)
     kosten: Dict[str, float] = field(default_factory=dict)
@@ -328,9 +327,11 @@ def messe_ursprung(ereignisse: Sequence, ziele: Sequence[str],
                 else NICHTS
             for gestrichen in eintrag["gestrichen"]:
                 if gestrichen == wahrheit:
-                    tafel.vetos_richtig_verhindert += 1
-                else:
+                    # Der Streich traf die Wahrheit: er hat einen Treffer
+                    # gekostet — FALSCH verhindert.
                     tafel.vetos_falsch_verhindert += 1
+                else:
+                    tafel.vetos_richtig_verhindert += 1
         nachhall.abschliessen(jetzt)
 
         # 4) Anlass und Beratung (nur Testwoche).
@@ -357,7 +358,10 @@ def messe_ursprung(ereignisse: Sequence, ziele: Sequence[str],
                 tafel.davon_nichts += 1
         letzte_wahl = beratung.wahl_token
         option = beratung.wahl_option
-        if beratung.wahl != NICHTS and option is not None:
+        # Nur echte ÄNDERUNGEN öffnen das Sofort-Fenster. Die Bestätigung der
+        # Engine-Spitze (Wahl 1) ist keine Änderung — sie hätte sonst still
+        # die Treffer der Änderungen gefüllt (49 von 50 im Lichtstrom-Pin).
+        if beratung.wahl not in (NICHTS, 1) and option is not None:
             folgt = next((e for e in ereignisse[i + 1:i + 2]), None)
             if folgt is None or not (grenze_train <= folgt.ts < test_ende):
                 tafel.aenderungen_ohne_folge += 1
@@ -392,9 +396,9 @@ def messe_ursprung(ereignisse: Sequence, ziele: Sequence[str],
             else NICHTS
         for gestrichen in eintrag["gestrichen"]:
             if gestrichen == wahrheit:
-                tafel.vetos_richtig_verhindert += 1
-            else:
                 tafel.vetos_falsch_verhindert += 1
+            else:
+                tafel.vetos_richtig_verhindert += 1
     ende_s = (ereignisse[-1].ts - start).total_seconds() + fenster_s + 1.0
     nachhall.abschliessen(ende_s)
 
@@ -532,7 +536,6 @@ def tafel_json(tafel: UrsprungsTafel) -> dict:
         "aenderungen_richtig_sofort": tafel.aenderungen_richtig_sofort,
         "vetos_richtig_verhindert": tafel.vetos_richtig_verhindert,
         "vetos_falsch_verhindert": tafel.vetos_falsch_verhindert,
-        "sofort": {wer: quote(paar) for wer, paar in tafel.sofort.items()},
         "fenster": {wer: quote(paar) for wer, paar in tafel.fenster.items()},
         "fenster_organ": dict(tafel.fenster_organ),
         "kosten": dict(tafel.kosten),

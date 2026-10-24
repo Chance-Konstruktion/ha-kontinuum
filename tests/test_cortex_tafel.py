@@ -481,7 +481,7 @@ def test_engine_zeile_bleibt_unberuehrt():
             return "knapp"
         return None
 
-    stumm = SkriptBerater([1] * 40)          # bestätigt immer die Engine
+    stumm = SkriptBerater([1] * 200)          # bestätigt immer die Engine
     frech = SkriptBerater([2] * 40)          # ändert, sobald Option 2 da ist
     tafel_stumm = messe_ursprung(ereignisse, ziele, 4, stumm, engine=baue_haus(),
                                  anlass_fn=anlass_fn)
@@ -661,3 +661,157 @@ def test_schleife_mit_fenster_eins_laesst_nichts_als_wahrheit():
     treffer, n = tafel.fenster["nichts"]
     assert n == len(tafel.beratungen) > 0
     assert treffer == n, "bei 1 s Fenster ist nichts tun immer die Wahrheit"
+
+
+# ---------------------------------------------------------------------------
+# Veto-Richtung und Änderungs-Zähler: die Bedeutung wird gepinnt, nicht geglaubt
+# ---------------------------------------------------------------------------
+
+def _lichtstrom(n=296):
+    """Nur ein Licht, das IMMER wechselt: die Engine-Spitze ist damit fast
+    sicher das nächste Ereignis — gut für Treffer, schlecht für Zufall."""
+    folge, letzter = [], None
+    for _ in range(n):
+        letzter = "off" if letzter == "on" else "on"
+        folge.append(f"kueche.light.{letzter}")
+    return strom(folge)
+
+
+class StreichBerater(SkriptBerater):
+    """Wie der Drehbuch-Berater, streicht aber zusätzlich Option 1 (Veto).
+
+    Die Streichung ändert die Mehrheit nicht mehr (die ist längst gezählt) —
+    sie ist nur die Markierung für die Veto-Bilanz, wie `entscheide` sie
+    zurückgibt.
+    """
+
+    def berate(self, *, jetzt_s, anlass, menue, zeit_ts=None):
+        beratung = super().berate(jetzt_s=jetzt_s, anlass=anlass,
+                                  menue=menue, zeit_ts=zeit_ts)
+        if len(menue) >= 2:
+            beratung.entscheidung["gestrichen"] = [1]
+        return beratung
+
+
+def _fenster_wahrheit(beratung, ereignisse, fenster_s=900.0):
+    """Die Wahrheit im 900-s-Fenster — unabhängig nachgebaut, wörtlich in
+    der Grenzform der Waage (genau auf der Grenze zählt noch)."""
+    for e in ereignisse:
+        if e.ts <= beratung.zeit_ts:
+            continue
+        if (e.ts - beratung.zeit_ts).total_seconds() > fenster_s:
+            break
+        treffer = next((o for o in beratung.menue
+                        if o["id"] != NICHTS and o.get("entity_id") == e.entity
+                        and o.get("zustand") == e.zustand), None)
+        if treffer is not None:
+            return treffer["id"]
+    return NICHTS
+
+
+def _veto_bilanz(tafel, ereignisse):
+    """Rechnet die Veto-Bilanz aus den Beratungen nach. Bedeutung:
+    Streich == Wahrheit heißt, der Streich hat einen Treffer KOSTET — das
+    ist FALSCH verhindert. Nur ein Streich auf eine Option, die im Fenster
+    nicht die Wahrheit war, ist richtig verhindert."""
+    richtig = falsch = 0
+    for b in tafel.beratungen:
+        wahrheit = _fenster_wahrheit(b, ereignisse)
+        for g in b.entscheidung.get("gestrichen", []):
+            if g == wahrheit:
+                falsch += 1
+            else:
+                richtig += 1
+    return richtig, falsch
+
+
+def _paar_im_testfenster(ereignisse, eng_min=5):
+    """Rückt im Testfenster ein Ereignispaar auf eng_min Minuten zusammen:
+    so tritt die Wahl der Beratung wirklich im 900-s-Fenster ein."""
+    grenze = ereignisse[0].ts + timedelta(days=28)
+    i = next(i for i, e in enumerate(ereignisse)
+             if e.ts > grenze + timedelta(days=2))
+    ereignisse[i + 1].ts = ereignisse[i].ts + timedelta(minutes=eng_min)
+    return i
+
+
+def test_veto_auf_die_wahrheit_ist_falsch_verhindert():
+    """Der Streich trifft die Option, die im Fenster wirklich eintritt:
+    er kostet einen Treffer — falsch verhindert."""
+    engine = baue_haus()
+    ereignisse = _lichtstrom()
+    i_eng = _paar_im_testfenster(ereignisse)
+    ziele = ziele_aus(engine, ereignisse)
+
+    def anlass_fn(i, predictions, anomalie, jetzt, letzte_beratung):
+        if i == i_eng and jetzt - letzte_beratung >= 900:
+            return "knapp"
+        return None
+
+    tafel = messe_ursprung(ereignisse, ziele, 4, StreichBerater([1] * 200),
+                           engine=engine, anlass_fn=anlass_fn)
+    richtig, falsch = _veto_bilanz(tafel, ereignisse)
+    assert (tafel.vetos_richtig_verhindert,
+            tafel.vetos_falsch_verhindert) == (richtig, falsch)
+    assert richtig + falsch >= 1, "es muss einen Streich geben"
+    assert falsch == 1 and richtig == 0, (
+        "der Streich auf die Fenster-Wahrheit ist falsch verhindert")
+
+
+def test_veto_auf_nichts_ist_richtig_verhindert():
+    """Im Lichtstrom (Abstand 200 min) liegt keine Option im 900-s-Fenster:
+    der Streich kostet nichts — richtig verhindert."""
+    engine = baue_haus()
+    ereignisse = _lichtstrom()
+    ziele = ziele_aus(engine, ereignisse)
+    start = ereignisse[0].ts
+    grenze = start + timedelta(days=28)
+
+    def anlass_fn(i, predictions, anomalie, jetzt, letzte_beratung):
+        if grenze <= ereignisse[i].ts < grenze + timedelta(days=7) \
+                and jetzt - letzte_beratung >= 900:
+            return "knapp"
+        return None
+
+    tafel = messe_ursprung(ereignisse, ziele, 4, StreichBerater([1] * 200),
+                           engine=engine, anlass_fn=anlass_fn)
+    richtig, falsch = _veto_bilanz(tafel, ereignisse)
+    assert (tafel.vetos_richtig_verhindert,
+            tafel.vetos_falsch_verhindert) == (richtig, falsch)
+    assert richtig >= 1 and falsch == 0, (
+        "ein Streich ohne Treffer-Kosten ist richtig verhindert")
+
+
+def test_bestaetigung_der_engine_zaehlt_nicht_als_aenderungs_treffer():
+    """Wahl 1 = Bestätigung der Engine-Spitze ist KEINE Änderung — sie darf
+    auch nicht in die Treffer der Änderungen zählen, obwohl sie trifft."""
+    engine = baue_haus()
+    ereignisse = _lichtstrom()
+    ziele = ziele_aus(engine, ereignisse)
+    start = ereignisse[0].ts
+    grenze = start + timedelta(days=28)
+
+    def anlass_fn(i, predictions, anomalie, jetzt, letzte_beratung):
+        if grenze <= ereignisse[i].ts < grenze + timedelta(days=7) \
+                and jetzt - letzte_beratung >= 900:
+            return "knapp"
+        return None
+
+    tafel = messe_ursprung(ereignisse, ziele, 4, SkriptBerater([1] * 200),
+                           engine=engine, anlass_fn=anlass_fn)
+    assert tafel.beratungen, "es muss Beratungen geben"
+    assert tafel.aenderungen == 0, "Wahl 1 ist keine Änderung"
+    assert tafel.aenderungen_richtig_sofort == 0, (
+        "Bestätigungen der Engine-Spitze sind keine Änderungs-Treffer")
+
+    # Positiv-Kontrolle: die Spitze hätte getroffen — der Zähler bleibt
+    # trotzdem bei 0, weil eine Bestätigung keine Änderung ist.
+    moeglich = 0
+    for b in tafel.beratungen:
+        e = next((e for e in ereignisse if e.ts > b.zeit_ts), None)
+        o1 = next((o for o in b.menue if o["id"] == 1), None)
+        if e is not None and o1 is not None \
+                and o1.get("entity_id") == e.entity \
+                and o1.get("zustand") == e.zustand:
+            moeglich += 1
+    assert moeglich > 0, "die Spur muss Bestätigungs-Treffer hergeben"
