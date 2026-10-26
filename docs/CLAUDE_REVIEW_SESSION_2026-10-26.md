@@ -21,12 +21,12 @@ Diese Sitzung ist ein tiefgehender statischer Review der zentralen Produktionspf
 - **kontinuum-AI-anomaly:** main bei 3ce176ff087aa23f44d46036e867bda74b5991e1. Ergänzend geprüft wurden README, dokumentierte Grenzen, API-/Scoring-Dokumentation und Testsuite-Struktur.
 
 **Aktuelle CI (26.10.2026) auf den geprüften Draft-Heads:**
-- Pro: vollständiger HA-Pytest-Job [40406088122](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40406088122) — **156 passed, 3 skipped**; Smoke [40406088184](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40406088184), HACS [40406088042](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40406088042), hassfest [40406088370](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40406088370) — alle erfolgreich auf Head `dae5822`. Die drei Skips sind Messstandtests, die einen separaten lokalen Core-Checkout via `KONTINUUM_KERN` benötigen.
+- Pro: vollständige HA-Pytest-Suite [40406507717](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40406507717) — **157 passed, 3 skipped**; Smoke [40406507855](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40406507855), HACS [40406508073](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40406508073), hassfest [40406507735](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40406507735) — alle erfolgreich auf Head `a1ea663`. Die drei Skips sind Messstandtests, die einen separaten lokalen Core-Checkout via `KONTINUUM_KERN` benötigen. Der zusätzliche Entity-Domain-/Token-Guard wird durch diesen Head mitgetestet.
 - Core: Pytest-Matrix Python 3.9–3.12 und Replay-Benchmark [40403178227](https://github.com/Chance-Konstruktion/kontinuum-core/actions/runs/40403178227) — erfolgreich auf Head `a564370`.
 - Lite: Pytest [40403589036](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/actions/runs/40403589036), hassfest [40403588569](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/actions/runs/40403588569), HACS [40403588856](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/actions/runs/40403588856) — erfolgreich auf Head `d30b83c`.
 - AI-anomaly: volle Matrix Core 0.6.0/0.6.3 für Python 3.9–3.12, Ruff, Mypy, Build und Twine [40402621954](https://github.com/Chance-Konstruktion/kontinuum-AI-anomaly/actions/runs/40402621954) — erfolgreich auf Head `82ee3caa`.
 
-Der neue Pro-Workflow `.github/workflows/full-tests.yaml` nutzt die gepinnten `requirements_test.txt`-Abhängigkeiten und führt jetzt auch `pytest-homeassistant-custom-component` aus; der echte HA-Lifecycle-Test wird damit auf GitHub ausgeführt. Ein neuer Commit startet erneut CI, deshalb müssen vor Merge die neuesten Heads geprüft werden.
+Der Pro-Workflow `.github/workflows/full-tests.yaml` nutzt die gepinnten `requirements_test.txt`-Abhängigkeiten und führt `pytest-homeassistant-custom-component` aus. Damit laufen auch die echten HA-Config-Entry-/Lifecycle-Fixtures auf GitHub. Ein neuer Commit startet erneut CI, deshalb müssen vor Merge die neuesten Heads geprüft werden.
 
 
 ## 3. Änderungen in diesem PR
@@ -213,7 +213,7 @@ Bitte nicht nur diesen Markdown-Bericht bestätigen; Code und Tests unabhängig 
 - Ein MCP-Pilot startet read-only und macht den bestehenden Confirm-/Active-Modus nicht durch eine zweite, schwächere Ausführungsroute wirkungslos.
 
 **Status dieser Sitzung (26.10.2026):**
-- Pro-Code-Head `dae5822`: vollständige Home-Assistant-Pytest-Suite **156 passed, 3 skipped**, plus Smoke/HACS/hassfest alle erfolgreich. Die drei Skips benötigen einen separaten Core-Checkout und sind als Messstandtests dokumentiert.
+- Pro-Code-Head `a1ea663`: vollständige Home-Assistant-Pytest-Suite **157 passed, 3 skipped**, plus Smoke/HACS/hassfest alle erfolgreich. Die drei Skips benötigen einen separaten Core-Checkout und sind als Messstandtests dokumentiert; der neue Cross-Domain-Guard besteht diese Suite.
 - Core `a564370`, Lite `d30b83c` und AI-anomaly `82ee3caa` haben ihre jeweils verlinkten CI-Prüfungen bestanden.
 - Claude wurde auf allen vier PRs um unabhängiges Review gebeten. In der letzten Prüfung war noch keine Claude-Antwort bzw. kein Review-Submission sichtbar.
 - Alle vier PRs sind Drafts und ungemergt.
