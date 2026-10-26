@@ -436,7 +436,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             cortex.configure(list(entry_agents.values()))
             # Sequential Mode + Diskussionsrunden aus Config
             cortex.sequential_mode = entry.data.get("sequential_mode", False)
-            cortex.discussion_rounds = entry.data.get("discussion_rounds", 2)
+            # Legacy option is retained in entry data for migration compatibility,
+            # but the current menu/Organ path intentionally runs one round.
+            cortex.discussion_rounds = 1
             _LOGGER.info(
                 "Cortex aus Config geladen: %d Agents, sequential=%s, rounds=%d",
                 len(cortex.agents), cortex.sequential_mode,

@@ -20,13 +20,13 @@ Diese Sitzung ist ein tiefgehender statischer Review der zentralen Produktionspf
 - **ha-kontinuum-lite:** main bei 016df098d6800be3a5dafbe106169e9a6f54829c. Geprüft wurden LiteEngine-Projektion, Entscheidungskonvertierung, Setup/Teardown, Services, Save/Restore und Core-Vertragstests.
 - **kontinuum-AI-anomaly:** main bei 3ce176ff087aa23f44d46036e867bda74b5991e1. Ergänzend geprüft wurden README, dokumentierte Grenzen, API-/Scoring-Dokumentation und Testsuite-Struktur.
 
-**Aktuelle CI (26.10.2026) auf den geprüften Draft-Heads:**
-- Pro: Smoke Test [40367479767](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40367479767), HACS [40367479776](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40367479776), hassfest [40367479798](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40367479798) — alle erfolgreich auf Head `511790c`.
-- Core: Pytest-Matrix Python 3.9–3.12 und Replay-Benchmark [40349083181](https://github.com/Chance-Konstruktion/kontinuum-core/actions/runs/40349083181) — erfolgreich auf Head `94cac80`.
-- Lite: Pytest [40402159870](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/actions/runs/40402159870), hassfest [40402162417](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/actions/runs/40402162417), HACS [40402159843](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/actions/runs/40402159843) — alle erfolgreich auf Head `fca4f75`; die Tests decken auch nicht-endliche `token_id`-Werte ab.
-- AI-anomaly: volle Matrix Core 0.6.0/0.6.3 für Python 3.9–3.12, Ruff, Mypy, Build und Twine-Check [40402621954](https://github.com/Chance-Konstruktion/kontinuum-AI-anomaly/actions/runs/40402621954) — erfolgreich auf Head `82ee3caa`; zusätzliche Tests decken Pfad-Traversal in Multi-Agent-Persistenz und `max_events=0` ab.
+**Aktuelle CI (26.10.2026) auf den zuletzt geprüften Code-Heads:**
+- Pro: Smoke Test [40404746827](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40404746827), HACS [40404746714](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40404746714), hassfest [40404746660](https://github.com/Chance-Konstruktion/ha-kontinuum/actions/runs/40404746660) — erfolgreich auf Code-Head `9768f28` (inklusive HVAC-Modus-Erhalt und dessen Regressionstests).
+- Core: Pytest-Matrix Python 3.9–3.12 und Replay-Benchmark [40403178227](https://github.com/Chance-Konstruktion/kontinuum-core/actions/runs/40403178227) — erfolgreich auf Head `a564370` (native HVAC-Modi und Alias-Normalisierung).
+- Lite: Pytest [40403589036](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/actions/runs/40403589036), hassfest [40403588569](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/actions/runs/40403588569), HACS [40403588856](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/actions/runs/40403588856) — erfolgreich auf Head `d30b83c` (ID-Round-trip sowie Legacy Media-/Climate-Servicevertrag).
+- AI-anomaly: volle Matrix Core 0.6.0/0.6.3 für Python 3.9–3.12, Ruff, Mypy, Build und Twine-Check [40402621954](https://github.com/Chance-Konstruktion/kontinuum-AI-anomaly/actions/runs/40402621954) — erfolgreich auf Head `82ee3caa`; zusätzlich Path-Traversal-Schutz, Zero-Retention-/Persistenz- und Sink-Retry-Tests.
 
-Ein neuer Commit löst einen neuen Lauf aus; vor Merge muss jeweils der letzte Head erneut grün sein. Die vollständige HA-Plugin-Testsuite für Pro wird vom Smoke-Workflow explizit nicht abgedeckt.
+Die Pro-Läufe beziehen sich auf den Code-Head; der Dokumentationscommit mit dieser Aktualisierung löst neue CI-Läufe aus. Für einen Merge muss der neueste Head erneut grün sein. Die vollständige HA-Plugin-Testsuite für Pro wird vom Smoke-Workflow explizit nicht abgedeckt.
 
 ## 3. Änderungen in diesem PR
 
@@ -80,35 +80,53 @@ Der aktuelle Beratungsweg wählt nummerierte Menü-IDs; die alte Bridge suchte a
 
 **Claude soll prüfen:** Sind Aktion und Entity immer aus demselben Menüeintrag abgeleitet? Sind ungültige Stimmen aus dem Feedback-Nenner ausgeschlossen? Löst ein Veto nur die vorgesehenen Lernfolgen aus? Ist die Bedeutung von vetoed jetzt eng genug?
 
-### B. Media-Player-Service-Domain — Pro behoben, Core-Folgearbeit erforderlich
+### B. Media-Player-Service-Domain — Core behoben, Pro/Lite haben Legacy-Fallbacks
 
-Core gruppiert media_player-Entities in der Lernsemantik media. PrefrontalCortex.get_service_call() nutzt diese Semantik derzeit für den Service-Domainnamen, obwohl HA die Domain media_player erwartet. Der Pro-Adapter korrigiert dies in diesem PR, aber die zentrale Korrektur gehört in **kontinuum-core/src/kontinuum_core/prefrontal_cortex.py** und braucht dort Core-Tests. Danach muss Lite gegen den veröffentlichten Core-Vertrag getestet werden.
+Core gruppiert `media_player`-Entities in der Token-Semantik `media`. Der Core-PR bildet diese Semantik nun auf die echte HA-Service-Domain `media_player` ab. Pro und Lite behalten defensive Adapter für ältere installierte Core-Versionen, die noch `domain="media"` zurückgeben.
 
-**Claude soll prüfen:** Ob der neue Core-Servicevertrag alle erlaubten Semantiken abdeckt und ob die Anpassung gegen den aktuellen Stand der kanonischen GitLab-Quelle getestet werden muss. Die konkrete Regression ist in [Core PR #42](https://github.com/Chance-Konstruktion/kontinuum-core/pull/42) abgedeckt; Pro behält seinen Fallback.
+**Claude soll prüfen:** Ob der Servicevertrag bei allen Aufrufern konsistent ist und die Legacy-Fallbacks nach Veröffentlichung einer Core-Version mit dem neuen Vertrag später wieder entfernt werden können.
 
-### C. Benutzerdefinierte Agentenprompts waren im Organ-Modus nicht wirksam — im PR behoben
+### C. HVAC-Modus ging beim Cortex-Service-Reverse-Mapping verloren — im Verbund behoben
+
+Der Thalamus liefert native HA-Zustände wie `heat`, `cool`, `heat_cool`, `auto`, `dry` und `fan_only`. Core mappte vorher nur `heating`/`cooling` und `off`; zudem verwenden mehrere HVAC-Modi denselben HA-Service `climate.set_hvac_mode`. Ein reines Reverse-Mapping vom Service zum Token kann daher den gewählten Modus verlieren oder falsch rekonstruieren.
+
+- Core mappt jetzt native HVAC-Modi auf `climate.set_hvac_mode` und normalisiert die Legacy-Aliase `heating`/`cooling` auf die gültigen HA-Modi `heat`/`cool`.
+- Das Organ-Menü kann native Modus-Tokens auch bei älteren Core-Service-Maps behalten.
+- Der Konsens trägt das exakte gewählte `consensus_token` durch die Pro-Brücke. Die Ausführung validiert Token, Aktion, Entity-Semantik und Raum gemeinsam; ein mehrdeutiger HVAC-Service ohne Token wird abgelehnt statt geraten.
+- Pro bestätigt in der Notification den konkreten gewählten Zustand; die Lern-/Reflex-Brücke bewahrt den Token für HVAC, statt alle Modi unter `climate.set_hvac_mode` zusammenzufassen.
+- Lite normalisiert alte Media-/Climate-Serviceverträge sowohl in der direkten Serviceausführung als auch beim Ausführen bereits wartender Bestätigungen.
+
+Regressionstests liegen in Core `test_prefrontal_contract.py`, Pro `test_cortex_organ.py`, `test_cortex_bridge.py`, `test_service_domain_mapping.py` und Lite `test_core_contract.py`.
+
+**Claude soll prüfen:** Dass ein UI- oder Modellkonsens ohne exakten Modus niemals eine HVAC-Aktion auslösen kann und dass die tatsächliche Bestätigungs-/Active-Pipeline denselben Token ausführt, den das Menü ausgewählt hatte.
+
+### D. Benutzerdefinierte Agentenprompts waren im Organ-Modus nicht wirksam — im PR behoben
 
 CortexAgent.waehle() nutzte bislang nur organ_prompt(self.name), nicht self.system_prompt. Ein gespeicherter nutzerdefinierter Prompt beeinflusste daher den aktuellen, menügebundenen Beratungsweg nicht. Die Lösung fügt echte benutzerdefinierte Hinweise ein, bewahrt aber das Menü als einzige Quelle erlaubter Aktionen und das festgelegte Ausgabeschema.
 
 **Claude soll prüfen:** Ist die Trennung zwischen Legacy-think und Organ-Modus klar genug? Sollten Config-Flow-Labels ausdrücklich sagen, dass frei formulierte System-Prompts als fachliche Hinweise dienen und die Ausgabeform nicht ändern können?
 
-### D. Timeout-Konfiguration wurde für Cloud-Provider nicht durchgereicht — im PR behoben
+### E. Timeout-Konfiguration wurde für Cloud-Provider nicht durchgereicht — im PR behoben
 
 Ollama erhielt den vom Agenten angegebenen Timeout. OpenAI-kompatible Endpunkte, Claude und Gemini verwendeten dagegen fest 30 Sekunden. Der gemeinsame Dispatcher und die HTTP-Wrapper reichen den Wert nun durch.
 
 **Claude soll prüfen:** Ob der Retrypfad für HTTP 429 und Retry-After später erweitert werden soll. Aktuell sind die Retry-Regeln für 5xx und bestimmte Netzwerkfehler definiert; eine Rate-Limit-Antwort sollte nicht blind sofort wiederholt werden, sondern begrenzt und mit Provider-Hinweisen behandelt werden.
 
-### E. Cortex HTTP-Session bei Reload/Unload — im PR behoben
+### F. Cortex HTTP-Session bei Reload/Unload — im PR behoben
 
 Die Session wurde explizit beim Home-Assistant-Stop geschlossen, nicht aber im regulären Options-Reload-/Unload-Pfad. Das konnte eine alte ClientSession länger leben lassen als den Config Entry. Der echte Setup-/Teardown-Test erhält nun einen Close-Spy.
 
 **Claude soll prüfen:** Ob Cortex.close() bei mehrfachem Aufruf sicher idempotent bleibt und ob weitere Background-Tasks neben der Session an den Entry-Lifecycle gebunden werden müssen.
 
-### F. Diskussionseinstellungen und Coordinator — offen, Produktentscheidung nötig
+### G. Inaktive `discussion_rounds`-Einstellung — in diesem PR transparent stillgelegt
 
-Der Config Flow speichert discussion_rounds, und Oberfläche/Diagnostics stellen diese Einstellung dar. Der aktuelle Organ-Modus macht bewusst nur eine Wahl pro Fach-Agent; der Coordinator wird nicht gefragt und es findet keine Revisionsrunde statt. Kommentare begründen das mit beobachtetem Gruppendenken, also ist nicht sicher, dass die alte Mehr-Runden-Logik einfach wieder aktiviert werden sollte. Gleichzeitig kann die gespeicherte Einstellung im aktuellen Weg irreführend wirken.
+Der Config Flow bot bisher 1–3 Diskussionsrunden an, während der aktive Organ-/Menüpfad nur eine Wahl pro Fach-Agent ausführt. Der Coordinator wird nicht gefragt und es findet keine Revisionsrunde statt. Ein UI-Schalter ohne Effekt war irreführend.
 
-**Empfehlung an Claude:** Entweder das UI-Feld entfernen/deprecaten und die Ein-Runden-Politik transparent dokumentieren oder einen klar abgegrenzten, opt-in aktivierten Revisionsmodus mit Tests für Prompt-Injektion, Veto-Priorität und sichere Enthaltung implementieren. Nicht kommentarlos eine tote Einstellung stehen lassen.
+- Das editierbare Feld ist aus dem Config Flow entfernt.
+- Bereits gespeicherte `discussion_rounds`-Werte bleiben als Legacy-Konfigurationsdaten erhalten; sie werden nicht mehr als wirksame Einstellung behandelt.
+- Cortex-State, Sensor und Diagnostics berichten die effektive Ein-Runden-Politik. Tests halten fest, dass alte Snapshots mit `discussion_rounds=3` nicht fälschlich drei effektive Runden melden.
+
+Ein echter Mehr-Runden-/Coordinator-Modus ist **nicht** beiläufig reaktiviert worden. Er braucht ein separates Design, ein explizites Opt-in und Tests gegen Prompt-Injektion, Veto-Priorität, sichere Enthaltung, Mehrdeutigkeit und Gruppendenken.
 
 ## 5. Weitere Befunde aus Core, Lite und Anomaly
 
@@ -118,12 +136,12 @@ Der Config Flow speichert discussion_rounds, und Oberfläche/Diagnostics stellen
 - **Messqualität:** Das Messprotokoll vergleicht Engine mit B0/B1/B2-Baselines und enthält reale CASAS-Spuren. Die dokumentierte Vorhersageverbesserung ist aussagekräftiger als ein isolierter Accuracy-Wert. Es gibt jedoch bewusst dokumentierte Schwächen, insbesondere eine problematische Tulum1-Anwesenheitsperiode. Anwesenheitsschätzungen müssen Unsicherheit und Kalibrierung mitliefern und dürfen nicht als sichere Fakten behandelt werden.
 - **Token-Kollisionen:** Ein Token bildet Raum + Semantik + Zustand ab, nicht die einzelne Entity. Mehrere ähnliche Entitäten im Raum werden dadurch zusammengefasst. Das ist ein bewusster Speicherkompromiss, muss aber in Nutzungsdokumentation und Debugging sichtbar bleiben.
 - **Persistenz-/Upgrade-Vertrag:** Schema-Version und Modulsammlung funktionieren grundsätzlich als Kompatibilitätsmechanismus; Claude sollte besonders Migration von älteren Brain-Snapshots und Verhalten bei neuerem Schema weiter testen.
-- **Im Core-GitHub-Draft umgesetzt:** Service-Domain und Token-Semantik werden im [Core-PR #42](https://github.com/Chance-Konstruktion/kontinuum-core/pull/42) entkoppelt; die Tests umfassen Media-Service-Domain, eindeutige Confirm-IDs und den Snapshot-Tokenvertrag.
+- **Im Core-GitHub-Draft umgesetzt:** Service-Domain und Token-Semantik werden im [Core-PR #42](https://github.com/Chance-Konstruktion/kontinuum-core/pull/42) entkoppelt; die Tests umfassen Media-Service-Domain, native HVAC-Modi, Alias-Normalisierung, eindeutige Confirm-IDs und den Snapshot-Tokenvertrag.
 
 ### ha-kontinuum-lite
 
 - **Gute Architektur:** Dünne HA-Schicht über KontinuumEngine, atomisches gzip-Speichern mit temporärer Datei und os.replace, Executor für blockierende Dateioperationen, Bestätigungsweg und Lifecycle-Tests.
-- **Im Lite-GitHub-Draft umgesetzt:** Lite rekonstruiert Entscheidungen mit optionalem `token_id`, bleibt mit älteren Core-Snapshots kompatibel und fängt auch `OverflowError` durch nicht-endliche numerische Werte ab ([Lite-PR #26](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/pull/26)). Der [Core-PR #42](https://github.com/Chance-Konstruktion/kontinuum-core/pull/42) macht Confirm-IDs kollisionsresistent und exportiert `token_id` im Snapshot.
+- **Im Lite-GitHub-Draft umgesetzt:** Lite rekonstruiert Entscheidungen mit optionalem `token_id`, bleibt mit älteren Core-Snapshots kompatibel und fängt `OverflowError`/nicht-endliche Eingaben ab. Serviceaufrufe und bereits wartende Confirm-Entscheidungen behalten auch bei älterem Core gültige Media-/Climate-Modi ([Lite-PR #26](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/pull/26)). Der [Core-PR #42](https://github.com/Chance-Konstruktion/kontinuum-core/pull/42) exportiert `token_id`, macht Confirm-IDs kollisionsresistent und mappt native HVAC-Modi.
 - **Shared Media-Bug — Fix auf Core:** Core mappt die Media-Semantik auf `media_player`, worauf auch Lite aufsetzt. Der Pro-Adapter bleibt als Fallback für ältere Core-Pakete.
 - **Restore-Randfall:** Der Core verweigert das Laden eines neueren Schema-Standes durch Cold-Start. Claude sollte prüfen, ob Lite den Unterschied zwischen „Datei war vorhanden und bewusst abgelehnt“ und „Brain erfolgreich restauriert“ in Status/Logging deutlich genug macht.
 
@@ -180,9 +198,9 @@ Bitte nicht nur diesen Markdown-Bericht bestätigen; Code und Tests unabhängig 
 3. Sicherstellen, dass Provider-Tests kein echtes Netzwerk benötigen und timeout.total auf allen drei Cloud-Transporten überprüfen.
 4. Prüfen, dass organ_prompt bei Custom-Prompts den Vertrags-/Menütext am Ende belässt und eingebauter Legacy-JSON-Text keine widersprüchliche neue Antwortform einführt.
 5. Prüfen, dass ein Veto auf der individuellen Stimme erhalten bleibt, aber das boolesche vetoed nur aussagt, dass sämtliche ausführbaren Optionen ausgeschlossen wurden.
-6. Pro Media-Adapter prüfen und mit [Core PR #42](https://github.com/Chance-Konstruktion/kontinuum-core/pull/42) sowie [Lite PR #26](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/pull/26) gegen den realen Call-Path vergleichen.
+6. Pro Media-/Climate-Adapter prüfen und mit [Core PR #42](https://github.com/Chance-Konstruktion/kontinuum-core/pull/42) sowie [Lite PR #26](https://github.com/Chance-Konstruktion/ha-kontinuum-lite/pull/26) gegen den realen Call-Path vergleichen. Sicherstellen, dass der exakte HVAC-Token Konsens, Bestätigung, Ausführung und Outcome-Lernen überlebt.
 7. Die Verträge über alle vier PRs gemeinsam prüfen: Core-Service-Domain und Confirm-ID, Lite-Decision-Rekonstruktion, Pro-Kompatibilitätsadapter und AI-anomaly Alert-/Retention-Fixes. Prüfen, dass die installierten Core-Versionen in Pro/Lite/Anomaly mit dem veröffentlichten Core-Vertrag kompatibel bleiben.
-8. Über die tote discussion_rounds-Einstellung entscheiden: entfernen/deprecaten oder einen sicheren, expliziten Revisionsmodus implementieren.
+8. Prüfen, dass `discussion_rounds` im UI nicht mehr als wirksam erscheint und Legacy-Werte bei Migration/Restore die effektive Ein-Runden-Politik nicht überschreiben. Coordinator/Revisionsmodus separat designen.
 9. MCP vorerst als gesondertes Architektur-/Sicherheitsprojekt behandeln; kein Netzwerkserver mit Schreibrechten als beiläufiger Zusatz zu diesem Code-PR.
 
 ## 8. Akzeptanzkriterien
@@ -194,7 +212,7 @@ Bitte nicht nur diesen Markdown-Bericht bestätigen; Code und Tests unabhängig 
 - Ein MCP-Pilot startet read-only und macht den bestehenden Confirm-/Active-Modus nicht durch eine zweite, schwächere Ausführungsroute wirkungslos.
 
 **Status dieser Sitzung (26.10.2026):**
-- Die letzten vollständigen CI-Läufe auf Pro, Core, Lite und AI-anomaly sind für die oben verlinkten Heads erfolgreich.
+- Letzter vollständig grüner Pro-Code-Head vor der Config-Bereinigung: `9768f28`; Core `a564370`, Lite `d30b83c` und AI-anomaly `82ee3caa` haben die verlinkten CI-Prüfungen bestanden. Die danach vorgenommenen Pro-Änderungen (consensus-token/HVAC-End-to-End und Stilllegung von `discussion_rounds`) lösen neue Pro-CI-Läufe aus; vor Merge ist der jeweils aktuelle Head zu prüfen.
 - Vollständige Pro-Pytest-Suite einschließlich HA-Testplugin: **noch nicht bestätigt**. Die GitHub-Smoke-Workflow-Datei schließt Tests aus, die `pytest_homeassistant_custom_component` importieren; insbesondere der Lifecycle-Test für Session-Cleanup muss in der vollständigen HA-Testumgebung ausgeführt werden.
 - Claude wurde auf allen vier PRs um unabhängiges Review gebeten. In der letzten Prüfung war noch keine Claude-Antwort bzw. kein Review-Submission sichtbar.
 - Alle vier PRs sind Drafts und ungemergt.

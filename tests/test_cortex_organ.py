@@ -315,3 +315,12 @@ async def test_ollama_bekommt_schema_und_kein_denken():
         _Sitzung(), "http://x", "m", "sys", "frage", fmt=schema, think=False)
     assert gesendet["format"] == schema and gesendet["think"] is False
     assert lies_wahl(roh, MENUE)["wahl"] == 1
+
+
+
+def test_discussion_rounds_reports_single_effective_round_for_legacy_config():
+    cortex = Cortex()
+    assert cortex.discussion_rounds == 1
+
+    cortex.from_dict({"discussion_rounds": 3, "nachhall": {}})
+    assert cortex.discussion_rounds == 1

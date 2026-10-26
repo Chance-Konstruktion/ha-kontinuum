@@ -520,13 +520,13 @@ class Cortex:
     """
 
     MIN_INTERVAL = 30  # Cooldown zwischen Aufrufen (Sekunden)
-    MAX_DISCUSSION_ROUNDS = 2  # Runde 1 + 1 Diskussionsrunde
+    MAX_DISCUSSION_ROUNDS = 1  # Der aktuelle Organ-Menüpfad nutzt eine Runde
 
     def __init__(self):
         self.agents: list[CortexAgent] = []
         self.enabled = False
         self.sequential_mode = False  # v0.18.0: Sequentiell statt parallel (für 1 GPU)
-        self.discussion_rounds = self.MAX_DISCUSSION_ROUNDS  # Aus Config überschreibbar
+        self.discussion_rounds = 1  # Effektive Runden; Legacy-Config wird ignoriert
         self.last_run = 0
         self.total_consultations = 0
         self.total_discussions = 0
@@ -965,7 +965,10 @@ class Cortex:
         self.total_consultations = data.get("total_consultations", 0)
         self.total_discussions = data.get("total_discussions", 0)
         self.sequential_mode = data.get("sequential_mode", False)
-        self.discussion_rounds = data.get("discussion_rounds", self.MAX_DISCUSSION_ROUNDS)
+        # Older config/state snapshots may store 2 or 3, but the Organ path
+        # does not run revision rounds. Report the effective behavior, not the
+        # stale setting.
+        self.discussion_rounds = 1
         self.letzte_beratung = data.get("letzte_beratung", 0.0)
         self.nachhall.from_dict(data.get("nachhall"))
 
