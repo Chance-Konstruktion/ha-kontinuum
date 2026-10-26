@@ -53,8 +53,23 @@ MAX_OPTIONEN = 5
 # So lange wird nach einer Beratung beobachtet, was der Mensch tut.
 FENSTER_S = 900
 
-# Thalamus-Zustand → Home-Assistant-Zustand, wo sie sich unterscheiden.
+# Thalamus/HA state aliases retained for the human-outcome learner.
 _HA_ZUSTAND = {"heating": "heat", "cooling": "cool"}
+
+# Native Home Assistant hvac_mode values which are not present in older
+# kontinuum-core STATE_TO_SERVICE maps. The token state must be carried through
+# the Cortex consensus because several modes share the same HA service name.
+_HA_CLIMATE_MODES = {"heat", "cool", "heat_cool", "auto", "dry", "fan_only"}
+
+
+def service_for_token(semantic: str, state: str):
+    """Resolve a learned token state to an HA service, with legacy-core fallback."""
+    service = STATE_TO_SERVICE.get(semantic, {}).get(state)
+    if service:
+        return service
+    if semantic == "climate" and state in _HA_CLIMATE_MODES:
+        return "set_hvac_mode"
+    return None
 
 
 def baue_menue(predictions, thalamus, amygdala=None, max_optionen=MAX_OPTIONEN):
@@ -76,7 +91,7 @@ def baue_menue(predictions, thalamus, amygdala=None, max_optionen=MAX_OPTIONEN):
         raum, semantik, zustand = teile
         if semantik not in ACTIONABLE_SEMANTICS:
             continue
-        dienst = STATE_TO_SERVICE.get(semantik, {}).get(zustand)
+        dienst = service_for_token(semantik, zustand)
         if not dienst:
             continue
         if amygdala is not None:

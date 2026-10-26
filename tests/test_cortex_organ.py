@@ -22,6 +22,7 @@ from kontinuum_core.amygdala import Amygdala
 from kontinuum_core.thalamus import Thalamus
 
 from custom_components.kontinuum import cortex as cortex_mod
+from custom_components.kontinuum import cortex_organ as organ_mod
 from custom_components.kontinuum.cortex import Cortex
 from custom_components.kontinuum.cortex_organ import (
     NICHTS,
@@ -81,6 +82,32 @@ def test_menue_nur_ausfuehrbares_ohne_doppelte(haus):
     assert paare == [("light.turn_on", "light.wohnzimmer"),
                      ("switch.turn_on", "switch.kaffee")]
     assert [o["id"] for o in menue] == [0, 1, 2]
+
+
+def test_menue_retains_native_hvac_mode_with_legacy_core_service_map(monkeypatch):
+    # Older installed Core builds only know descriptive climate aliases, while
+    # the live Thalamus emits Home Assistant's native "heat"/"cool" states.
+    monkeypatch.setattr(
+        organ_mod,
+        "STATE_TO_SERVICE",
+        {"climate": {"heating": "set_hvac_mode", "cooling": "set_hvac_mode", "off": "turn_off"}},
+    )
+
+    class ClimateThalamus:
+        def decode_token(self, token_id):
+            assert token_id == 7
+            return "livingroom.climate.heat"
+
+        def resolve_entities(self, token):
+            assert token == "livingroom.climate.heat"
+            return ["climate.living_room"]
+
+    menue = baue_menue([(7, 0.8, 0.9, "hippocampus", 80)], ClimateThalamus())
+
+    assert menue[1]["aktion"] == "climate.set_hvac_mode"
+    assert menue[1]["entity_id"] == "climate.living_room"
+    assert menue[1]["zustand"] == "heat"
+    assert menue[1]["token"] == "livingroom.climate.heat"
 
 
 def test_menue_ohne_entitaet_bleibt_leer():

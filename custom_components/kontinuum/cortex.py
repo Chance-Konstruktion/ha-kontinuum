@@ -652,6 +652,7 @@ class Cortex:
                 "veto": bool(veto),
                 "action": gewaehlt.get("aktion"),
                 "entity_id": gewaehlt.get("entity_id"),
+                "token": gewaehlt.get("token"),
                 "gueltig": bool(stimme.get("gueltig")),
             })
         gestrichen = list(entscheidung.get("gestrichen") or [])
@@ -664,6 +665,9 @@ class Cortex:
         return {
             "consensus_action": aktion,
             "consensus_entity": option.get("entity_id") if aktion else None,
+            # Keep the exact menu token so shared services (notably HVAC
+            # set_hvac_mode) cannot lose the selected state during reverse mapping.
+            "consensus_token": option.get("token") if aktion else None,
             "consensus_reason": entscheidung["grund"],
             "proposals": proposals,
             "revisions": [],
@@ -840,6 +844,7 @@ class Cortex:
         # "externes Signal" das ins Gedächtnis einfließt
         consensus_action = consensus.get("consensus_action")
         consensus_entity = consensus.get("consensus_entity")
+        consensus_token = consensus.get("consensus_token")
         proposals = consensus.get("proposals", [])
 
         if consensus_action and not consensus.get("vetoed"):
@@ -864,7 +869,14 @@ class Cortex:
                 + list(brain["insula"].get_mode_context())
             )
             bucket = hippocampus._context_bucket(ctx_vec)
-            token_str = f"cortex.{consensus_action}"
+            # For HVAC, several choices share the same HA service
+            # (climate.set_hvac_mode). Register the selected learned token so
+            # outcome feedback preserves the actual mode, not just the service.
+            token_str = (
+                consensus_token
+                if consensus_action == "climate.set_hvac_mode" and consensus_token
+                else f"cortex.{consensus_action}"
+            )
             token_id = thalamus.get_or_create_token(token_str)
 
             basal_ganglia.register_action(
@@ -927,6 +939,8 @@ class Cortex:
         if consensus_action and consensus_entity and not consensus.get("vetoed"):
             cortex_patterns = brain.setdefault("_cortex_patterns", {})
             pattern_key = f"{consensus_action}|{consensus_entity}"
+            if consensus_action == "climate.set_hvac_mode" and consensus_token:
+                pattern_key = f"{pattern_key}|{consensus_token}"
             count = cortex_patterns.get(pattern_key, 0) + 1
             cortex_patterns[pattern_key] = count
 

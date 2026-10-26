@@ -6,8 +6,8 @@ from custom_components.kontinuum.cortex_organ import NICHTS, entscheide
 
 MENUE = [
     {"id": 0, "text": "nichts tun"},
-    {"id": 1, "aktion": "light.turn_on", "entity_id": "light.kueche", "zustand": "on", "text": "Küchenlicht an"},
-    {"id": 2, "aktion": "switch.turn_on", "entity_id": "switch.kaffee", "zustand": "on", "text": "Kaffee einschalten"},
+    {"id": 1, "aktion": "light.turn_on", "entity_id": "light.kueche", "zustand": "on", "token": "kueche.light.on", "text": "Küchenlicht an"},
+    {"id": 2, "aktion": "switch.turn_on", "entity_id": "switch.kaffee", "zustand": "on", "token": "kueche.switch.on", "text": "Kaffee einschalten"},
 ]
 
 
@@ -84,6 +84,7 @@ def test_organ_result_exposes_the_real_action_for_each_menu_vote():
     result = Cortex._ergebnis(MENUE, votes, entscheide(votes, MENUE), "knapp")
 
     assert result["consensus_action"] == "light.turn_on"
+    assert result["consensus_token"] == "kueche.light.on"
     assert [p["action"] for p in result["proposals"]] == [
         "light.turn_on", "light.turn_on", None,
     ]
@@ -138,3 +139,33 @@ def test_bridge_preserves_safety_veto_even_when_no_action_is_selected():
 
     assert ("cortex.veto.safety", "negative") in brain["amygdala"].feedback
     assert "amygdala_veto_learn" in bridge["actions"]
+
+
+
+def test_climate_consensus_feedback_preserves_the_selected_mode():
+    menu = [
+        {"id": 0, "text": "nichts tun"},
+        {
+            "id": 1,
+            "aktion": "climate.set_hvac_mode",
+            "entity_id": "climate.living_room",
+            "zustand": "cool",
+            "token": "livingroom.climate.cool",
+            "text": "Wohnzimmer auf Kühlen",
+        },
+    ]
+    votes = [_st("energy", 1), _st("comfort", 1), _st("safety", 0)]
+    result = Cortex._ergebnis(menu, votes, entscheide(votes, menu), "knapp")
+    brain = _brain()
+
+    assert result["consensus_action"] == "climate.set_hvac_mode"
+    assert result["consensus_token"] == "livingroom.climate.cool"
+    assert result["proposals"][0]["token"] == "livingroom.climate.cool"
+
+    bridge = Cortex().integrate_into_brain(brain, result)
+
+    # Outcome learning and reflex candidates must distinguish heat from cool,
+    # even though both call climate.set_hvac_mode.
+    assert brain["basal_ganglia"].registered[0][3] == "livingroom.climate.cool"
+    assert brain["_cortex_patterns"]["climate.set_hvac_mode|climate.living_room|livingroom.climate.cool"] == 1
+    assert bridge["integrated"] is True
