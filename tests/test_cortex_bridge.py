@@ -104,6 +104,8 @@ def test_bridge_learns_consensus_from_menu_ids_not_missing_action_fields():
     assert bridge["integrated"] is True
     assert brain["basal_ganglia"].registered
     assert ("light", True) in brain["prefrontal"].feedback
+    assert "prefrontal_feedback_light_positive" in bridge["actions"]
+    assert not any(a.startswith("prefrontal_boost_") for a in bridge["actions"])
     assert brain.get("_cortex_patterns", {}).get("light.turn_on|light.kueche") == 1
 
 
@@ -124,7 +126,7 @@ def test_no_majority_is_not_mislabeled_as_vetoed_when_an_alternative_remains():
 
 
 def test_bridge_preserves_safety_veto_even_when_no_action_is_selected():
-    votes = [_st("energy", 1), _st("comfort", 1), _st("safety", 1, veto=[1])]
+    votes = [_st("energy", 1), _st("comfort", 2), _st("safety", 0, veto=[1, 2])]
     result = Cortex._ergebnis(MENUE, votes, entscheide(votes, MENUE), "anomalie")
     brain = _brain()
 

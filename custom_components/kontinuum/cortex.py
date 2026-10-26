@@ -897,13 +897,11 @@ class Cortex:
         # ── 4. Prefrontal: Utility-Weights aus Konsens anpassen ──
         # Wenn Agents sich einig sind → Confidence für den
         # Semantic-Type erhöhen (positives Signal)
-        discussion_rounds = consensus.get("discussion_rounds", 1)
         if consensus_action and not consensus.get("vetoed"):
             # Semantic aus Action extrahieren (z.B. "light" aus "light.turn_on")
             action_parts = consensus_action.split(".")
             if action_parts:
                 semantic = action_parts[0]
-                # Einigkeit nach Diskussion = starkes Signal
                 chosen_id = consensus.get("wahl")
                 gestrichene_ids = {
                     nummer for p in proposals for nummer in (p.get("gestrichen") or [])
@@ -916,15 +914,11 @@ class Cortex:
                 agreement_ratio = agreement_count / max(1, len(gueltige_stimmen))
 
                 if agreement_ratio >= 0.5:
-                    # Mehrheit → leichtes positives Feedback
-                    boost = 0.01 * agreement_ratio
-                    if discussion_rounds > 1:
-                        # Nach Diskussion einig = stärkeres Signal
-                        boost *= 1.5
+                    # Core's public API currently applies its fixed positive
+                    # feedback step (+0.02). Do not log a proportional "boost"
+                    # that is calculated here but never passed to the Core.
                     prefrontal.learn_from_feedback(semantic, positive=True)
-                    actions.append(
-                        f"prefrontal_boost_{semantic}_{boost:.3f}"
-                    )
+                    actions.append(f"prefrontal_feedback_{semantic}_positive")
 
         # ── 5. Cerebellum-Hint: Häufige Cortex-Entscheidungen ────
         # Wenn der Cortex oft das gleiche vorschlägt, könnte das
