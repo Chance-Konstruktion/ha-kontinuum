@@ -1007,6 +1007,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
         # überlebte er das Entladen, lief nach einem Neuladen (Options-
         # änderung) als Timer des ALTEN Entries weiter und meldete sich
         # in der Test-Home als nachhängender Timer.
+        # Close the provider HTTP session on option reload/unload as well;
+        # EVENT_HOMEASSISTANT_STOP is not the only teardown path.
+        cortex = brain.get("cortex")
+        if cortex is not None:
+            await cortex.close()
         metaplasticity = brain.get("metaplasticity")
         if metaplasticity:
             await metaplasticity.async_stop()
@@ -1361,7 +1366,7 @@ def _process_decision(hass, brain, decision, decision_ctx=None):
     elif decision.stage == "CONFIRM":
         # v0.21.0: Bestätigung anfordern mit Event + Notification
         # v0.22.0: Speichert Begründung + Kontext für die Dashboard-UI
-        service_call = prefrontal.get_service_call(decision)
+        service_call = _service_call_for_decision(prefrontal, decision)
         if service_call and decision.entity_id:
             reasoning = _build_decision_reasoning(decision, decision_ctx or {})
             queue_ctx = {
@@ -1416,6 +1421,31 @@ def _process_decision(hass, brain, decision, decision_ctx=None):
             f"Quelle: {decision.source}",
             "kontinuum_suggest",
         )
+
+
+def _service_call_for_decision(prefrontal, decision):
+    """Return a validated HA service spec with HA domain names, not token semantics.
+
+    KONTINUUM's token semantic for media players is "media", while Home
+    Assistant exposes the service domain as "media_player". Older/current
+    core builds return the semantic as the service domain; normalize at this
+    integration boundary so Pro does not generate the invalid media.media_play.
+    The shared fix still belongs in kontinuum-core so Lite and other hosts
+    receive it too.
+    """
+    if decision is None:
+        return None
+    service_call = prefrontal.get_service_call(decision)
+    if not service_call:
+        return None
+    parts = decision.token.split(".")
+    if (
+        len(parts) == 3
+        and parts[1] == "media"
+        and service_call.get("domain") == "media"
+    ):
+        service_call = {**service_call, "domain": "media_player"}
+    return service_call
 
 
 def _cortex_action_to_decision(brain, action, entity, confidence):
@@ -1553,7 +1583,7 @@ async def _handle_cortex_action(hass, brain, action, entity, result):
                    default=0)
 
     decision = _cortex_action_to_decision(brain, action, entity, min(1.0, priority / 100.0))
-    svc = prefrontal.get_service_call(decision) if decision else None
+    svc = _service_call_for_decision(prefrontal, decision) if decision else None
     valid = bool(
         decision and svc
         and hass.states.get(entity) is not None
@@ -1594,7 +1624,7 @@ def _execute_decision(hass, brain, decision):
     # bekamen nie eine Rückmeldung (ruff F821).
     acc = brain["acc"]
     neurorhythms = brain["neurorhythms"]
-    service_call = prefrontal.get_service_call(decision)
+    service_call = _service_call_for_decision(prefrontal, decision)
 
     if not service_call or not decision.entity_id:
         _LOGGER.warning(

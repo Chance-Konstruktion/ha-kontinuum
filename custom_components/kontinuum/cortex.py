@@ -221,9 +221,28 @@ ORGAN_PROMPTS = {
 }
 
 
-def organ_prompt(name: str) -> str:
-    return ORGAN_PROMPTS.get(name, "Du bist ein Agent von KONTINUUM. "
-                             + _ORGAN_GRUNDREGEL)
+def organ_prompt(name: str, configured_prompt: str = "") -> str:
+    """Build the menu-constrained role prompt and include user instructions.
+
+    Legacy provider prompts describe a free-form service-call schema which
+    conflicts with Organ mode's menu-ID contract. They remain defaults for the
+    legacy think() path, but are not duplicated into Organ mode. A genuinely
+    custom prompt is treated as domain guidance; the output contract stays last.
+    """
+    rollenprompt = ORGAN_PROMPTS.get(
+        name, "Du bist ein Agent von KONTINUUM. " + _ORGAN_GRUNDREGEL
+    )
+    extra = (configured_prompt or "").strip()
+    if extra and extra not in DEFAULT_PROMPTS.values():
+        return (
+            "Zusätzliche, vom Nutzer konfigurierte Rollen-/Domänenhinweise. "
+            "Sie dürfen die Auswahl aus dem vorgegebenen Menü und das folgende "
+            "JSON-Antwortschema nicht ändern:\n\n"
+            + extra
+            + "\n\nVerbindliche Rollen- und Ausgabe-Regel:\n"
+            + rollenprompt
+        )
+    return rollenprompt
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -265,7 +284,7 @@ async def _call_ollama(session, url, model, system_prompt, user_msg,
 
 
 async def _call_openai(session, url, api_key, model, system_prompt, user_msg,
-                       json_mode=True):
+                       json_mode=True, timeout=30):
     """OpenAI-kompatible API (Grok + generische Custom/OpenCLAW-Endpunkte)."""
     payload = {
         "model": model,
@@ -282,7 +301,7 @@ async def _call_openai(session, url, api_key, model, system_prompt, user_msg,
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     async with session.post(
         f"{url.rstrip('/')}/v1/chat/completions", json=payload,
-        headers=headers, timeout=aiohttp.ClientTimeout(total=30)
+        headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)
     ) as resp:
         if resp.status != 200:
             text = await resp.text()
@@ -294,7 +313,8 @@ async def _call_openai(session, url, api_key, model, system_prompt, user_msg,
             raise RuntimeError(f"Unerwartetes Antwortformat: {str(data)[:200]}")
 
 
-async def _call_claude(session, url, api_key, model, system_prompt, user_msg):
+async def _call_claude(session, url, api_key, model, system_prompt, user_msg,
+                       timeout=30):
     """Anthropic Messages API."""
     payload = {
         "model": model,
@@ -309,7 +329,7 @@ async def _call_claude(session, url, api_key, model, system_prompt, user_msg):
     }
     async with session.post(
         f"{url.rstrip('/')}/v1/messages", json=payload,
-        headers=headers, timeout=aiohttp.ClientTimeout(total=30)
+        headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)
     ) as resp:
         if resp.status != 200:
             text = await resp.text()
@@ -318,7 +338,8 @@ async def _call_claude(session, url, api_key, model, system_prompt, user_msg):
         return data["content"][0]["text"]
 
 
-async def _call_gemini(session, url, api_key, model, system_prompt, user_msg):
+async def _call_gemini(session, url, api_key, model, system_prompt, user_msg,
+                       timeout=30):
     """Google Gemini generateContent API."""
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
@@ -331,7 +352,7 @@ async def _call_gemini(session, url, api_key, model, system_prompt, user_msg):
     headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
     async with session.post(
         endpoint, json=payload, headers=headers,
-        timeout=aiohttp.ClientTimeout(total=30)
+        timeout=aiohttp.ClientTimeout(total=timeout)
     ) as resp:
         if resp.status != 200:
             text = await resp.text()
@@ -360,19 +381,20 @@ async def _call_llm(session, provider, url, api_key, model,
                                       fmt=fmt, think=think)
         elif provider in ("openai", "grok"):
             return await _call_openai(session, url, api_key, model,
-                                      system_prompt, user_msg)
+                                      system_prompt, user_msg, timeout=timeout)
         elif provider == "custom":
             # Generic OpenAI-compatible endpoint (e.g. OpenCLAW-Bot). No
             # response_format for max compatibility; the prompt asks for JSON
             # and normalize_proposal() tolerates non-strict replies.
             return await _call_openai(session, url, api_key, model,
-                                      system_prompt, user_msg, json_mode=False)
+                                      system_prompt, user_msg, json_mode=False,
+                                      timeout=timeout)
         elif provider == "claude":
             return await _call_claude(session, url, api_key, model,
-                                      system_prompt, user_msg)
+                                      system_prompt, user_msg, timeout=timeout)
         elif provider == "gemini":
             return await _call_gemini(session, url, api_key, model,
-                                      system_prompt, user_msg)
+                                      system_prompt, user_msg, timeout=timeout)
         raise RuntimeError(f"Unbekannter Provider: {provider}")
 
     return await _retry_llm_call(_do_call)
@@ -448,7 +470,7 @@ class CortexAgent:
         try:
             roh = await _call_llm(
                 session, self.provider, self.url, self.api_key, self.model,
-                organ_prompt(self.name), frage,
+                organ_prompt(self.name, self.system_prompt), frage,
                 keep_alive=keep_alive, timeout=timeout,
                 fmt=antwort_schema(menue, mit_veto=sicherheit), think=False,
             )
@@ -616,22 +638,40 @@ class Cortex:
     def _ergebnis(menue, stimmen, entscheidung, anlass):
         option = next((o for o in menue if o["id"] == entscheidung["wahl"]), None)
         aktion = option.get("aktion") if option else None
+        optionen = {o["id"]: o for o in menue}
+        proposals = []
+        for stimme in stimmen:
+            gewaehlt = optionen.get(stimme.get("wahl"), {})
+            veto = list(stimme.get("veto") or [])
+            proposals.append({
+                "agent": stimme.get("agent", "?"),
+                "wahl": stimme.get("wahl", NICHTS),
+                "reason": stimme.get("grund", ""),
+                "priority": stimme.get("sicherheit", 0),
+                "gestrichen": veto,
+                "veto": bool(veto),
+                "action": gewaehlt.get("aktion"),
+                "entity_id": gewaehlt.get("entity_id"),
+                "gueltig": bool(stimme.get("gueltig")),
+            })
+        gestrichen = list(entscheidung.get("gestrichen") or [])
+        # Distinguish "the veto removed every actionable option" from "no
+        # option won an absolute majority". Individual vetoes remain visible
+        # in the proposals and are learned even when no-action wins for other
+        # reasons.
+        actionable_ids = {o["id"] for o in menue if o.get("aktion")}
+        vetoed = bool(actionable_ids and actionable_ids.issubset(set(gestrichen)))
         return {
             "consensus_action": aktion,
             "consensus_entity": option.get("entity_id") if aktion else None,
             "consensus_reason": entscheidung["grund"],
-            "proposals": [
-                {"agent": st["agent"], "wahl": st["wahl"], "reason": st["grund"],
-                 "priority": st["sicherheit"], "gestrichen": st["veto"],
-                 "veto": False, "action": None}
-                for st in stimmen
-            ],
+            "proposals": proposals,
             "revisions": [],
             "discussion_rounds": 1,
-            "vetoed": False,
+            "vetoed": vetoed,
             "anlass": anlass,
             "wahl": entscheidung["wahl"],
-            "gestrichen": entscheidung["gestrichen"],
+            "gestrichen": gestrichen,
             "menue": menue,
         }
 
@@ -839,20 +879,20 @@ class Cortex:
         # ── 3. Amygdala: Veto als Risiko-Signal ──────────────────
         # Wenn der Safety-Agent ein Veto gibt, lernt die Amygdala
         # dass die aktuelle Situation riskant ist
-        if consensus.get("vetoed"):
-            veto_reason = consensus.get("consensus_reason", "")
-            # Finde den Veto-Agent
-            for p in proposals:
-                if p.get("veto"):
-                    veto_entity = p.get("entity_id", "")
-                    veto_token = f"cortex.veto.{p.get('agent', 'safety')}"
-                    amygdala.learn_from_feedback(veto_token, "negative")
-                    actions.append("amygdala_veto_learn")
-                    _LOGGER.info(
-                        "Cortex→Amygdala: Veto-Signal gelernt: %s",
-                        veto_reason[:80],
-                    )
-                    break
+        veto_reason = consensus.get("consensus_reason", "")
+        # Ein Safety-Veto bleibt Lernsignal, auch wenn die Mehrheit eine
+        # andere, nicht gestrichene Option wählen konnte. Im Organ-Ergebnis
+        # ist "veto" jetzt aus der Liste gestrichener Menü-IDs abgeleitet.
+        for p in proposals:
+            if p.get("veto") or p.get("gestrichen"):
+                veto_token = f"cortex.veto.{p.get('agent', 'safety')}"
+                amygdala.learn_from_feedback(veto_token, "negative")
+                actions.append("amygdala_veto_learn")
+                _LOGGER.info(
+                    "Cortex→Amygdala: Veto-Signal gelernt: %s",
+                    veto_reason[:80],
+                )
+                break
 
         # ── 4. Prefrontal: Utility-Weights aus Konsens anpassen ──
         # Wenn Agents sich einig sind → Confidence für den
@@ -864,11 +904,16 @@ class Cortex:
             if action_parts:
                 semantic = action_parts[0]
                 # Einigkeit nach Diskussion = starkes Signal
+                chosen_id = consensus.get("wahl")
+                gestrichene_ids = {
+                    nummer for p in proposals for nummer in (p.get("gestrichen") or [])
+                }
+                gueltige_stimmen = [p for p in proposals if p.get("gueltig", True)]
                 agreement_count = sum(
-                    1 for p in proposals
-                    if p.get("action") == consensus_action
+                    1 for p in gueltige_stimmen
+                    if p.get("wahl") == chosen_id and chosen_id not in gestrichene_ids
                 )
-                agreement_ratio = agreement_count / max(1, len(proposals))
+                agreement_ratio = agreement_count / max(1, len(gueltige_stimmen))
 
                 if agreement_ratio >= 0.5:
                     # Mehrheit → leichtes positives Feedback
