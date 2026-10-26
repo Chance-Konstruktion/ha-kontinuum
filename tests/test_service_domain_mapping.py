@@ -162,3 +162,19 @@ def test_cortex_rejects_consensus_token_that_disagrees_with_action_or_entity():
         0.8,
         token="livingroom.light.on",
     ) is None
+
+
+def test_cortex_fails_closed_on_entity_domain_without_thalamus_metadata():
+    thalamus = _ClimateThalamus()
+    thalamus.entity_semantic = {}
+    thalamus.entity_room = {}
+
+    decision = _cortex_action_to_decision(
+        {"thalamus": thalamus},
+        "light.turn_on",
+        "climate.living_room",
+        0.8,
+        token="livingroom.light.on",
+    )
+
+    assert decision is None

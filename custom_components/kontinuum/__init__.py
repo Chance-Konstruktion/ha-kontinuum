@@ -1497,6 +1497,13 @@ def _cortex_action_to_decision(brain, action, entity, confidence, token=None):
     entity_semantics = getattr(thalamus, "entity_semantic", {})
     entity_rooms = getattr(thalamus, "entity_room", {})
 
+    # Fail closed even if this entity is not present in the Thalamus metadata.
+    # Token semantics mostly mirror HA domains; the known exception is media.
+    expected_domain = {"media": "media_player"}.get(domain, domain)
+    actual_domain = entity.split(".", 1)[0] if isinstance(entity, str) else ""
+    if not actual_domain or actual_domain != expected_domain:
+        return None
+
     if token:
         token_parts = token.split(".")
         if len(token_parts) != 3:
