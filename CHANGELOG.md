@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.31.2-experimental – Kontextvertrag für externe KI-Agenten
+
+### Added
+- Neuer Antwort-Service `kontinuum.cortex_context` liefert einen kleinen, versionierten Snapshot mit Gehirnzustand, Cortex-Status und ausschließlich aus echten Vorhersagen abgeleiteten Aktionsoptionen.
+- Der Kontextvertrag enthält maschinenlesbare Sicherheitsgrenzen und Fähigkeiten, schließt Personen-Tracker-Listen, API-Schlüssel, Prompts und Rohverläufe aus und führt selbst keine LLM-Aufrufe aus. Benutzerdefinierte Entity-IDs können weiterhin Namen enthalten.
+- `docs/CORTEX-AGENT-PROTOCOL.md` dokumentiert den sicheren, ressourcenschonenden Ablauf für externe Home-Assistant-KI-Agenten; Tests prüfen den Datenvertrag.
+
+### Safety and resource usage
+- Der neue Service ist read-only und auf fünf Vorhersagen sowie zehn Aktionsoptionen begrenzt. Aktionen laufen weiterhin ausschließlich durch KONTINUUMs vorhandene Modus-, Freischaltungs-, Risiko- und Bestätigungsprüfungen.
+
 ## Unveröffentlicht – Die Cortex-Tafel: der Messanschluss des Organs (#3)
 
 ### Added

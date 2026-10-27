@@ -31,7 +31,7 @@ from collections import Counter, deque
 from datetime import datetime, timedelta, timezone
 
 from homeassistant.const import EVENT_STATE_CHANGED, EVENT_HOMEASSISTANT_STOP, Platform
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, SupportsResponse, callback
 from homeassistant import config_entries
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
@@ -70,6 +70,7 @@ from kontinuum_core.interval_timing import IntervalTiming
 
 from .const import DOMAIN
 from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
+from .agent_context import build_agent_context
 from .cortex_organ import anlass as cortex_anlass, service_for_token
 from .metaplasticity import MetaPlasticity
 from .config_flow import PRESETS
@@ -79,7 +80,7 @@ from . import lagebild
 
 _LOGGER = logging.getLogger(__name__)
 # Muss mit manifest.json "version" übereinstimmen
-VERSION = "0.31.1-experimental"
+VERSION = "0.31.2-experimental"
 DATA_DIR = "kontinuum"
 HISTORY_DIR = "history"
 BRAIN_FILE = "brain.json.gz"
@@ -2106,6 +2107,10 @@ def _register_services(hass, brain, entry):
             "notification_id": "kontinuum_activate",
         })
 
+    async def handle_cortex_context(call):
+        """Gibt einen kleinen, rein lesenden Kontextvertrag für externe KI-Agenten zurück."""
+        return build_agent_context(brain, VERSION)
+
     async def handle_configure_agent(call):
         """
         Konfiguriert einen Cortex-Agent.
@@ -2356,6 +2361,10 @@ def _register_services(hass, brain, entry):
     hass.services.async_register(DOMAIN, "set_mode", handle_set_mode)
     hass.services.async_register(DOMAIN, "confirm_action", handle_confirm_action)
     hass.services.async_register(DOMAIN, "reject_action", handle_reject_action)
+    hass.services.async_register(
+        DOMAIN, "cortex_context", handle_cortex_context,
+        supports_response=SupportsResponse.ONLY,
+    )
     hass.services.async_register(DOMAIN, "configure_agent", handle_configure_agent)
     hass.services.async_register(DOMAIN, "cortex_consult", handle_cortex_consult)
     hass.services.async_register(DOMAIN, "remove_agent", handle_cortex_remove_agent)
@@ -2365,7 +2374,7 @@ def _register_services(hass, brain, entry):
     _LOGGER.info("Services registriert: enable_scenes, disable_scenes, set_scene, "
                  "status, export_brain, activate, deactivate, set_mode, "
                  "confirm_action, reject_action, "
-                 "configure_agent, cortex_consult, remove_agent, brain_review")
+                 "cortex_context, configure_agent, cortex_consult, remove_agent, brain_review")
 
 
 # ══════════════════════════════════════════════════════════════════
