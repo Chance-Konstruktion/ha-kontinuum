@@ -70,7 +70,7 @@ from kontinuum_core.interval_timing import IntervalTiming
 
 from .const import DOMAIN
 from .cortex import Cortex, PROVIDERS, DEFAULT_PROMPTS
-from .cortex_organ import anlass as cortex_anlass
+from .cortex_organ import anlass as cortex_anlass, service_for_token
 from .metaplasticity import MetaPlasticity
 from .config_flow import PRESETS
 from .zustands_abo import async_register_zustands_abo
@@ -436,7 +436,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: config_entries.ConfigEnt
             cortex.configure(list(entry_agents.values()))
             # Sequential Mode + Diskussionsrunden aus Config
             cortex.sequential_mode = entry.data.get("sequential_mode", False)
-            cortex.discussion_rounds = entry.data.get("discussion_rounds", 2)
+            # Legacy option is retained in entry data for migration compatibility,
+            # but the current menu/Organ path intentionally runs one round.
+            cortex.discussion_rounds = 1
             _LOGGER.info(
                 "Cortex aus Config geladen: %d Agents, sequential=%s, rounds=%d",
                 len(cortex.agents), cortex.sequential_mode,
@@ -1007,6 +1009,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: config_entries.ConfigEn
         # überlebte er das Entladen, lief nach einem Neuladen (Options-
         # änderung) als Timer des ALTEN Entries weiter und meldete sich
         # in der Test-Home als nachhängender Timer.
+        # Close the provider HTTP session on option reload/unload as well;
+        # EVENT_HOMEASSISTANT_STOP is not the only teardown path.
+        cortex = brain.get("cortex")
+        if cortex is not None:
+            await cortex.close()
         metaplasticity = brain.get("metaplasticity")
         if metaplasticity:
             await metaplasticity.async_stop()
@@ -1361,7 +1368,7 @@ def _process_decision(hass, brain, decision, decision_ctx=None):
     elif decision.stage == "CONFIRM":
         # v0.21.0: Bestätigung anfordern mit Event + Notification
         # v0.22.0: Speichert Begründung + Kontext für die Dashboard-UI
-        service_call = prefrontal.get_service_call(decision)
+        service_call = _service_call_for_decision(prefrontal, decision)
         if service_call and decision.entity_id:
             reasoning = _build_decision_reasoning(decision, decision_ctx or {})
             queue_ctx = {
@@ -1418,30 +1425,120 @@ def _process_decision(hass, brain, decision, decision_ctx=None):
         )
 
 
-def _cortex_action_to_decision(brain, action, entity, confidence):
-    """Map a cortex ``domain.service`` + entity to a PFC Decision, or ``None``.
+def _service_call_for_decision(prefrontal, decision):
+    """Return a Home Assistant service spec, including legacy-Core fallbacks.
 
-    Returns None when the action doesn't map to a known semantic/state — the
-    caller then keeps it advisory and never executes it. This lets cortex
-    actions flow through the exact same confirm/execute pipeline as PFC
-    decisions instead of firing a raw, unvalidated service call.
+    Learned token semantics are not always HA service domains (media vs.
+    media_player). Older Core builds also omit native HA climate states such
+    as heat and cool from their service map. Normalize the first contract and
+    safely fill the second gap at the Pro boundary until the fixed Core release
+    is installed; other unsupported tokens remain advisory only.
+    """
+    if decision is None:
+        return None
+
+    service_call = prefrontal.get_service_call(decision)
+    parts = getattr(decision, "token", "").split(".")
+    if len(parts) != 3:
+        return service_call
+
+    _room, semantic, state = parts
+    if semantic == "media" and service_call and service_call.get("domain") == "media":
+        service_call = {**service_call, "domain": "media_player"}
+
+    if semantic == "climate":
+        hvac_mode = {
+            "heating": "heat",
+            "cooling": "cool",
+            "heat": "heat",
+            "cool": "cool",
+            "heat_cool": "heat_cool",
+            "auto": "auto",
+            "dry": "dry",
+            "fan_only": "fan_only",
+        }.get(state)
+        if hvac_mode is not None:
+            if service_call is None:
+                entity_id = getattr(decision, "entity_id", None)
+                if not entity_id:
+                    return None
+                return {
+                    "domain": "climate",
+                    "service": "set_hvac_mode",
+                    "entity_id": entity_id,
+                    "data": {"entity_id": entity_id, "hvac_mode": hvac_mode},
+                }
+            if service_call.get("service") == "set_hvac_mode":
+                data = dict(service_call.get("data") or {})
+                data["hvac_mode"] = hvac_mode
+                service_call = {
+                    **service_call,
+                    "domain": "climate",
+                    "entity_id": service_call.get("entity_id") or decision.entity_id,
+                    "data": data,
+                }
+    return service_call
+
+
+def _cortex_action_to_decision(brain, action, entity, confidence, token=None):
+    """Map a Cortex consensus into a PFC decision without losing its state.
+
+    When the menu supplies its original token, validate the exact semantic,
+    state, entity and service together. In particular, several climate modes
+    share ``climate.set_hvac_mode``; reverse-mapping the service alone could
+    turn a selected "cool" action into "heat". Legacy callers without a token
+    are accepted only when the service maps to one unambiguous state.
     """
     parts = action.split(".") if action else []
     if len(parts) != 2:
         return None
     domain, service = parts
-    states = STATE_TO_SERVICE.get(domain)
-    if not states:
-        return None
-    state = next((s for s, svc in states.items() if svc == service), None)
-    if state is None:
-        return None
     thalamus = brain["thalamus"]
-    room = thalamus.entity_room.get(entity, "unknown")
-    token = f"{room}.{domain}.{state}"
+    entity_semantics = getattr(thalamus, "entity_semantic", {})
+    entity_rooms = getattr(thalamus, "entity_room", {})
+
+    # Fail closed even if this entity is not present in the Thalamus metadata.
+    # Token semantics mostly mirror HA domains; the known exception is media.
+    expected_domain = {"media": "media_player"}.get(domain, domain)
+    actual_domain = entity.split(".", 1)[0] if isinstance(entity, str) else ""
+    if not actual_domain or actual_domain != expected_domain:
+        return None
+
+    if token:
+        token_parts = token.split(".")
+        if len(token_parts) != 3:
+            return None
+        room, semantic, state = token_parts
+        if semantic != domain or service_for_token(semantic, state) != service:
+            return None
+        known_semantic = entity_semantics.get(entity)
+        if known_semantic and known_semantic != semantic:
+            return None
+        known_room = entity_rooms.get(entity)
+        if known_room and known_room != "unknown" and room != known_room:
+            return None
+    else:
+        states = STATE_TO_SERVICE.get(domain)
+        if not states:
+            return None
+        matching_states = [state for state, candidate in states.items() if candidate == service]
+        # No token means no reliable way to tell apart heat/cool/auto etc.
+        # Refuse ambiguous service-only decisions instead of guessing a mode.
+        if len(matching_states) != 1:
+            return None
+        semantic = domain
+        state = matching_states[0]
+        room = entity_rooms.get(entity, "unknown")
+        if service_for_token(semantic, state) != service:
+            return None
+        known_semantic = entity_semantics.get(entity)
+        if known_semantic and known_semantic != semantic:
+            return None
+
+    decision_token = f"{room}.{semantic}.{state}"
     decision = Decision()
-    decision.token = token
-    decision.token_id = thalamus.get_or_create_token(token)
+    decision.token = decision_token
+    decision.token_id = thalamus.get_or_create_token(decision_token)
     decision.entity_id = entity
     decision.confidence = max(0.0, min(1.0, confidence))
     decision.source = "cortex"
@@ -1480,6 +1577,7 @@ async def _run_cortex(hass, brain, anlass):
         "consensus": {
             "action": result.get("consensus_action"),
             "entity": result.get("consensus_entity"),
+            "token": result.get("consensus_token"),
             "reason": result.get("consensus_reason"),
             "vetoed": result.get("vetoed", False),
         },
@@ -1552,8 +1650,14 @@ async def _handle_cortex_action(hass, brain, action, entity, result):
     priority = max((p.get("priority", 0) for p in result.get("proposals", [])),
                    default=0)
 
-    decision = _cortex_action_to_decision(brain, action, entity, min(1.0, priority / 100.0))
-    svc = prefrontal.get_service_call(decision) if decision else None
+    decision = _cortex_action_to_decision(
+        brain,
+        action,
+        entity,
+        min(1.0, priority / 100.0),
+        token=result.get("consensus_token"),
+    )
+    svc = _service_call_for_decision(prefrontal, decision) if decision else None
     valid = bool(
         decision and svc
         and hass.states.get(entity) is not None
@@ -1572,7 +1676,9 @@ async def _handle_cortex_action(hass, brain, action, entity, result):
         await hass.services.async_call("persistent_notification", "create", {
             "title": "KONTINUUM Cortex – Bestätigung nötig",
             "message": (
-                f"**{action} → {entity}**\n{result.get('consensus_reason', '')}\n\n"
+                f"**{action} → {entity}**\n"
+                f"**Gewählter Zustand:** `{result.get('consensus_token') or decision.token}`\n"
+                f"{result.get('consensus_reason', '')}\n\n"
                 f"Bestätigen: `kontinuum.confirm_action` mit `confirm_id: {confirm_id}`"
             ),
             "notification_id": "kontinuum_cortex_confirm",
@@ -1594,7 +1700,7 @@ def _execute_decision(hass, brain, decision):
     # bekamen nie eine Rückmeldung (ruff F821).
     acc = brain["acc"]
     neurorhythms = brain["neurorhythms"]
-    service_call = prefrontal.get_service_call(decision)
+    service_call = _service_call_for_decision(prefrontal, decision)
 
     if not service_call or not decision.entity_id:
         _LOGGER.warning(

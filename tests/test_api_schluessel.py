@@ -301,7 +301,6 @@ async def test_options_flow_leer_behaelt_den_schluessel(
             result["flow_id"],
             user_input={
                 "enable_cortex": True, "sequential_mode": False,
-                "discussion_rounds": 2,
             },
         )
         assert result["step_id"] == "agents_overview"
