@@ -4,7 +4,7 @@
 
 ### Added
 - Neuer Antwort-Service `kontinuum.cortex_context` liefert einen kleinen, versionierten Snapshot mit Gehirnzustand, Cortex-Status und ausschließlich aus echten Vorhersagen abgeleiteten Aktionsoptionen.
-- Der Kontextvertrag enthält maschinenlesbare Sicherheitsgrenzen und Fähigkeiten, vermeidet Personen-Namen, API-Schlüssel, Prompts und Rohverläufe und führt selbst keine LLM-Aufrufe aus.
+- Der Kontextvertrag enthält maschinenlesbare Sicherheitsgrenzen und Fähigkeiten, schließt Personen-Tracker-Listen, API-Schlüssel, Prompts und Rohverläufe aus und führt selbst keine LLM-Aufrufe aus. Benutzerdefinierte Entity-IDs können weiterhin Namen enthalten.
 - `docs/CORTEX-AGENT-PROTOCOL.md` dokumentiert den sicheren, ressourcenschonenden Ablauf für externe Home-Assistant-KI-Agenten; Tests prüfen den Datenvertrag.
 
 ### Safety and resource usage
