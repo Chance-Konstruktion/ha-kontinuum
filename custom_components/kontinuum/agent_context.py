@@ -90,7 +90,7 @@ def build_agent_context(brain: dict, integration_version: str) -> dict:
     if thalamus is not None:
         try:
             full_menu = baue_menue(
-                predictions, thalamus, _read(prefrontal, "amygdala", amygdala),
+                predictions, thalamus, _read(prefrontal, "amygdala") or amygdala,
                 max_optionen=MAX_ACTION_OPTIONS,
             )
             menu_truncated = len(full_menu) > MAX_ACTION_OPTIONS
@@ -228,9 +228,9 @@ def build_agent_context(brain: dict, integration_version: str) -> dict:
         },
         "privacy": {
             "includes_person_tracker_list": False,
-            "includes_raw_person_names": False,
+            "includes_raw_person_tracker_names": False,
             "includes_api_keys_or_prompts": False,
             "includes_raw_history_or_full_brain_export": False,
-            "entity_ids_may_contain_user_defined_names": True,
+            "entity_ids_or_room_names_may_contain_user_defined_names": True,
         },
     }
