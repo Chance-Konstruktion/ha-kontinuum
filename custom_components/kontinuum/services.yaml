@@ -164,6 +164,14 @@ configure_agent:
         text:
           multiline: true
 
+cortex_context:
+  name: Cortex-Kontext für KI-Agenten
+  description: >
+    Liefert einen kleinen, versionierten und rein lesenden Snapshot des
+    Gehirnzustands und der aktuell angebotenen Aktionsoptionen. Führt keine
+    LLM-Aufrufe oder Aktionen aus. Für die WebSocket-API muss return_response
+    auf true gesetzt werden.
+
 cortex_consult:
   name: Cortex befragen
   description: >

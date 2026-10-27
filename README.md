@@ -323,6 +323,8 @@ Im Debug-Panel können folgende **Services direkt ausgelöst** werden:
 
 ---
 
+**Externe KI-Agenten:** Der Antwort-Service `kontinuum.cortex_context` liefert über die Home-Assistant-WebSocket-API (`return_response: true`) einen begrenzten, rein lesenden Gehirnkontext ohne LLM-Aufrufe. Details: [Cortex-Agent-Protokoll](docs/CORTEX-AGENT-PROTOCOL.md).
+
 ## Sensoren
 
 KONTINUUM erstellt automatisch native HA-Entitäten -- kein YAML nötig.

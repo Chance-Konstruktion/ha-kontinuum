@@ -248,6 +248,8 @@ The debug panel provides **service trigger buttons** for direct interaction:
 | **Activate Light** | `kontinuum.activate` | Enables autonomous control for lights. KONTINUUM then controls lights based on learned patterns. |
 | **Deactivate All** | `kontinuum.deactivate` | Disables autonomous control for all device types. KONTINUUM then only observes (shadow mode). |
 
+External AI agents can retrieve a bounded, read-only brain snapshot through `kontinuum.cortex_context` using the Home Assistant WebSocket API with `return_response: true`. It performs no LLM calls or actions. See [the Cortex agent protocol](docs/CORTEX-AGENT-PROTOCOL.md) for the safety contract.
+
 ---
 
 ## Sensors
