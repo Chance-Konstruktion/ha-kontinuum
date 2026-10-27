@@ -311,7 +311,6 @@ Im Debug-Panel können folgende **Services direkt ausgelöst** werden:
 
 | Button | Service | Was passiert? |
 |--------|---------|---------------|
-| **Cortex Context** | `kontinuum.cortex_context` | Rein lesender, maschinenlesbarer Gehirnkontext für externe KI-Agenten; null LLM-Aufrufe, keine Aktionen. |
 | **Cortex Consult** | `kontinuum.cortex_consult` | Löst manuell eine Beratung aller Cortex-Agents aus. Die Agents analysieren den aktuellen Zustand und geben Vorschläge. Ergebnis als Notification. |
 | **Brain Review** | `kontinuum.brain_review` | Alle Cortex-Agents analysieren gemeinsam den Brain-Zustand (Patterns, Accuracy, Regeln, Habits). Liefert Health-Score + Verbesserungsvorschläge. |
 | **Status** | `kontinuum.status` | Zeigt detaillierten KONTINUUM-Status als persistent_notification -- Version, Module, Statistiken. |
@@ -324,7 +323,7 @@ Im Debug-Panel können folgende **Services direkt ausgelöst** werden:
 
 ---
 
-Details zum externen Agentenvertrag: [Cortex-Agent-Protokoll](docs/CORTEX-AGENT-PROTOCOL.md).
+**Externe KI-Agenten:** Der Antwort-Service `kontinuum.cortex_context` liefert über die Home-Assistant-WebSocket-API (`return_response: true`) einen begrenzten, rein lesenden Gehirnkontext ohne LLM-Aufrufe. Details: [Cortex-Agent-Protokoll](docs/CORTEX-AGENT-PROTOCOL.md).
 
 ## Sensoren
 
