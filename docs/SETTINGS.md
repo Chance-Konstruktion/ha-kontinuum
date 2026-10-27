@@ -110,12 +110,15 @@ Ollama (lokal, kein Key), OpenAI, Claude, Gemini, Grok sowie
 ### Cortex-Services
 | Service | Funktion |
 |---------|---------|
+| `kontinuum.cortex_context` | Rein lesenden, begrenzten JSON-Kontext für externe Agenten liefern (0 LLM-Aufrufe, keine Aktionen; WebSocket mit `return_response: true`) |
 | `kontinuum.cortex_consult` | manuelle Beratung aller Agents auslösen |
 | `kontinuum.brain_review` | Brain-Analyse (Health-Score + Vorschläge) |
 | `kontinuum.cortex_sequential` | Sequential-Modus umschalten |
 | `kontinuum.configure_agent` / `remove_agent` | Agent per Service verwalten |
 
 ---
+
+Agentenvertrag und Sicherheitsgrenzen: [Cortex-Agent-Protokoll](CORTEX-AGENT-PROTOCOL.md).
 
 ## 7. Kern-Services (immer verfügbar)
 
