@@ -354,7 +354,9 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             self._data["enable_cortex"] = user_input.get("enable_cortex", False)
             self._data["sequential_mode"] = user_input.get("sequential_mode", False)
-            self._data["discussion_rounds"] = user_input.get("discussion_rounds", 2)
+            # discussion_rounds has been retired from this form because the
+            # active Organ/menu path only executes one round. Existing config
+            # entries keep their legacy key; new entries no longer write it.
 
             if not self._data["enable_cortex"]:
                 return await self.async_step_init()
@@ -367,16 +369,6 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Required("enable_cortex", default=self._data.get("enable_cortex", False)): bool,
                 vol.Required("sequential_mode", default=self._data.get("sequential_mode", False)): bool,
-                vol.Required(
-                    "discussion_rounds", default=self._data.get("discussion_rounds", 2),
-                ): vol.All(
-                    # Das HA-Frontend liefert die Auswahl als String ("2") zurück;
-                    # ohne Coerce schlägt vol.In gegen die int-Keys fehl
-                    # ("value must be one of [1, 2, 3]"). Coerce(int) macht daraus
-                    # wieder einen int, die Labels bleiben erhalten.
-                    vol.Coerce(int),
-                    vol.In({1: "1 Runde", 2: "2 Runden", 3: "3 Runden"}),
-                ),
             }),
         )
 

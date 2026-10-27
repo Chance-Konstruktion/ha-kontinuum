@@ -47,13 +47,11 @@
         "description": "KONTINUUM lernt und entscheidet auch komplett ohne LLM. Der Cortex ist ein optionales Upgrade: bis zu 4 Agents (Comfort, Energy, Safety, Coordinator) beraten bei komplexen Entscheidungen.\n\nProvider: Ollama (lokal), OpenAI, Claude, Gemini, Grok sowie Custom/OpenAI-kompatibel (z. B. OpenCLAW).",
         "data": {
           "enable_cortex": "Cortex aktivieren",
-          "sequential_mode": "Sequential Mode",
-          "discussion_rounds": "Diskussionsrunden"
+          "sequential_mode": "Sequential Mode"
         },
         "data_description": {
           "enable_cortex": "Aus = reines lokales Lernen. An = LLM-Agents beraten zusätzlich.",
-          "sequential_mode": "Agents nacheinander statt parallel anfragen – empfohlen bei nur einer GPU/Ollama-Instanz.",
-          "discussion_rounds": "Wie oft Agents bei Uneinigkeit revidieren dürfen (1–3). Mehr Runden = gründlicher, aber langsamer."
+          "sequential_mode": "Agents nacheinander statt parallel anfragen – empfohlen bei nur einer GPU/Ollama-Instanz."
         }
       },
       "agents_overview": {

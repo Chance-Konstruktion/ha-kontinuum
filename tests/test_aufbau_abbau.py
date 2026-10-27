@@ -78,6 +78,22 @@ async def test_abbau_leert_und_zieht_herzschlag_ab(
     brain = hass.data[DOMAIN]
     assert "_unsub_idle" in brain, "kein Herzschlag angemeldet?"
     gehirn = brain  # Referenz über das Entladen hinweg
+    echter_cortex = gehirn["cortex"]
+
+    class _CloseSpy:
+        def __init__(self, original):
+            self.original = original
+            self.closed = False
+
+        async def close(self):
+            self.closed = True
+            await self.original.close()
+
+        def __getattr__(self, name):
+            return getattr(self.original, name)
+
+    cortex_spy = _CloseSpy(echter_cortex)
+    gehirn["cortex"] = cortex_spy
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
@@ -86,6 +102,7 @@ async def test_abbau_leert_und_zieht_herzschlag_ab(
     # Gehirn ist gezogen (der Timer feuert nicht mehr auf dem alten Entry).
     assert DOMAIN not in hass.data
     assert "_unsub_idle" not in gehirn
+    assert cortex_spy.closed, "Cortex-HTTP-Session wurde beim Entladen nicht geschlossen"
 
     # Der auf das Entladen laufende Tick darf keine Ausnahme werfen:
     # nach dem Entladen friert die Zeit kurz ein, und nichts läuft mehr.

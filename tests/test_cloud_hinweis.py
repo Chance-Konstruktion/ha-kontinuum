@@ -44,8 +44,7 @@ async def _bis_agent_setup(hass, entry):
     )
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        user_input={"enable_cortex": True, "sequential_mode": False,
-                    "discussion_rounds": 2},
+        user_input={"enable_cortex": True, "sequential_mode": False},
     )
     assert result["step_id"] == "agents_overview"
     result = await hass.config_entries.options.async_configure(

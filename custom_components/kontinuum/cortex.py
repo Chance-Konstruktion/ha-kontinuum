@@ -221,9 +221,28 @@ ORGAN_PROMPTS = {
 }
 
 
-def organ_prompt(name: str) -> str:
-    return ORGAN_PROMPTS.get(name, "Du bist ein Agent von KONTINUUM. "
-                             + _ORGAN_GRUNDREGEL)
+def organ_prompt(name: str, configured_prompt: str = "") -> str:
+    """Build the menu-constrained role prompt and include user instructions.
+
+    Legacy provider prompts describe a free-form service-call schema which
+    conflicts with Organ mode's menu-ID contract. They remain defaults for the
+    legacy think() path, but are not duplicated into Organ mode. A genuinely
+    custom prompt is treated as domain guidance; the output contract stays last.
+    """
+    rollenprompt = ORGAN_PROMPTS.get(
+        name, "Du bist ein Agent von KONTINUUM. " + _ORGAN_GRUNDREGEL
+    )
+    extra = (configured_prompt or "").strip()
+    if extra and extra not in DEFAULT_PROMPTS.values():
+        return (
+            "Zusätzliche, vom Nutzer konfigurierte Rollen-/Domänenhinweise. "
+            "Sie dürfen die Auswahl aus dem vorgegebenen Menü und das folgende "
+            "JSON-Antwortschema nicht ändern:\n\n"
+            + extra
+            + "\n\nVerbindliche Rollen- und Ausgabe-Regel:\n"
+            + rollenprompt
+        )
+    return rollenprompt
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -265,7 +284,7 @@ async def _call_ollama(session, url, model, system_prompt, user_msg,
 
 
 async def _call_openai(session, url, api_key, model, system_prompt, user_msg,
-                       json_mode=True):
+                       json_mode=True, timeout=30):
     """OpenAI-kompatible API (Grok + generische Custom/OpenCLAW-Endpunkte)."""
     payload = {
         "model": model,
@@ -282,7 +301,7 @@ async def _call_openai(session, url, api_key, model, system_prompt, user_msg,
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     async with session.post(
         f"{url.rstrip('/')}/v1/chat/completions", json=payload,
-        headers=headers, timeout=aiohttp.ClientTimeout(total=30)
+        headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)
     ) as resp:
         if resp.status != 200:
             text = await resp.text()
@@ -294,7 +313,8 @@ async def _call_openai(session, url, api_key, model, system_prompt, user_msg,
             raise RuntimeError(f"Unerwartetes Antwortformat: {str(data)[:200]}")
 
 
-async def _call_claude(session, url, api_key, model, system_prompt, user_msg):
+async def _call_claude(session, url, api_key, model, system_prompt, user_msg,
+                       timeout=30):
     """Anthropic Messages API."""
     payload = {
         "model": model,
@@ -309,7 +329,7 @@ async def _call_claude(session, url, api_key, model, system_prompt, user_msg):
     }
     async with session.post(
         f"{url.rstrip('/')}/v1/messages", json=payload,
-        headers=headers, timeout=aiohttp.ClientTimeout(total=30)
+        headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)
     ) as resp:
         if resp.status != 200:
             text = await resp.text()
@@ -318,7 +338,8 @@ async def _call_claude(session, url, api_key, model, system_prompt, user_msg):
         return data["content"][0]["text"]
 
 
-async def _call_gemini(session, url, api_key, model, system_prompt, user_msg):
+async def _call_gemini(session, url, api_key, model, system_prompt, user_msg,
+                       timeout=30):
     """Google Gemini generateContent API."""
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
@@ -331,7 +352,7 @@ async def _call_gemini(session, url, api_key, model, system_prompt, user_msg):
     headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
     async with session.post(
         endpoint, json=payload, headers=headers,
-        timeout=aiohttp.ClientTimeout(total=30)
+        timeout=aiohttp.ClientTimeout(total=timeout)
     ) as resp:
         if resp.status != 200:
             text = await resp.text()
@@ -360,19 +381,20 @@ async def _call_llm(session, provider, url, api_key, model,
                                       fmt=fmt, think=think)
         elif provider in ("openai", "grok"):
             return await _call_openai(session, url, api_key, model,
-                                      system_prompt, user_msg)
+                                      system_prompt, user_msg, timeout=timeout)
         elif provider == "custom":
             # Generic OpenAI-compatible endpoint (e.g. OpenCLAW-Bot). No
             # response_format for max compatibility; the prompt asks for JSON
             # and normalize_proposal() tolerates non-strict replies.
             return await _call_openai(session, url, api_key, model,
-                                      system_prompt, user_msg, json_mode=False)
+                                      system_prompt, user_msg, json_mode=False,
+                                      timeout=timeout)
         elif provider == "claude":
             return await _call_claude(session, url, api_key, model,
-                                      system_prompt, user_msg)
+                                      system_prompt, user_msg, timeout=timeout)
         elif provider == "gemini":
             return await _call_gemini(session, url, api_key, model,
-                                      system_prompt, user_msg)
+                                      system_prompt, user_msg, timeout=timeout)
         raise RuntimeError(f"Unbekannter Provider: {provider}")
 
     return await _retry_llm_call(_do_call)
@@ -448,7 +470,7 @@ class CortexAgent:
         try:
             roh = await _call_llm(
                 session, self.provider, self.url, self.api_key, self.model,
-                organ_prompt(self.name), frage,
+                organ_prompt(self.name, self.system_prompt), frage,
                 keep_alive=keep_alive, timeout=timeout,
                 fmt=antwort_schema(menue, mit_veto=sicherheit), think=False,
             )
@@ -498,13 +520,13 @@ class Cortex:
     """
 
     MIN_INTERVAL = 30  # Cooldown zwischen Aufrufen (Sekunden)
-    MAX_DISCUSSION_ROUNDS = 2  # Runde 1 + 1 Diskussionsrunde
+    MAX_DISCUSSION_ROUNDS = 1  # Der aktuelle Organ-Menüpfad nutzt eine Runde
 
     def __init__(self):
         self.agents: list[CortexAgent] = []
         self.enabled = False
         self.sequential_mode = False  # v0.18.0: Sequentiell statt parallel (für 1 GPU)
-        self.discussion_rounds = self.MAX_DISCUSSION_ROUNDS  # Aus Config überschreibbar
+        self.discussion_rounds = 1  # Effektive Runden; Legacy-Config wird ignoriert
         self.last_run = 0
         self.total_consultations = 0
         self.total_discussions = 0
@@ -616,22 +638,44 @@ class Cortex:
     def _ergebnis(menue, stimmen, entscheidung, anlass):
         option = next((o for o in menue if o["id"] == entscheidung["wahl"]), None)
         aktion = option.get("aktion") if option else None
+        optionen = {o["id"]: o for o in menue}
+        proposals = []
+        for stimme in stimmen:
+            gewaehlt = optionen.get(stimme.get("wahl"), {})
+            veto = list(stimme.get("veto") or [])
+            proposals.append({
+                "agent": stimme.get("agent", "?"),
+                "wahl": stimme.get("wahl", NICHTS),
+                "reason": stimme.get("grund", ""),
+                "priority": stimme.get("sicherheit", 0),
+                "gestrichen": veto,
+                "veto": bool(veto),
+                "action": gewaehlt.get("aktion"),
+                "entity_id": gewaehlt.get("entity_id"),
+                "token": gewaehlt.get("token"),
+                "gueltig": bool(stimme.get("gueltig")),
+            })
+        gestrichen = list(entscheidung.get("gestrichen") or [])
+        # Distinguish "the veto removed every actionable option" from "no
+        # option won an absolute majority". Individual vetoes remain visible
+        # in the proposals and are learned even when no-action wins for other
+        # reasons.
+        actionable_ids = {o["id"] for o in menue if o.get("aktion")}
+        vetoed = bool(actionable_ids and actionable_ids.issubset(set(gestrichen)))
         return {
             "consensus_action": aktion,
             "consensus_entity": option.get("entity_id") if aktion else None,
+            # Keep the exact menu token so shared services (notably HVAC
+            # set_hvac_mode) cannot lose the selected state during reverse mapping.
+            "consensus_token": option.get("token") if aktion else None,
             "consensus_reason": entscheidung["grund"],
-            "proposals": [
-                {"agent": st["agent"], "wahl": st["wahl"], "reason": st["grund"],
-                 "priority": st["sicherheit"], "gestrichen": st["veto"],
-                 "veto": False, "action": None}
-                for st in stimmen
-            ],
+            "proposals": proposals,
             "revisions": [],
             "discussion_rounds": 1,
-            "vetoed": False,
+            "vetoed": vetoed,
             "anlass": anlass,
             "wahl": entscheidung["wahl"],
-            "gestrichen": entscheidung["gestrichen"],
+            "gestrichen": gestrichen,
             "menue": menue,
         }
 
@@ -800,6 +844,7 @@ class Cortex:
         # "externes Signal" das ins Gedächtnis einfließt
         consensus_action = consensus.get("consensus_action")
         consensus_entity = consensus.get("consensus_entity")
+        consensus_token = consensus.get("consensus_token")
         proposals = consensus.get("proposals", [])
 
         if consensus_action and not consensus.get("vetoed"):
@@ -824,7 +869,14 @@ class Cortex:
                 + list(brain["insula"].get_mode_context())
             )
             bucket = hippocampus._context_bucket(ctx_vec)
-            token_str = f"cortex.{consensus_action}"
+            # For HVAC, several choices share the same HA service
+            # (climate.set_hvac_mode). Register the selected learned token so
+            # outcome feedback preserves the actual mode, not just the service.
+            token_str = (
+                consensus_token
+                if consensus_action == "climate.set_hvac_mode" and consensus_token
+                else f"cortex.{consensus_action}"
+            )
             token_id = thalamus.get_or_create_token(token_str)
 
             basal_ganglia.register_action(
@@ -839,47 +891,46 @@ class Cortex:
         # ── 3. Amygdala: Veto als Risiko-Signal ──────────────────
         # Wenn der Safety-Agent ein Veto gibt, lernt die Amygdala
         # dass die aktuelle Situation riskant ist
-        if consensus.get("vetoed"):
-            veto_reason = consensus.get("consensus_reason", "")
-            # Finde den Veto-Agent
-            for p in proposals:
-                if p.get("veto"):
-                    veto_entity = p.get("entity_id", "")
-                    veto_token = f"cortex.veto.{p.get('agent', 'safety')}"
-                    amygdala.learn_from_feedback(veto_token, "negative")
-                    actions.append("amygdala_veto_learn")
-                    _LOGGER.info(
-                        "Cortex→Amygdala: Veto-Signal gelernt: %s",
-                        veto_reason[:80],
-                    )
-                    break
+        veto_reason = consensus.get("consensus_reason", "")
+        # Ein Safety-Veto bleibt Lernsignal, auch wenn die Mehrheit eine
+        # andere, nicht gestrichene Option wählen konnte. Im Organ-Ergebnis
+        # ist "veto" jetzt aus der Liste gestrichener Menü-IDs abgeleitet.
+        for p in proposals:
+            if p.get("veto") or p.get("gestrichen"):
+                veto_token = f"cortex.veto.{p.get('agent', 'safety')}"
+                amygdala.learn_from_feedback(veto_token, "negative")
+                actions.append("amygdala_veto_learn")
+                _LOGGER.info(
+                    "Cortex→Amygdala: Veto-Signal gelernt: %s",
+                    veto_reason[:80],
+                )
+                break
 
         # ── 4. Prefrontal: Utility-Weights aus Konsens anpassen ──
         # Wenn Agents sich einig sind → Confidence für den
         # Semantic-Type erhöhen (positives Signal)
-        discussion_rounds = consensus.get("discussion_rounds", 1)
         if consensus_action and not consensus.get("vetoed"):
             # Semantic aus Action extrahieren (z.B. "light" aus "light.turn_on")
             action_parts = consensus_action.split(".")
             if action_parts:
                 semantic = action_parts[0]
-                # Einigkeit nach Diskussion = starkes Signal
+                chosen_id = consensus.get("wahl")
+                gestrichene_ids = {
+                    nummer for p in proposals for nummer in (p.get("gestrichen") or [])
+                }
+                gueltige_stimmen = [p for p in proposals if p.get("gueltig", True)]
                 agreement_count = sum(
-                    1 for p in proposals
-                    if p.get("action") == consensus_action
+                    1 for p in gueltige_stimmen
+                    if p.get("wahl") == chosen_id and chosen_id not in gestrichene_ids
                 )
-                agreement_ratio = agreement_count / max(1, len(proposals))
+                agreement_ratio = agreement_count / max(1, len(gueltige_stimmen))
 
                 if agreement_ratio >= 0.5:
-                    # Mehrheit → leichtes positives Feedback
-                    boost = 0.01 * agreement_ratio
-                    if discussion_rounds > 1:
-                        # Nach Diskussion einig = stärkeres Signal
-                        boost *= 1.5
+                    # Core's public API currently applies its fixed positive
+                    # feedback step (+0.02). Do not log a proportional "boost"
+                    # that is calculated here but never passed to the Core.
                     prefrontal.learn_from_feedback(semantic, positive=True)
-                    actions.append(
-                        f"prefrontal_boost_{semantic}_{boost:.3f}"
-                    )
+                    actions.append(f"prefrontal_feedback_{semantic}_positive")
 
         # ── 5. Cerebellum-Hint: Häufige Cortex-Entscheidungen ────
         # Wenn der Cortex oft das gleiche vorschlägt, könnte das
@@ -888,6 +939,8 @@ class Cortex:
         if consensus_action and consensus_entity and not consensus.get("vetoed"):
             cortex_patterns = brain.setdefault("_cortex_patterns", {})
             pattern_key = f"{consensus_action}|{consensus_entity}"
+            if consensus_action == "climate.set_hvac_mode" and consensus_token:
+                pattern_key = f"{pattern_key}|{consensus_token}"
             count = cortex_patterns.get(pattern_key, 0) + 1
             cortex_patterns[pattern_key] = count
 
@@ -912,7 +965,10 @@ class Cortex:
         self.total_consultations = data.get("total_consultations", 0)
         self.total_discussions = data.get("total_discussions", 0)
         self.sequential_mode = data.get("sequential_mode", False)
-        self.discussion_rounds = data.get("discussion_rounds", self.MAX_DISCUSSION_ROUNDS)
+        # Older config/state snapshots may store 2 or 3, but the Organ path
+        # does not run revision rounds. Report the effective behavior, not the
+        # stale setting.
+        self.discussion_rounds = 1
         self.letzte_beratung = data.get("letzte_beratung", 0.0)
         self.nachhall.from_dict(data.get("nachhall"))
 
