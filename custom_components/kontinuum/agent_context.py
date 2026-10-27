@@ -72,9 +72,11 @@ def build_agent_context(brain: dict, integration_version: str) -> dict:
     if thalamus is not None:
         for item in predictions[:MAX_PREDICTIONS]:
             try:
-                token = thalamus.decode_token(item[0])
+                token_parts = str(thalamus.decode_token(item[0])).split(".")
+                # Do not expose arbitrary token labels (they can contain personal names).
                 top_predictions.append({
-                    "token": str(token),
+                    "semantic": token_parts[1] if len(token_parts) == 3 else "unknown",
+                    "target_state": token_parts[2] if len(token_parts) == 3 else "unknown",
                     "probability": _number(item[1]) if len(item) > 1 else None,
                     "confidence": _number(item[2]) if len(item) > 2 else None,
                     "source": str(item[3]) if len(item) > 3 else None,
@@ -88,7 +90,8 @@ def build_agent_context(brain: dict, integration_version: str) -> dict:
     if thalamus is not None:
         try:
             full_menu = baue_menue(
-                predictions, thalamus, _read(prefrontal, "amygdala", amygdala)
+                predictions, thalamus, _read(prefrontal, "amygdala", amygdala),
+                max_optionen=MAX_ACTION_OPTIONS,
             )
             menu_truncated = len(full_menu) > MAX_ACTION_OPTIONS
             action_menu = full_menu[:MAX_ACTION_OPTIONS]
@@ -121,7 +124,6 @@ def build_agent_context(brain: dict, integration_version: str) -> dict:
         energy_summary = {}
 
     hippocampus_stats = _stats(hippocampus)
-    cerebellum_stats = _stats(cerebellum)
     amygdala_stats = _stats(amygdala)
     try:
         room = spatial.get_current_location() if spatial is not None else None
@@ -225,8 +227,10 @@ def build_agent_context(brain: dict, integration_version: str) -> dict:
             ],
         },
         "privacy": {
-            "includes_person_names": False,
+            "includes_person_tracker_list": False,
+            "includes_raw_person_names": False,
             "includes_api_keys_or_prompts": False,
             "includes_raw_history_or_full_brain_export": False,
+            "entity_ids_may_contain_user_defined_names": True,
         },
     }
