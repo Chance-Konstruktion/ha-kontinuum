@@ -8,7 +8,7 @@
 
 Rufe den Home-Assistant-Service `kontinuum.cortex_context` mit Antwortanforderung auf (bei der WebSocket-API: `return_response: true`). Die Antwort hat das Schema `kontinuum.agent_context.v1`. Lese zuerst `system`, `brain`, `cortex`, `action_options` und `agent_contract`. Unbekannte zukünftige Felder sind zu ignorieren; bei einem unbekannten `schema` darf ein Agent keine Schreibaktion ableiten.
 
-Der Kontext enthält absichtlich nur kleine, ausgewählte Kennzahlen, höchstens fünf Top-Vorhersagen und maximal zehn Aktionsoptionen. Er enthält weder Personen-Namen noch API-Schlüssel, System-Prompts, Rohverlauf oder den vollständigen Gehirnexport. `resource_profile.llm_calls` ist bei diesem Service immer null.
+Der Kontext enthält absichtlich nur kleine, ausgewählte Kennzahlen, höchstens fünf Top-Vorhersagen und maximal zehn Aktionsoptionen. Er enthält keine Personen-Tracker-Liste, keine API-Schlüssel, System-Prompts, Rohverläufe oder den vollständigen Gehirnexport. Home-Assistant-Entity-IDs können allerdings benutzerdefinierte Namen enthalten. `resource_profile.llm_calls` ist bei diesem Service immer null.
 
 ## Was ein Agent tun darf
 
