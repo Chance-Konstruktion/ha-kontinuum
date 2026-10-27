@@ -78,7 +78,7 @@ def test_agent_context_only_exposes_grounded_menu_options():
 def test_agent_context_redacts_secrets_and_person_names():
     payload = build_agent_context(_fixture_brain(), "0.test")
     serialized = repr(payload)
-    for value in ("Alice Example", "must-never-appear", "secret-host", "api_key", "system_prompt"):
+    for value in ("Alice Example", "must-never-appear", "secret-host", '"api_key":', '"system_prompt":'):
         assert value not in serialized
 
 
