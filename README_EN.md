@@ -241,13 +241,14 @@ The debug panel provides **service trigger buttons** for direct interaction:
 
 | Button | Service | What happens? |
 |--------|---------|---------------|
-| **Cortex Context** | `kontinuum.cortex_context` | Returns a bounded, read-only, machine-readable brain snapshot for external agents; no model calls or actions. |
 | **Cortex Consult** | `kontinuum.cortex_consult` | Manually triggers a consultation of all Cortex agents. They analyze the current state and provide suggestions. Result as notification. |
 | **Brain Review** | `kontinuum.brain_review` | All Cortex agents jointly analyze the brain state (patterns, accuracy, rules, habits). Returns health score + suggestions. |
 | **Status** | `kontinuum.status` | Shows detailed KONTINUUM status as persistent_notification -- version, modules, statistics. |
 | **Brain Export** | `kontinuum.export_brain` | Exports the compressed brain.json.gz as readable brain_export.json to /config/. For external analysis. |
 | **Activate Light** | `kontinuum.activate` | Enables autonomous control for lights. KONTINUUM then controls lights based on learned patterns. |
 | **Deactivate All** | `kontinuum.deactivate` | Disables autonomous control for all device types. KONTINUUM then only observes (shadow mode). |
+
+External AI agents can retrieve a bounded, read-only brain snapshot through `kontinuum.cortex_context` using the Home Assistant WebSocket API with `return_response: true`. It performs no LLM calls or actions. See [the Cortex agent protocol](docs/CORTEX-AGENT-PROTOCOL.md) for the safety contract.
 
 ---
 
