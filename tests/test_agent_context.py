@@ -1,6 +1,7 @@
 """Tests for the read-only external-agent context contract."""
 from types import SimpleNamespace
 
+from kontinuum_core.amygdala import Amygdala
 from kontinuum_core.thalamus import Thalamus
 
 from custom_components.kontinuum.agent_context import SCHEMA, build_agent_context
@@ -32,10 +33,11 @@ def _fixture_brain():
     thalamus.id_to_token[thalamus._next_id] = token
     thalamus._next_id += 1
 
+    amygdala = Amygdala()
     pfc = SimpleNamespace(
         operation_mode="confirm",
         activated_semantics={"light"},
-        amygdala=None,
+        amygdala=amygdala,
     )
     return {
         "preset": "ausgeglichen",
@@ -51,7 +53,7 @@ def _fixture_brain():
         "cerebellum": SimpleNamespace(rules=[1, 2]),
         "basal_ganglia": SimpleNamespace(total_habits=3),
         "hypothalamus": SimpleNamespace(get_energy_summary=lambda: {"battery": 72.0, "solar": 1.2}),
-        "amygdala": SimpleNamespace(stats={"last_risk": 0.1}),
+        "amygdala": amygdala,
     }
 
 
