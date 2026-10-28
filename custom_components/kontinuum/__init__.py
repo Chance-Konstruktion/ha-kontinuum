@@ -1259,6 +1259,12 @@ _STATE_EQUIVALENCES = {
     ("climate", "cool"): {"cool", "cooling"},
     ("climate", "dry"): {"dry", "drying"},
     ("climate", "fan_only"): {"fan_only", "fan"},
+    # Alias-Token (…climate.heating) wünschen die HVACAction-Schreibweise,
+    # HA meldet danach den Modus: auch diese Richtung ist Erfolg.
+    ("climate", "heating"): {"heat", "heating"},
+    ("climate", "cooling"): {"cool", "cooling"},
+    ("climate", "drying"): {"dry", "drying"},
+    ("climate", "fan"): {"fan_only", "fan"},
     ("climate", "heat_cool"): {"heat_cool", "auto", "idle"},
     ("climate", "off"): {"off", "idle"},
     # cover: "open" vs. "opening", "closed" vs. "closing"
