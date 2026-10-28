@@ -37,6 +37,8 @@ async def test_alter_eintrag_behaelt_seinen_schluessel(hass):
 @pytest.mark.parametrize("wunsch,ist", [
     ("heat", "heating"), ("cool", "cooling"), ("dry", "drying"),
     ("fan_only", "fan"),
+    ("heating", "heat"), ("cooling", "cool"), ("drying", "dry"),
+    ("fan", "fan_only"),
 ])
 def test_klima_alias_zustaende_passen(wunsch, ist):
     assert _states_match("climate.x", wunsch, ist)
