@@ -630,7 +630,6 @@ class KontinuumOptionsFlow(config_entries.OptionsFlow):
             "home_only_mode": self._data.get("home_only_mode", False),
             "enable_cortex": self._data.get("enable_cortex", False),
             "sequential_mode": self._data.get("sequential_mode", False),
-            "discussion_rounds": self._data.get("discussion_rounds", 2),
             **{k: v for k, v in preset.items() if k != "label"},
         }
 
